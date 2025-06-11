@@ -1,0 +1,12 @@
+[package]
+name = "mock-btc-light-client"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk.workspace = true
+hex.workspace = true

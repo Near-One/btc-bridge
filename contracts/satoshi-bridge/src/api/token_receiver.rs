@@ -1,0 +1,117 @@
+use crate::*;
+use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
+use near_plugins::pause;
+
+#[near(serializers = [json])]
+pub enum TokenReceiverMessage {
+    DepositProtocolFee,
+    Withdraw {
+        target_btc_address: String,
+        input: Vec<OutPoint>,
+        output: Vec<TxOut>,
+    },
+}
+
+#[near]
+impl FungibleTokenReceiver for Contract {
+    #[pause(except(roles(Role::DAO)))]
+    fn ft_on_transfer(
+        &mut self,
+        sender_id: AccountId,
+        amount: U128,
+        msg: String,
+    ) -> PromiseOrValue<U128> {
+        let amount = amount.into();
+        require!(
+            amount >= self.internal_config().min_withdraw_amount,
+            "Invalid amount"
+        );
+        let message = serde_json::from_str::<TokenReceiverMessage>(&msg).expect("INVALID MSG");
+        let token_id = env::predecessor_account_id();
+        require!(
+            token_id == self.internal_config().nbtc_account_id,
+            "Invalid token_id"
+        );
+        match message {
+            TokenReceiverMessage::DepositProtocolFee => {
+                self.data_mut().acc_collected_protocol_fee += amount;
+                self.data_mut().cur_available_protocol_fee += amount;
+                Event::DepositProtocolFee {
+                    account_id: &sender_id,
+                    amount: U128(amount),
+                }
+                .emit();
+                PromiseOrValue::Value(U128(0))
+            }
+            TokenReceiverMessage::Withdraw {
+                target_btc_address,
+                input,
+                output,
+            } => {
+                let (psbt, utxo_storage_keys, vutxos) =
+                    self.generate_psbt_and_vutxos(input, output);
+                require!(
+                    self.internal_unwrap_or_create_mut_account(&sender_id)
+                        .btc_pending_sign_id
+                        .is_none(),
+                    "Previous btc tx has not been signed"
+                );
+                let target_address_script_pubkey =
+                    string_to_btc_address(&target_btc_address).script_pubkey();
+
+                let withdraw_change_address_script_pubkey =
+                    self.internal_config().get_change_address().script_pubkey();
+                let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount);
+                let (actual_received_amount, gas_fee) = self.check_withdraw_psbt_valid(
+                    &target_address_script_pubkey,
+                    &withdraw_change_address_script_pubkey,
+                    &psbt,
+                    &vutxos,
+                    amount,
+                    withdraw_fee,
+                );
+
+                let need_signature_num = psbt.unsigned_tx.input.len();
+                let psbt_hex = psbt.serialize_hex();
+                let btc_pending_id = psbt.extract_tx().unwrap().compute_txid().to_string();
+                let btc_pending_info = BTCPendingInfo {
+                    account_id: sender_id.clone(),
+                    btc_pending_id: btc_pending_id.clone(),
+                    transfer_amount: amount,
+                    actual_received_amount,
+                    withdraw_fee,
+                    gas_fee,
+                    burn_amount: actual_received_amount + gas_fee,
+                    psbt_hex,
+                    vutxos,
+                    signatures: vec![None; need_signature_num],
+                    tx_bytes_with_sign: None,
+                    create_time_sec: nano_to_sec(env::block_timestamp()),
+                    last_sign_time_sec: 0,
+                    state: PendingInfoState::WithdrawOriginal(OriginalState {
+                        stage: PendingInfoStage::PendingSign,
+                        max_gas_fee: gas_fee,
+                        last_rbf_time_sec: None,
+                        cancel_rbf_reserved: None,
+                    }),
+                };
+                require!(
+                    self.data_mut()
+                        .btc_pending_infos
+                        .insert(btc_pending_id.clone(), btc_pending_info.into())
+                        .is_none(),
+                    "pending info already exist"
+                );
+                self.internal_unwrap_mut_account(&sender_id)
+                    .btc_pending_sign_id = Some(btc_pending_id.clone());
+                Event::UtxoRemoved { utxo_storage_keys }.emit();
+                Event::GenerateBtcPendingInfo {
+                    account_id: &sender_id,
+                    btc_pending_id: &btc_pending_id,
+                }
+                .emit();
+                PromiseOrValue::Value(U128(0))
+            }
+        }
+    }
+}
