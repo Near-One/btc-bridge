@@ -35,7 +35,7 @@ impl Contract {
             transaction.lock_time == LockTime::ZERO,
             "Tx with a non-zero lock_time are not supported."
         );
-        let deposit_address = self.generate_btc_p2wpkh_address(&path);
+        let deposit_address = self.generate_utxo_chain_address(&path);
         let deposit_address_script_pubkey = deposit_address.script_pubkey();
         require!(
             deposit_address_script_pubkey == transaction.output[vout].script_pubkey,
@@ -377,7 +377,7 @@ impl Contract {
 
     pub fn get_user_deposit_address(&self, deposit_msg: DepositMsg) -> String {
         let path = get_deposit_path(&deposit_msg);
-        let deposit_address = self.generate_btc_p2wpkh_address(&path).to_string();
+        let deposit_address = self.generate_utxo_chain_address(&path).to_string();
         Event::LogDepositAddress {
             deposit_msg,
             path,

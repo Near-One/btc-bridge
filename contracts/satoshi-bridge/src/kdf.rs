@@ -1,5 +1,6 @@
 use crate::*;
 
+use crate::network::AddressInner;
 use k256::elliptic_curve::sec1::ToEncodedPoint;
 
 impl Contract {
@@ -27,9 +28,9 @@ impl Contract {
             .unwrap()
     }
 
-    pub fn generate_btc_p2wpkh_address(&self, path: &str) -> Address {
+    pub fn generate_utxo_chain_address(&self, path: &str) -> AddressInner {
         let btc_public_key = self.generate_btc_public_key(path);
-        Address::p2wpkh(&btc_public_key.try_into().unwrap(), btc_network())
+        AddressInner::from_pubkey(self.internal_config().chain.clone(), btc_public_key)
     }
 }
 

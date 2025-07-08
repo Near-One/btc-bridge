@@ -111,7 +111,7 @@ impl Contract {
                 serde_json::from_slice::<PublicKey>(&result_bytes).expect("Invalid PublicKey");
             self.internal_mut_config().chain_signatures_root_public_key = Some(root_public_key);
             let change_address = self
-                .generate_btc_p2wpkh_address(env::current_account_id().as_str())
+                .generate_utxo_chain_address(env::current_account_id().as_str())
                 .to_string();
             self.internal_mut_config().change_address = Some(change_address);
             true

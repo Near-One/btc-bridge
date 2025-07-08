@@ -248,7 +248,7 @@ impl Contract {
             psbt.inputs[i].witness_utxo = Some(TxOut {
                 value: Amount::from_sat(v.get_amount()),
                 script_pubkey: self
-                    .generate_btc_p2wpkh_address(&v.get_path())
+                    .generate_utxo_chain_address(&v.get_path())
                     .script_pubkey(),
             })
         });

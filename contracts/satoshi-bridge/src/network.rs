@@ -83,6 +83,22 @@ impl AddressInner {
             }
         }
     }
+
+    pub fn from_pubkey(chain: Chain, pubkey: bitcoin::PublicKey) -> Self {
+        let pubkey_hash = pubkey.pubkey_hash();
+
+        if let Some(_hrp) = get_segwit_hrp(&chain) {
+            // Chain supports Bech32 SegWit
+            let wp = WitnessProgram::p2wpkh(&pubkey.try_into().unwrap());
+            AddressInner::Segwit { program: wp, chain }
+        } else {
+            // Legacy P2PKH
+            AddressInner::P2pkh {
+                hash: pubkey_hash,
+                chain,
+            }
+        }
+    }
 }
 
 /// Formats bech32 as upper case if alternate formatting is chosen (`{:#}`).
@@ -120,7 +136,7 @@ impl fmt::Display for AddressInner {
     }
 }
 
-fn get_segwit_hrp(chain: &Chain) -> Option<&'static str> {
+pub fn get_segwit_hrp(chain: &Chain) -> Option<&'static str> {
     match chain {
         // Bitcoin (Bech32 - BIP173)
         Chain::BitcoinMainnet => Some("bc"),
