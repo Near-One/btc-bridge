@@ -1,3 +1,4 @@
+use crate::network::Chain::{BitcoinMainnet, BitcoinTestnet};
 use crate::*;
 use near_sdk::test_utils::VMContextBuilder;
 pub use near_sdk::testing_env;
@@ -34,6 +35,7 @@ pub fn btc_light_client_id() -> AccountId {
 
 pub fn init_contract() -> Contract {
     Contract::new(Config {
+        chain: BitcoinTestnet,
         chain_signatures_account_id: chain_signatures_id(),
         nbtc_account_id: nbtc_id(),
         btc_light_client_account_id: btc_light_client_id(),

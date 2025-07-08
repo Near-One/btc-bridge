@@ -96,7 +96,7 @@ impl Contract {
         is_cancel: bool,
     ) -> (u128, u128) {
         let config = self.internal_config();
-        let withdraw_change_address_script_pubkey = config.get_change_address().script_pubkey();
+        let withdraw_change_address_script_pubkey = config.get_change_script_pubkey();
         let input_amount = vutxos
             .iter()
             .map(|vutxo| vutxo.get_amount() as u128)

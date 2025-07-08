@@ -33,6 +33,7 @@ pub mod json_utils;
 pub mod kdf;
 pub mod legacy;
 pub mod nbtc;
+mod network;
 pub mod psbt;
 pub mod rbf;
 pub mod token_transfer;

@@ -1,3 +1,4 @@
+use crate::network::AddressInner;
 use crate::*;
 
 pub const MAX_RATIO: u32 = 10000;
@@ -39,6 +40,8 @@ impl BridgeFee {
 #[derive(Clone)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 pub struct Config {
+    // The chain id: BitconMainnet/BitcoinTestnet/ZcashMainnet/ZcashTestnet etc
+    pub chain: network::Chain,
     // The account id of btc light client contract
     pub btc_light_client_account_id: AccountId,
     // The account id of nbtc contract
@@ -134,8 +137,19 @@ impl Config {
         );
     }
 
-    pub fn get_change_address(&self) -> Address {
-        string_to_btc_address(self.change_address.as_ref().unwrap())
+    pub fn get_change_script_pubkey(&self) -> ScriptBuf {
+        self.string_to_script_pubkey(self.change_address.as_ref().unwrap())
+    }
+
+    pub fn string_to_script_pubkey(&self, address_string: &str) -> ScriptBuf {
+        let chain = self.get_utxo_network();
+
+        AddressInner::parse(address_string, chain)
+            .unwrap_or_else(|e| panic!("{address_string}: {e}"))
+            .script_pubkey()
+    }
+    pub fn get_utxo_network(&self) -> network::Chain {
+        self.chain.clone()
     }
 
     pub fn get_confirmations(&self, satoshi_amount: u128) -> u64 {

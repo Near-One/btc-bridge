@@ -1,7 +1,5 @@
 use crate::*;
 
-use std::str::FromStr;
-
 use k256::elliptic_curve::sec1::ToEncodedPoint;
 
 impl Contract {
@@ -33,13 +31,6 @@ impl Contract {
         let btc_public_key = self.generate_btc_public_key(path);
         Address::p2wpkh(&btc_public_key.try_into().unwrap(), btc_network())
     }
-}
-
-pub fn string_to_btc_address(address_string: &str) -> Address {
-    Address::from_str(address_string)
-        .unwrap_or_else(|_| panic!("{address_string} not a valid btc address"))
-        .require_network(btc_network())
-        .unwrap_or_else(|_| panic!("{address_string} network error"))
 }
 
 pub fn btc_network() -> Network {
