@@ -99,6 +99,32 @@ impl AddressInner {
             }
         }
     }
+
+    pub fn from_script(script: &bitcoin::Script, chain: Chain) -> Option<Self> {
+        // Try P2PKH
+        if script.is_p2pkh() {
+            let hash = bitcoin::PubkeyHash::from_slice(&script.as_bytes()[3..23]).ok()?;
+            return Some(AddressInner::P2pkh { hash, chain });
+        }
+
+        // Try P2SH
+        if script.is_p2sh() {
+            let hash = bitcoin::ScriptHash::from_slice(&script.as_bytes()[2..22]).ok()?;
+            return Some(AddressInner::P2sh { hash, chain });
+        }
+
+        if script.is_witness_program() {
+            let opcode = script
+                .first_opcode()
+                .expect("is_witness_program guarantees len > 4");
+
+            let version = WitnessVersion::try_from(opcode).ok()?;
+            let program = WitnessProgram::new(version, &script.as_bytes()[2..]).ok()?;
+            return Some(AddressInner::Segwit { program, chain });
+        }
+
+        None
+    }
 }
 
 /// Formats bech32 as upper case if alternate formatting is chosen (`{:#}`).

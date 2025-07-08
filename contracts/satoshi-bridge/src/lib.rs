@@ -17,8 +17,8 @@ use bitcoin::{
     absolute::LockTime,
     consensus::{deserialize, serialize},
     transaction::Version,
-    Address, Amount, Network, OutPoint, Psbt, PublicKey as BtcPublicKey, ScriptBuf,
-    Transaction as BtcTransaction, TxIn, TxOut,
+    Amount, OutPoint, Psbt, PublicKey as BtcPublicKey, ScriptBuf, Transaction as BtcTransaction,
+    TxIn, TxOut,
 };
 
 pub mod account;
@@ -51,7 +51,6 @@ pub use crate::config::*;
 pub use crate::deposit_msg::*;
 pub use crate::event::*;
 pub use crate::json_utils::*;
-pub use crate::kdf::*;
 pub use crate::legacy::*;
 pub use crate::nbtc::*;
 pub use crate::rbf::*;

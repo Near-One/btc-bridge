@@ -33,11 +33,3 @@ impl Contract {
         AddressInner::from_pubkey(self.internal_config().chain.clone(), btc_public_key)
     }
 }
-
-pub fn btc_network() -> Network {
-    if env::current_account_id().to_string().ends_with(".near") {
-        Network::Bitcoin
-    } else {
-        Network::Testnet
-    }
-}
