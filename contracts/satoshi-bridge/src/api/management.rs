@@ -256,6 +256,10 @@ impl Contract {
             .remove(&range_upper_bound.0.to_string())
             .is_some();
         require!(is_success, "Invalid range_upper_bound");
+        require!(
+            !self.internal_config().confirmations_strategy.is_empty(),
+            "confirmations_strategy must not be empty"
+        );
     }
 
     #[payable]
