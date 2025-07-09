@@ -70,6 +70,7 @@ impl Contract {
             &original_btc_pending_verify_id,
             btc_pending_info,
             withdraw_rbf_psbt,
+            false,
         )
     }
 }

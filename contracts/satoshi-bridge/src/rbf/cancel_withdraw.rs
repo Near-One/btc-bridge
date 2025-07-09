@@ -9,6 +9,7 @@ impl Contract {
         let (actual_received_amount, gas_fee) = self.check_psbt_output_all_change_address(
             cancel_withdraw_rbf_psbt,
             &original_tx_btc_pending_info.vutxos,
+            true,
         );
         (actual_received_amount, gas_fee)
     }
@@ -69,6 +70,7 @@ impl Contract {
             &original_btc_pending_verify_id,
             btc_pending_info,
             cancel_withdraw_rbf_psbt,
+            true,
         )
     }
 }

@@ -79,7 +79,8 @@ impl Contract {
         } else {
             env::panic_str("Active management conditions are not met");
         }
-        let (output_amount, gas_fee) = self.check_psbt_output_all_change_address(psbt, vutxos);
+        let (output_amount, gas_fee) =
+            self.check_psbt_output_all_change_address(psbt, vutxos, false);
         (output_amount, gas_fee)
     }
 
@@ -87,6 +88,7 @@ impl Contract {
         &self,
         psbt: &Psbt,
         vutxos: &[VUTXO],
+        is_cancel: bool,
     ) -> (u128, u128) {
         let config = self.internal_config();
         let withdraw_change_address_script_pubkey = config.get_change_address().script_pubkey();
@@ -112,13 +114,15 @@ impl Contract {
             })
             .sum::<u128>();
         let gas_fee = input_amount - output_amount;
-        require!(
-            gas_fee >= config.min_btc_gas_fee && gas_fee <= config.max_btc_gas_fee,
-            format!(
-                "Invalid gas fee ({}). valid range: [{}, {}].",
-                gas_fee, config.min_btc_gas_fee, config.max_btc_gas_fee
-            )
-        );
+        if !is_cancel {
+            require!(
+                gas_fee >= config.min_btc_gas_fee && gas_fee <= config.max_btc_gas_fee,
+                format!(
+                    "Invalid gas fee ({}). valid range: [{}, {}].",
+                    gas_fee, config.min_btc_gas_fee, config.max_btc_gas_fee
+                )
+            );
+        }
         (output_amount, gas_fee)
     }
 
