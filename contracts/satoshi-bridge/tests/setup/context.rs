@@ -166,6 +166,7 @@ impl Context {
                         "10000000": 2,
                     },
                     "confirmations_delta": 1,
+                    "extra_msg_confirmations_delta": 1,
                     "withdraw_bridge_fee": {
                         "fee_min": "50000",
                         "fee_rate": 0,
@@ -1087,6 +1088,7 @@ impl UpgradeContext {
                         "10000000": 2,
                     },
                     "confirmations_delta": 1,
+                    "extra_msg_confirmations_delta": 1,
                     "withdraw_bridge_fee": {
                         "fee_min": "50000",
                         "fee_rate": 0,

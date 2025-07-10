@@ -15,7 +15,11 @@ impl Contract {
     ) -> Promise {
         let config = self.internal_config();
         let recipient_id = deposit_msg.recipient_id.clone();
-        let confirmations = self.get_confirmations(config, deposit_amount);
+        let confirmations = if deposit_msg.extra_msg.is_none() {
+            self.get_confirmations(config, deposit_amount)
+        } else {
+            self.get_extra_msg_confirmations(config, deposit_amount)
+        };
         let promise = self.verify_transaction_inclusion_promise(
             config.btc_light_client_account_id.clone(),
             pending_utxo_info.tx_id.clone(),

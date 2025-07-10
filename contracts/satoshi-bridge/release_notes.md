@@ -1,5 +1,8 @@
 # Release Notes
 
+### Version 0.5.0
+1. fix audit recommendation.
+
 ### Version 0.4.0
 1. fix public_key function.
 2. add post_action_msg_templates

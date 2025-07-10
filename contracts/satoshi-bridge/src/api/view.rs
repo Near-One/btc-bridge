@@ -9,6 +9,7 @@ pub struct Metadata {
     pub pause_managers: Vec<AccountId>,
     pub pa_all_paused: Option<HashSet<String>>,
     pub relayer_white_list: Vec<AccountId>,
+    pub extra_msg_relayer_white_list: Vec<AccountId>,
     pub post_action_receiver_id_white_list: Vec<AccountId>,
     #[serde(with = "u128_dec_format")]
     pub acc_collected_protocol_fee: u128,
@@ -36,6 +37,11 @@ impl Contract {
             pause_managers: self.acl_get_grantees(Role::PauseManager.into(), 0, usize::MAX as u64),
             pa_all_paused: self.pa_all_paused(),
             relayer_white_list: root_state.relayer_white_list.iter().cloned().collect(),
+            extra_msg_relayer_white_list: root_state
+                .extra_msg_relayer_white_list
+                .iter()
+                .cloned()
+                .collect(),
             post_action_receiver_id_white_list: root_state
                 .post_action_receiver_id_white_list
                 .iter()

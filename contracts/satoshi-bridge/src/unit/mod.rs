@@ -39,6 +39,7 @@ pub fn init_contract() -> Contract {
         btc_light_client_account_id: btc_light_client_id(),
         confirmations_strategy: HashMap::from([("10000000".to_string(), 2)]),
         confirmations_delta: 1,
+        extra_msg_confirmations_delta: 1,
         withdraw_bridge_fee: BridgeFee {
             fee_min: 50000,
             fee_rate: 0,
