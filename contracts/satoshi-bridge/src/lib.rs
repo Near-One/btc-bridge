@@ -37,6 +37,7 @@ mod network;
 pub mod psbt;
 pub mod rbf;
 pub mod token_transfer;
+pub mod transaction;
 #[cfg(test)]
 mod unit;
 pub mod upgrade;

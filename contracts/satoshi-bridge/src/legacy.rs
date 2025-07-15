@@ -151,6 +151,7 @@ impl From<ConfigV0> for Config {
         } = c;
 
         Self {
+            chain: crate::network::Chain::BitcoinMainnet,
             btc_light_client_account_id,
             nbtc_account_id,
             chain_signatures_account_id,

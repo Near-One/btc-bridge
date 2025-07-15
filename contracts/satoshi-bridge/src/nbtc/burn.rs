@@ -77,7 +77,7 @@ impl Contract {
             let transaction = bytes_to_btc_transaction(tx_bytes);
             let withdraw_change_script_pubkey = config.get_change_script_pubkey();
             let mut utxo_storage_keys = vec![];
-            for (index, output) in transaction.output.into_iter().enumerate() {
+            for (index, output) in transaction.output().into_iter().enumerate() {
                 if withdraw_change_script_pubkey == output.script_pubkey {
                     let utxo = UTXO {
                         path: env::current_account_id().to_string(),
@@ -155,7 +155,7 @@ impl Contract {
             let config = self.internal_config();
             let withdraw_change_script_pubkey = config.get_change_script_pubkey();
             let mut utxo_storage_keys = vec![];
-            for (index, output) in transaction.output.into_iter().enumerate() {
+            for (index, output) in transaction.output().into_iter().enumerate() {
                 if withdraw_change_script_pubkey == output.script_pubkey {
                     let utxo = UTXO {
                         path: env::current_account_id().to_string(),

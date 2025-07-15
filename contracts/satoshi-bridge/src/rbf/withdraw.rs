@@ -10,14 +10,14 @@ impl Contract {
             self.internal_config().get_change_script_pubkey();
         let original_tx = original_tx_btc_pending_info.get_transaction();
         let target_address_script_pubkey = original_tx
-            .output
+            .output()
             .iter()
             .find(|v| v.script_pubkey != withdraw_change_address_script_pubkey)
             .cloned()
             .expect("The original tx is not a user withdraw tx.")
             .script_pubkey;
         require!(
-            original_tx.output.len() == withdraw_rbf_psbt.unsigned_tx.output.len(),
+            original_tx.output().len() == withdraw_rbf_psbt.unsigned_tx.output.len(),
             "Invalid output num"
         );
         let (_, _, actual_received_amount, gas_fee) = self.check_withdraw_psbt(

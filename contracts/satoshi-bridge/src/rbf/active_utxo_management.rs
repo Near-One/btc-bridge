@@ -8,7 +8,7 @@ impl Contract {
     ) -> (u128, u128) {
         let original_tx = original_tx_btc_pending_info.get_transaction();
         require!(
-            original_tx.output.len() == active_utxo_management_rbf_psbt.unsigned_tx.output.len(),
+            original_tx.output().len() == active_utxo_management_rbf_psbt.unsigned_tx.output.len(),
             "Invalid output num"
         );
         let (actual_received_amount, gas_fee) = self.check_psbt_output_all_change_address(
