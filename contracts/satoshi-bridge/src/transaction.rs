@@ -97,7 +97,7 @@ mod transaction_impl {
     impl Decodable for Transaction {
         fn consensus_decode<R: Read + ?Sized>(r: &mut R) -> Result<Self, encode::Error> {
             let mut buf = Vec::new();
-            bitcoin::io::Read::read(r, &mut buf)?;
+            r.read_to_limit(&mut buf, 100000).unwrap();
 
             println!("Buffer: {:?}", buf);
             let mut cursor = std::io::Cursor::new(buf);
