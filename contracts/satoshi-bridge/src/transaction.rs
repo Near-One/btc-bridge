@@ -60,14 +60,9 @@ mod transaction_impl {
             let outputs = self.inner_tx.transparent_bundle().unwrap().vout.clone();
             outputs
                 .into_iter()
-                .map(|o| {
-                    let mut bytes = Vec::new();
-                    o.script_pubkey.write(&mut bytes).unwrap();
-
-                    bitcoin::TxOut {
-                        value: bitcoin::Amount::from_sat(o.value.into_u64()),
-                        script_pubkey: ScriptBuf::from(bitcoin::Script::from_bytes(&bytes)),
-                    }
+                .map(|o| bitcoin::TxOut {
+                    value: bitcoin::Amount::from_sat(o.value.into_u64()),
+                    script_pubkey: ScriptBuf::from(bitcoin::Script::from_bytes(&o.script_pubkey.0)),
                 })
                 .collect()
         }

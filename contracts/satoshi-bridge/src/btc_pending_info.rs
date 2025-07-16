@@ -465,6 +465,14 @@ mod tests {
 
         println!("Deposit address: {:?}", deposit_address);
         println!("Deposit address: {:?}", deposit_address.to_string());
+        println!(
+            "Expected script pubkey: {}",
+            expected_script_pubkey.to_hex_string()
+        );
+        println!(
+            "Output script pubkey: {}",
+            output_script_pubkey.to_hex_string()
+        );
         assert_eq!(expected_script_pubkey, output_script_pubkey);
     }
 }
