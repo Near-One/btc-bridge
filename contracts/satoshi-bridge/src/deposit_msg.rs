@@ -32,6 +32,7 @@ pub struct PostAction {
 
 pub fn get_deposit_path(deposit_msg: &DepositMsg) -> String {
     let deposit_msg_string = serde_json::to_string(&deposit_msg).unwrap();
+    println!("{:?}", deposit_msg_string);
     hex::encode(env::sha256(deposit_msg_string.as_bytes()))
 }
 

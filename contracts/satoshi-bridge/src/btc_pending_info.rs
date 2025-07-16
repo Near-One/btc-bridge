@@ -408,7 +408,40 @@ pub fn to_psbt(psbt_hex: &String) -> Psbt {
 
 #[cfg(test)]
 mod tests {
-    use crate::bytes_to_btc_transaction;
+    use crate::network::{AddressInner, Chain};
+    use crate::{bytes_to_btc_transaction, get_deposit_path, DepositMsg};
+    use bitcoin::PublicKey as BtcPublicKey;
+    use k256::elliptic_curve::sec1::ToEncodedPoint;
+    use near_sdk::{env, PublicKey};
+    use std::str::FromStr;
+    pub fn generate_public_key(path: &str) -> Vec<u8> {
+        let mpc_pk = crypto_shared::near_public_key_to_affine_point(
+            PublicKey::from_str("secp256k1:4NfTiv3UsGahebgTaHyD9vF8KYKMBnfd6kh94mK6xv8fGBiJB8TBtFMP5WWXz6B89Ac1fbpzPwAvoyQebemHFwx3").unwrap(),
+        );
+        let epsilon = crypto_shared::derive_epsilon(
+            &"zcash_connector-20250714-143829.testnet".parse().unwrap(),
+            path,
+        );
+        let user_pk = crypto_shared::derive_key(mpc_pk, epsilon);
+        let user_pk_encoded_point = user_pk.to_encoded_point(false);
+        user_pk_encoded_point.as_bytes().to_vec()
+    }
+
+    pub fn generate_btc_public_key(path: &str) -> BtcPublicKey {
+        let public_key_bytes = generate_public_key(path);
+        let uncompressed_btc_public_key =
+            BtcPublicKey::from_slice(&public_key_bytes).expect("Invalid public key bytes");
+        uncompressed_btc_public_key
+            .inner
+            .to_string()
+            .parse()
+            .unwrap()
+    }
+
+    pub fn generate_utxo_chain_address(path: &str) -> AddressInner {
+        let btc_public_key = generate_btc_public_key(path);
+        AddressInner::from_pubkey(Chain::ZcashTestnet, btc_public_key)
+    }
 
     #[test]
     fn test_zcash_tx_bytes() {
@@ -417,5 +450,21 @@ mod tests {
 
         let btc_tx = bytes_to_btc_transaction(&tx_zcash_bytes);
         println!("ZCash tx: {:?}", btc_tx);
+
+        let output_script_pubkey = btc_tx.output()[0].script_pubkey.clone();
+        let deposit_msg = DepositMsg {
+            recipient_id: "omni_user_account-20250625-153431.testnet".parse().unwrap(),
+            post_actions: None,
+            extra_msg: None,
+        };
+
+        let path = get_deposit_path(&deposit_msg);
+        println!("{:?}", path);
+        let deposit_address = generate_utxo_chain_address(&path);
+        let expected_script_pubkey = deposit_address.script_pubkey();
+
+        println!("Deposit address: {:?}", deposit_address);
+        println!("Deposit address: {:?}", deposit_address.to_string());
+        assert_eq!(expected_script_pubkey, output_script_pubkey);
     }
 }
