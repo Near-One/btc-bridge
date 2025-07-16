@@ -43,30 +43,29 @@ mod transaction_impl {
     use bitcoin::hashes::{sha256, Hash};
     use bitcoin::io::{Read, Write};
     use bitcoin::{absolute, io, OutPoint, ScriptBuf, Transaction as BtcTransaction, TxOut, Txid};
-    use zebra_chain::serialization::SerializationError::Amount;
-    use zebra_chain::serialization::{ZcashDeserialize, ZcashSerialize};
-    use zebra_chain::transaction::Transaction as ZCashTransaction;
+    use zcash_primitives::consensus::BranchId;
+    use zcash_primitives::transaction::Transaction as ZCashTransaction;
 
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[derive(Debug, PartialEq)]
     pub struct Transaction {
         pub inner_tx: ZCashTransaction,
     }
 
     impl Transaction {
         pub fn compute_txid(&self) -> Txid {
-            Txid::from_byte_array(self.inner_tx.hash().0)
+            Txid::from_byte_array(*self.inner_tx.txid().as_ref())
         }
 
         pub fn output(&self) -> Vec<TxOut> {
-            let outputs = self.inner_tx.outputs().clone();
+            let outputs = self.inner_tx.transparent_bundle().unwrap().vout.clone();
             outputs
                 .into_iter()
                 .map(|o| {
                     let mut bytes = Vec::new();
-                    o.lock_script.zcash_serialize(&mut bytes).unwrap();
+                    o.script_pubkey.write(&mut bytes).unwrap();
 
                     bitcoin::TxOut {
-                        value: bitcoin::Amount::from_sat(o.value.zatoshis() as u64),
+                        value: bitcoin::Amount::from_sat(o.value.into_u64()),
                         script_pubkey: ScriptBuf::from(bitcoin::Script::from_bytes(&bytes)),
                     }
                 })
@@ -74,13 +73,8 @@ mod transaction_impl {
         }
 
         pub fn lock_time(&self) -> absolute::LockTime {
-            let lock_time = self.inner_tx.lock_time().unwrap();
-            let mut data = Vec::new();
-            &lock_time
-                .zcash_serialize(&mut data)
-                .expect("Serialization failed");
-
-            absolute::LockTime::from_hex(&hex::encode(data)).unwrap()
+            let lock_time = self.inner_tx.lock_time();
+            absolute::LockTime::from_consensus(lock_time)
         }
     }
 
@@ -88,7 +82,7 @@ mod transaction_impl {
         fn consensus_encode<W: Write + ?Sized>(&self, w: &mut W) -> Result<usize, io::Error> {
             let mut buf = Vec::new();
 
-            self.inner_tx.zcash_serialize(&mut buf).unwrap();
+            self.inner_tx.write(&mut buf).unwrap();
 
             bitcoin::io::Write::write_all(w, &buf)?;
             Ok(buf.len())
@@ -102,7 +96,7 @@ mod transaction_impl {
             println!("Buffer: {:?}", buf);
             let mut cursor = std::io::Cursor::new(buf);
 
-            let tx = ZCashTransaction::zcash_deserialize(&mut cursor).unwrap();
+            let tx = ZCashTransaction::read(&mut cursor, BranchId::Nu6).unwrap();
 
             Ok(Self { inner_tx: tx })
         }
