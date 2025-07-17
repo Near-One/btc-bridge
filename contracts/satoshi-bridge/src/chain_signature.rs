@@ -187,22 +187,46 @@ impl Contract {
 }
 
 pub fn get_hash_to_sign(psbt: &Psbt, vin: usize) -> [u8; 32] {
-    let tx = psbt.unsigned_tx.clone();
-    let mut cache = SighashCache::new(tx);
-    cache
-        .p2wpkh_signature_hash(
-            vin,
-            &psbt.inputs[vin]
-                .witness_utxo
-                .as_ref()
-                .unwrap()
-                .script_pubkey,
-            psbt.inputs[vin].witness_utxo.as_ref().unwrap().value,
-            bitcoin::EcdsaSighashType::All,
-        )
-        .unwrap()
-        .to_raw_hash()
-        .to_byte_array()
-    // let payload = psbt.sighash_ecdsa(vin, &mut cache).unwrap();
-    // *payload.0.as_ref()
+    #[cfg(not(feature = "zcash"))]
+    {
+        let tx = psbt.unsigned_tx.clone();
+        let mut cache = SighashCache::new(tx);
+        cache
+            .p2wpkh_signature_hash(
+                vin,
+                &psbt.inputs[vin]
+                    .witness_utxo
+                    .as_ref()
+                    .unwrap()
+                    .script_pubkey,
+                psbt.inputs[vin].witness_utxo.as_ref().unwrap().value,
+                bitcoin::EcdsaSighashType::All,
+            )
+            .unwrap()
+            .to_raw_hash()
+            .to_byte_array()
+        // let payload = psbt.sighash_ecdsa(vin, &mut cache).unwrap();
+        // *payload.0.as_ref()
+    }
+
+    #[cfg(feature = "zcash")]
+    {
+        let tx = psbt.unsigned_tx.clone();
+        let mut cache = SighashCache::new(tx);
+        cache
+            .legacy_signature_hash(
+                vin,
+                &psbt.inputs[vin]
+                    .witness_utxo
+                    .as_ref()
+                    .unwrap()
+                    .script_pubkey,
+                bitcoin::EcdsaSighashType::All.to_u32(),
+            )
+            .unwrap()
+            .to_raw_hash()
+            .to_byte_array()
+        // let payload = psbt.sighash_ecdsa(vin, &mut cache).unwrap();
+        // *payload.0.as_ref()
+    }
 }
