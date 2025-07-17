@@ -398,7 +398,7 @@ pub fn generate_btc_pending_sign_id(payload_preimages: &[Vec<u8>]) -> String {
 }
 
 pub fn bytes_to_btc_transaction(tx_bytes: &[u8]) -> crate::transaction::Transaction {
-    deserialize(tx_bytes).expect("Deserialization tx_bytes failed")
+    crate::transaction::Transaction::decode(tx_bytes).expect("Deserialization tx_bytes failed")
 }
 
 pub fn to_psbt(psbt_hex: &String) -> Psbt {

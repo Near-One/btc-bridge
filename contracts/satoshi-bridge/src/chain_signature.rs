@@ -212,7 +212,7 @@ pub fn get_hash_to_sign(psbt: &Psbt, vin: usize) -> [u8; 32] {
     #[cfg(feature = "zcash")]
     {
         let tx = psbt.unsigned_tx.clone();
-        let mut cache = SighashCache::new(tx);
+        let cache = SighashCache::new(tx);
         cache
             .legacy_signature_hash(
                 vin,
