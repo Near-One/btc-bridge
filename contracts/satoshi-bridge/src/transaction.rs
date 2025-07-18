@@ -42,10 +42,10 @@ mod transaction_impl {
 #[cfg(feature = "zcash")]
 mod transaction_impl {
     use bitcoin::hashes::Hash;
-    use bitcoin::{absolute, ScriptBuf, TxOut, Txid};
+    use bitcoin::{absolute, Psbt, ScriptBuf, TxOut, Txid};
     use zcash_primitives::consensus::{BlockHeight, BranchId};
     use zcash_primitives::transaction::{
-        Transaction as ZCashTransaction, TransactionData, TxVersion,
+        Transaction as ZCashTransaction, TransactionData, TxVersion, Unauthorized,
     };
     use zcash_protocol::value::Zatoshis;
 
@@ -86,6 +86,57 @@ mod transaction_impl {
             let mut cursor = std::io::Cursor::new(data);
             let tx = ZCashTransaction::read(&mut cursor, BranchId::Nu6)?;
             Ok(Self { inner_tx: tx })
+        }
+
+        pub fn to_zcash_tx(psbt: &Psbt) -> TransactionData<Unauthorized> {
+            let mut builder = zcash_transparent::builder::TransparentBuilder::empty();
+
+            for (index, input) in psbt.inputs.iter().enumerate() {
+                let i = input.witness_utxo.as_ref().unwrap();
+                let pub_key = i.script_pubkey.clone();
+
+                let key = pub_key.as_script().p2pk_public_key().unwrap();
+                let outpoint = zcash_transparent::bundle::OutPoint::new(
+                    psbt.unsigned_tx.input[index]
+                        .previous_output
+                        .txid
+                        .to_byte_array(),
+                    psbt.unsigned_tx.input[index].previous_output.vout,
+                );
+
+                let txout = zcash_transparent::bundle::TxOut {
+                    value: Zatoshis::from_u64(i.value.to_sat()).unwrap(),
+                    script_pubkey: zcash_primitives::legacy::Script(i.script_pubkey.to_bytes()),
+                };
+                builder.add_input(key.inner, outpoint, txout).unwrap();
+            }
+
+            for output in psbt.unsigned_tx.output.iter() {
+                let key = output.script_pubkey.as_script().p2pk_public_key().unwrap();
+                let to = zcash_transparent::address::TransparentAddress::PublicKeyHash(
+                    key.pubkey_hash().to_byte_array(),
+                );
+                builder
+                    .add_output(&to, Zatoshis::from_u64(output.value.to_sat()).unwrap())
+                    .unwrap();
+            }
+
+            let transparent_bundle = builder.build().unwrap();
+
+            let lock_time = 0;
+            let expiry_height = BlockHeight::from_u32(0);
+            let inner_tx = TransactionData::from_parts(
+                TxVersion::V5,
+                BranchId::Nu6,
+                lock_time,
+                expiry_height,
+                Some(transparent_bundle),
+                None,
+                None,
+                None,
+            );
+
+            inner_tx
         }
 
         pub fn tx_bytes_with_sign(tx: bitcoin::Transaction) -> Result<Vec<u8>, std::io::Error> {

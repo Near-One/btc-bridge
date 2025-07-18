@@ -1,4 +1,4 @@
-use bitcoin::{ecdsa::Signature, hashes::Hash, sighash::SighashCache};
+use bitcoin::ecdsa::Signature;
 
 use crate::transaction::Transaction;
 use crate::*;
@@ -221,22 +221,39 @@ pub fn get_hash_to_sign(psbt: &Psbt, vin: usize) -> [u8; 32] {
 
     #[cfg(feature = "zcash")]
     {
-        let tx = psbt.unsigned_tx.clone();
-        let cache = SighashCache::new(tx);
-        cache
-            .legacy_signature_hash(
-                vin,
-                &psbt.inputs[vin]
-                    .witness_utxo
-                    .as_ref()
-                    .unwrap()
-                    .script_pubkey,
-                bitcoin::EcdsaSighashType::All.to_u32(),
-            )
+        use zcash_protocol::value::Zatoshis;
+        use zcash_transparent::sighash::SighashType;
+
+        let tx_data = Transaction::to_zcash_tx(psbt);
+        let txid_parts = tx_data.digest(zcash_primitives::transaction::txid::TxIdDigester);
+
+        let script_pubkey = &psbt.inputs[vin]
+            .witness_utxo
+            .as_ref()
             .unwrap()
-            .to_raw_hash()
-            .to_byte_array()
-        // let payload = psbt.sighash_ecdsa(vin, &mut cache).unwrap();
-        // *payload.0.as_ref()
+            .script_pubkey;
+
+        let value: u64 = psbt.inputs[vin]
+            .witness_utxo
+            .as_ref()
+            .unwrap()
+            .value
+            .to_sat();
+
+        let script = zcash_primitives::legacy::Script(script_pubkey.clone().into_bytes());
+
+        let sig_input = zcash_primitives::transaction::sighash::SignableInput::Transparent(
+            zcash_transparent::sighash::SignableInput::from_parts(
+                SighashType::ALL,
+                vin,
+                &script,
+                &script,
+                Zatoshis::from_u64(value).unwrap(),
+            ),
+        );
+
+        zcash_primitives::transaction::sighash::signature_hash(&tx_data, &sig_input, &txid_parts)
+            .as_ref()
+            .clone()
     }
 }
