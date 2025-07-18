@@ -1,6 +1,7 @@
 use bitcoin::Witness;
 use bitcoin::{ecdsa::Signature, hashes::Hash, sighash::SighashCache};
 
+use crate::transaction::Transaction;
 use crate::*;
 
 pub const GAS_FOR_SIGN_CALL: Gas = Gas::from_tgas(50);
@@ -158,7 +159,7 @@ impl Contract {
             btc_pending_info.psbt_hex = psbt.serialize_hex();
             if btc_pending_info.is_all_signed() {
                 let transaction = psbt.extract_tx().expect("extract_tx failed");
-                let tx_bytes_with_sign = serialize(&transaction);
+                let tx_bytes_with_sign = Transaction::tx_bytes_with_sign(transaction).unwrap();
                 Event::SignedBtcTransaction {
                     account_id: &account_id,
                     tx_id: btc_pending_sign_id.clone(),

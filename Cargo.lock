@@ -1034,6 +1034,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "document-features"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "95249b50c6c185bee49034bcb378a49dc2b5dff0be90ff6616d31d64febab05d"
+dependencies = [
+ "litrs",
+]
+
+[[package]]
 name = "dunce"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2038,6 +2047,12 @@ name = "litemap"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "241eaef5fd12c88705a01fc1066c48c4b36e0dd4377dcdc7ec3942cea7a69956"
+
+[[package]]
+name = "litrs"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4ce301924b7887e9d637144fdade93f9dfff9b60981d4ac161db09720d39aa5"
 
 [[package]]
 name = "lock_api"
@@ -3620,6 +3635,8 @@ dependencies = [
  "near-workspaces",
  "tokio",
  "zcash_primitives",
+ "zcash_protocol",
+ "zcash_transparent",
 ]
 
 [[package]]
@@ -5125,7 +5142,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42344f5735237d6e0eedd3680f1c92f64e9c4144045d7b5c82f4867c2cbc0a02"
 dependencies = [
  "core2",
+ "document-features",
  "hex",
+ "memuse",
 ]
 
 [[package]]
@@ -5147,6 +5166,7 @@ dependencies = [
  "blake2b_simd",
  "bs58 0.5.1",
  "core2",
+ "document-features",
  "getset",
  "hex",
  "ripemd 0.1.3",
