@@ -88,14 +88,14 @@ mod transaction_impl {
             Ok(Self { inner_tx: tx })
         }
 
-        pub fn to_zcash_tx(psbt: &Psbt) -> TransactionData<Unauthorized> {
+        pub fn to_zcash_tx(
+            psbt: &Psbt,
+            public_key: &bitcoin::PublicKey,
+        ) -> TransactionData<Unauthorized> {
             let mut builder = zcash_transparent::builder::TransparentBuilder::empty();
 
             for (index, input) in psbt.inputs.iter().enumerate() {
                 let i = input.witness_utxo.as_ref().unwrap();
-                let pub_key = i.script_pubkey.clone();
-
-                let key = pub_key.as_script().p2pk_public_key().unwrap();
                 let outpoint = zcash_transparent::bundle::OutPoint::new(
                     psbt.unsigned_tx.input[index]
                         .previous_output
@@ -108,14 +108,16 @@ mod transaction_impl {
                     value: Zatoshis::from_u64(i.value.to_sat()).unwrap(),
                     script_pubkey: zcash_primitives::legacy::Script(i.script_pubkey.to_bytes()),
                 };
-                builder.add_input(key.inner, outpoint, txout).unwrap();
+                builder
+                    .add_input(public_key.inner, outpoint, txout)
+                    .unwrap();
             }
 
             for output in psbt.unsigned_tx.output.iter() {
-                let key = output.script_pubkey.as_script().p2pk_public_key().unwrap();
-                let to = zcash_transparent::address::TransparentAddress::PublicKeyHash(
-                    key.pubkey_hash().to_byte_array(),
-                );
+                let key = output.script_pubkey.as_script().to_bytes()[3..23]
+                    .try_into()
+                    .unwrap();
+                let to = zcash_transparent::address::TransparentAddress::PublicKeyHash(key);
                 builder
                     .add_output(&to, Zatoshis::from_u64(output.value.to_sat()).unwrap())
                     .unwrap();

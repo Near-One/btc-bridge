@@ -78,12 +78,20 @@ impl Contract {
         sign_index: usize,
         key_version: u32,
     ) -> Promise {
+        let public_key = self
+            .generate_btc_public_key(
+                &self
+                    .internal_unwrap_btc_pending_info(&btc_pending_sign_id)
+                    .vutxos[sign_index]
+                    .get_path(),
+            );
+
         let btc_pending_info = self.internal_unwrap_btc_pending_info(&btc_pending_sign_id);
         require!(
             btc_pending_info.signatures[sign_index].is_none(),
             "Already signed"
         );
-        let payload = get_hash_to_sign(&btc_pending_info.get_psbt(), sign_index);
+        let payload = get_hash_to_sign(&btc_pending_info.get_psbt(), sign_index,  &public_key);
         let path = btc_pending_info.vutxos[sign_index].get_path();
         self.sign_promise(SignRequest {
             payload,
@@ -196,7 +204,7 @@ impl Contract {
     }
 }
 
-pub fn get_hash_to_sign(psbt: &Psbt, vin: usize) -> [u8; 32] {
+pub fn get_hash_to_sign(psbt: &Psbt, vin: usize, public_key: &bitcoin::PublicKey) -> [u8; 32] {
     #[cfg(not(feature = "zcash"))]
     {
         let tx = psbt.unsigned_tx.clone();
@@ -224,7 +232,7 @@ pub fn get_hash_to_sign(psbt: &Psbt, vin: usize) -> [u8; 32] {
         use zcash_protocol::value::Zatoshis;
         use zcash_transparent::sighash::SighashType;
 
-        let tx_data = Transaction::to_zcash_tx(psbt);
+        let tx_data = Transaction::to_zcash_tx(psbt, public_key);
         let txid_parts = tx_data.digest(zcash_primitives::transaction::txid::TxIdDigester);
 
         let script_pubkey = &psbt.inputs[vin]
