@@ -1,4 +1,3 @@
-use bitcoin::Witness;
 use bitcoin::{ecdsa::Signature, hashes::Hash, sighash::SighashCache};
 
 use crate::transaction::Transaction;
@@ -154,8 +153,18 @@ impl Contract {
             }
             .emit();
             let mut psbt = btc_pending_info.get_psbt();
-            psbt.inputs[sign_index].final_script_witness =
-                Some(Witness::p2wpkh(&signature.to_btc_signature(), &public_key));
+
+            let script_sig = bitcoin::script::Builder::new()
+                // .push_opcode(OP_0) // OP_CHECKMULTISIG bug pops +1 value when evaluating so push OP_0.
+                .push_slice(signature.to_btc_signature().serialize())
+                .push_key(&bitcoin::PublicKey::new(public_key))
+                .into_script();
+
+            // psbt.inputs[sign_index].final_script_witness =
+            //     Some(Witness::p2wpkh(&signature.to_btc_signature(), &public_key));
+
+            psbt.inputs[sign_index].final_script_sig = Some(script_sig);
+
             btc_pending_info.psbt_hex = psbt.serialize_hex();
             if btc_pending_info.is_all_signed() {
                 let transaction = psbt.extract_tx().expect("extract_tx failed");
