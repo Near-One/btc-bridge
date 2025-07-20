@@ -148,6 +148,7 @@ impl Config {
             .unwrap_or_else(|e| panic!("{address_string}: {e}"))
             .script_pubkey()
     }
+
     pub fn get_utxo_network(&self) -> network::Chain {
         self.chain.clone()
     }
