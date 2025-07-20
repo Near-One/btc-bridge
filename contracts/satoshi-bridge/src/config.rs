@@ -1,4 +1,4 @@
-use crate::network::AddressInner;
+use crate::network::Address;
 use crate::*;
 
 pub const MAX_RATIO: u32 = 10000;
@@ -144,7 +144,7 @@ impl Config {
     pub fn string_to_script_pubkey(&self, address_string: &str) -> ScriptBuf {
         let chain = self.get_utxo_network();
 
-        AddressInner::parse(address_string, chain)
+        Address::parse(address_string, chain)
             .unwrap_or_else(|e| panic!("{address_string}: {e}"))
             .script_pubkey()
     }

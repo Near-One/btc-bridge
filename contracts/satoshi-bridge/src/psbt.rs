@@ -1,4 +1,4 @@
-use crate::network::AddressInner;
+use crate::network::Address;
 use crate::*;
 
 impl Contract {
@@ -173,7 +173,7 @@ impl Contract {
                 change_amounts.push(output_value);
             } else {
                 let output_address =
-                    AddressInner::from_script(&output.script_pubkey, config.chain.clone())
+                    Address::from_script(&output.script_pubkey, config.chain.clone())
                         .expect("Unsupported btc address type");
                 env::panic_str(
                     format!("Invalid transaction output address: {}", output_address).as_str(),

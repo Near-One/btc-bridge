@@ -408,7 +408,7 @@ pub fn to_psbt(psbt_hex: &String) -> Psbt {
 
 #[cfg(test)]
 mod tests {
-    use crate::network::{AddressInner, Chain};
+    use crate::network::{Address, Chain};
     use crate::{bytes_to_btc_transaction, get_deposit_path, DepositMsg};
     use bitcoin::PublicKey as BtcPublicKey;
     use k256::elliptic_curve::sec1::ToEncodedPoint;
@@ -438,9 +438,9 @@ mod tests {
             .unwrap()
     }
 
-    pub fn generate_utxo_chain_address(path: &str) -> AddressInner {
+    pub fn generate_utxo_chain_address(path: &str) -> Address {
         let btc_public_key = generate_btc_public_key(path);
-        AddressInner::from_pubkey(Chain::ZcashTestnet, btc_public_key)
+        Address::from_pubkey(Chain::ZcashTestnet, btc_public_key)
     }
 
     #[test]

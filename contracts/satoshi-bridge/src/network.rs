@@ -18,7 +18,7 @@ pub enum Chain {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum AddressInner {
+pub enum Address {
     P2pkh {
         hash: PubkeyHash,
         chain: Chain,
@@ -33,7 +33,7 @@ pub enum AddressInner {
     },
 }
 
-impl AddressInner {
+impl Address {
     /// Parse an address string + chain into AddressInner
     pub fn parse(address: &str, chain: Chain) -> Result<Self, String> {
         if let Some(hrp) = get_segwit_hrp(&chain) {
@@ -49,7 +49,7 @@ impl AddressInner {
                 let program = WitnessProgram::new(version, &data)
                     .expect("bech32 guarantees valid program length for witness");
 
-                return Ok(AddressInner::Segwit { program, chain });
+                return Ok(Address::Segwit { program, chain });
             }
         }
 
@@ -60,14 +60,14 @@ impl AddressInner {
         if data.starts_with(&prefix) {
             let hash = PubkeyHash::from_slice(&data[prefix.len()..])
                 .map_err(|e| format!("Invalid pubkey hash: {e}"))?;
-            return Ok(AddressInner::P2pkh { hash, chain });
+            return Ok(Address::P2pkh { hash, chain });
         }
 
         let prefix = get_script_address_prefix(&chain);
         if data.starts_with(&prefix) {
             let hash = ScriptHash::from_slice(&data[prefix.len()..])
                 .map_err(|e| format!("Invalid script hash: {e}"))?;
-            return Ok(AddressInner::P2sh { hash, chain });
+            return Ok(Address::P2sh { hash, chain });
         }
 
         Err("Unknown address format or unsupported chain".to_string())
@@ -76,11 +76,9 @@ impl AddressInner {
     /// Return the scriptPubKey corresponding to this address
     pub fn script_pubkey(&self) -> bitcoin::ScriptBuf {
         match self {
-            AddressInner::P2pkh { hash, .. } => bitcoin::ScriptBuf::new_p2pkh(hash),
-            AddressInner::P2sh { hash, .. } => bitcoin::ScriptBuf::new_p2sh(hash),
-            AddressInner::Segwit { program, .. } => {
-                bitcoin::ScriptBuf::new_witness_program(program)
-            }
+            Address::P2pkh { hash, .. } => bitcoin::ScriptBuf::new_p2pkh(hash),
+            Address::P2sh { hash, .. } => bitcoin::ScriptBuf::new_p2sh(hash),
+            Address::Segwit { program, .. } => bitcoin::ScriptBuf::new_witness_program(program),
         }
     }
 
@@ -90,10 +88,10 @@ impl AddressInner {
         if let Some(_hrp) = get_segwit_hrp(&chain) {
             // Chain supports Bech32 SegWit
             let wp = WitnessProgram::p2wpkh(&pubkey.try_into().unwrap());
-            AddressInner::Segwit { program: wp, chain }
+            Address::Segwit { program: wp, chain }
         } else {
             // Legacy P2PKH
-            AddressInner::P2pkh {
+            Address::P2pkh {
                 hash: pubkey_hash,
                 chain,
             }
@@ -104,13 +102,13 @@ impl AddressInner {
         // Try P2PKH
         if script.is_p2pkh() {
             let hash = bitcoin::PubkeyHash::from_slice(&script.as_bytes()[3..23]).ok()?;
-            return Some(AddressInner::P2pkh { hash, chain });
+            return Some(Address::P2pkh { hash, chain });
         }
 
         // Try P2SH
         if script.is_p2sh() {
             let hash = bitcoin::ScriptHash::from_slice(&script.as_bytes()[2..22]).ok()?;
-            return Some(AddressInner::P2sh { hash, chain });
+            return Some(Address::P2sh { hash, chain });
         }
 
         if script.is_witness_program() {
@@ -120,7 +118,7 @@ impl AddressInner {
 
             let version = WitnessVersion::try_from(opcode).ok()?;
             let program = WitnessProgram::new(version, &script.as_bytes()[2..]).ok()?;
-            return Some(AddressInner::Segwit { program, chain });
+            return Some(Address::Segwit { program, chain });
         }
 
         None
@@ -128,9 +126,9 @@ impl AddressInner {
 }
 
 /// Formats bech32 as upper case if alternate formatting is chosen (`{:#}`).
-impl fmt::Display for AddressInner {
+impl fmt::Display for Address {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        use AddressInner::*;
+        use Address::*;
         match self {
             P2pkh { hash, chain } => {
                 let prefix = get_pubkey_address_prefix(chain);
