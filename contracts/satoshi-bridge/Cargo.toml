@@ -21,6 +21,19 @@ container_build_command = [
     "--no-abi",
 ]
 
+[package.metadata.near.reproducible_build.variant.zcash]
+container_build_command = [
+    "cargo",
+    "near",
+    "build",
+    "non-reproducible-wasm",
+    "--locked",
+    "--no-abi",
+    "--no-default-features",
+    "--features",
+    "zcash"
+]
+
 [dependencies]
 near-sdk.workspace = true
 near-contract-standards.workspace = true
@@ -30,7 +43,7 @@ near-plugins.workspace = true
 k256 = "0.13.1"
 ed25519-dalek = "2.1.0"
 crypto-shared = { git = "https://github.com/near/mpc_old", rev = "0afee9004a1b1c3386940e60c28cff7cf1b5978c" }
-zcash_primitives = { version = "0.23.1", default-features = false, features = ["circuits"]}
+zcash_primitives = { version = "0.23.1", default-features = false, features = ["circuits"] }
 zcash_transparent = { version = "0.3.0", features = ["transparent-inputs"] }
 zcash_protocol = "0.5.4"
 core2 = "0.3"
@@ -43,5 +56,4 @@ near-workspaces = { version = "0.20", features = ["unstable"] }
 tokio = { version = "1.12.0", features = ["full"] }
 
 [features]
-default = ["zcash"]
 zcash = []

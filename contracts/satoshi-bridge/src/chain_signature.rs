@@ -1,7 +1,8 @@
-use bitcoin::ecdsa::Signature;
-
 use crate::transaction::Transaction;
 use crate::*;
+use bitcoin::ecdsa::Signature;
+use bitcoin::hashes::Hash;
+use bitcoin::sighash::SighashCache;
 
 pub const GAS_FOR_SIGN_CALL: Gas = Gas::from_tgas(50);
 pub const GAS_FOR_SIGN_BTC_TRANSACTION_CALL_BACK: Gas = Gas::from_tgas(30);
@@ -78,20 +79,19 @@ impl Contract {
         sign_index: usize,
         key_version: u32,
     ) -> Promise {
-        let public_key = self
-            .generate_btc_public_key(
-                &self
-                    .internal_unwrap_btc_pending_info(&btc_pending_sign_id)
-                    .vutxos[sign_index]
-                    .get_path(),
-            );
+        let public_key = self.generate_btc_public_key(
+            &self
+                .internal_unwrap_btc_pending_info(&btc_pending_sign_id)
+                .vutxos[sign_index]
+                .get_path(),
+        );
 
         let btc_pending_info = self.internal_unwrap_btc_pending_info(&btc_pending_sign_id);
         require!(
             btc_pending_info.signatures[sign_index].is_none(),
             "Already signed"
         );
-        let payload = get_hash_to_sign(&btc_pending_info.get_psbt(), sign_index,  &public_key);
+        let payload = get_hash_to_sign(&btc_pending_info.get_psbt(), sign_index, &public_key);
         let path = btc_pending_info.vutxos[sign_index].get_path();
         self.sign_promise(SignRequest {
             payload,
