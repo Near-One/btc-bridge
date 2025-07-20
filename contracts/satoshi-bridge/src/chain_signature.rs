@@ -1,8 +1,10 @@
 use crate::transaction::Transaction;
 use crate::*;
+use bitcoin::consensus::serialize;
 use bitcoin::ecdsa::Signature;
 use bitcoin::hashes::Hash;
 use bitcoin::sighash::SighashCache;
+use bitcoin::Witness;
 
 pub const GAS_FOR_SIGN_CALL: Gas = Gas::from_tgas(50);
 pub const GAS_FOR_SIGN_BTC_TRANSACTION_CALL_BACK: Gas = Gas::from_tgas(30);
@@ -162,21 +164,30 @@ impl Contract {
             .emit();
             let mut psbt = btc_pending_info.get_psbt();
 
+            #[cfg(feature = "zcash")]
             let script_sig = bitcoin::script::Builder::new()
-                // .push_opcode(OP_0) // OP_CHECKMULTISIG bug pops +1 value when evaluating so push OP_0.
                 .push_slice(signature.to_btc_signature().serialize())
                 .push_key(&bitcoin::PublicKey::new(public_key))
                 .into_script();
 
-            // psbt.inputs[sign_index].final_script_witness =
-            //     Some(Witness::p2wpkh(&signature.to_btc_signature(), &public_key));
+            #[cfg(feature = "zcash")]
+            {
+                psbt.inputs[sign_index].final_script_sig = Some(script_sig);
+            }
 
-            psbt.inputs[sign_index].final_script_sig = Some(script_sig);
+            #[cfg(not(feature = "zcash"))]
+            {
+                psbt.inputs[sign_index].final_script_witness =
+                    Some(Witness::p2wpkh(&signature.to_btc_signature(), &public_key));
+            }
 
             btc_pending_info.psbt_hex = psbt.serialize_hex();
             if btc_pending_info.is_all_signed() {
                 let transaction = psbt.extract_tx().expect("extract_tx failed");
+                #[cfg(feature = "zcash")]
                 let tx_bytes_with_sign = Transaction::tx_bytes_with_sign(transaction).unwrap();
+                #[cfg(not(feature = "zcash"))]
+                let tx_bytes_with_sign = serialize(&transaction);
                 Event::SignedBtcTransaction {
                     account_id: &account_id,
                     tx_id: btc_pending_sign_id.clone(),
@@ -223,8 +234,6 @@ pub fn get_hash_to_sign(psbt: &Psbt, vin: usize, public_key: &bitcoin::PublicKey
             .unwrap()
             .to_raw_hash()
             .to_byte_array()
-        // let payload = psbt.sighash_ecdsa(vin, &mut cache).unwrap();
-        // *payload.0.as_ref()
     }
 
     #[cfg(feature = "zcash")]
