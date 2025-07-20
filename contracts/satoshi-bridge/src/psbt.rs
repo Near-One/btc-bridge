@@ -231,6 +231,13 @@ impl Contract {
     ) -> (Psbt, Vec<String>, Vec<VUTXO>) {
         require!(!input.is_empty(), "empty input");
         require!(!output.is_empty(), "empty output");
+
+        #[cfg(not(feature = "zcash"))]
+        let sequence = bitcoin::Sequence::ENABLE_RBF_NO_LOCKTIME;
+
+        #[cfg(feature = "zcash")]
+        let sequence = bitcoin::Sequence::MAX;
+
         let transaction = BtcTransaction {
             version: Version::TWO,
             lock_time: LockTime::ZERO,
@@ -238,7 +245,7 @@ impl Contract {
                 .into_iter()
                 .map(|previous_output| TxIn {
                     previous_output,
-                    sequence: bitcoin::Sequence::ENABLE_RBF_NO_LOCKTIME,
+                    sequence,
                     ..Default::default()
                 })
                 .collect(),
