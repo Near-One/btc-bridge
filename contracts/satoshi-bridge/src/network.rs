@@ -223,55 +223,128 @@ fn get_script_address_prefix(chain: &Chain) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use crate::network::{Address, Chain};
+    use bitcoin::PublicKey as BtcPublicKey;
+    use k256::elliptic_curve::sec1::ToEncodedPoint;
+    use near_sdk::PublicKey;
+    use std::str::FromStr;
+    pub fn generate_public_key(path: &str) -> Vec<u8> {
+        let mpc_pk = crypto_shared::near_public_key_to_affine_point(
+            PublicKey::from_str("secp256k1:4NfTiv3UsGahebgTaHyD9vF8KYKMBnfd6kh94mK6xv8fGBiJB8TBtFMP5WWXz6B89Ac1fbpzPwAvoyQebemHFwx3").unwrap(),
+        );
+        let epsilon = crypto_shared::derive_epsilon(
+            &"zcash_connector-20250714-143829.testnet".parse().unwrap(),
+            path,
+        );
+        let user_pk = crypto_shared::derive_key(mpc_pk, epsilon);
+        let user_pk_encoded_point = user_pk.to_encoded_point(false);
+        user_pk_encoded_point.as_bytes().to_vec()
+    }
+
+    pub fn generate_btc_public_key(path: &str) -> BtcPublicKey {
+        let public_key_bytes = generate_public_key(path);
+        let uncompressed_btc_public_key =
+            BtcPublicKey::from_slice(&public_key_bytes).expect("Invalid public key bytes");
+        uncompressed_btc_public_key
+            .inner
+            .to_string()
+            .parse()
+            .unwrap()
+    }
 
     #[test]
     fn test_parse_address() {
         // test parse bitcoin mainnet address
         let address = "bc1pwyzhgwy30q2juhau2f2c4qscasddle5ymw9m7scq5kc62t8kyzkqyz059k";
         let parse_address = Address::parse(address, Chain::BitcoinMainnet).unwrap();
-        let display_address = parse_address.to_string();
+        let script_pubkey = parse_address.script_pubkey();
+        let address_from_script =
+            Address::from_script(&script_pubkey, Chain::BitcoinMainnet).unwrap();
+        let display_address = address_from_script.to_string();
         assert_eq!(display_address, address);
 
         // test parse bitcoin testnet address
         let address = "tb1pt34385rvqtyuz6muh9hr5ed4fy0cx89zz0faxm6dhku0vqp2pxxs0ymh7y";
         let parse_address = Address::parse(address, Chain::BitcoinTestnet).unwrap();
-        let display_address = parse_address.to_string();
+        let script_pubkey = parse_address.script_pubkey();
+        let address_from_script =
+            Address::from_script(&script_pubkey, Chain::BitcoinTestnet).unwrap();
+        let display_address = address_from_script.to_string();
         assert_eq!(display_address, address);
 
         // test parse litecoin mainnet address
         let address = "LWrHnw5xztWiPafMhKYTQued8iuhaET7Yd";
         let parse_address = Address::parse(address, Chain::LitecoinMainnet).unwrap();
-        let display_address = parse_address.to_string();
+        let script_pubkey = parse_address.script_pubkey();
+        let address_from_script =
+            Address::from_script(&script_pubkey, Chain::LitecoinMainnet).unwrap();
+        let display_address = address_from_script.to_string();
         assert_eq!(display_address, address);
 
         // test parse litecoin testnet address
         let address = "tltc1q0c8899qaxq4e5m9zucq9vkvrn4npfwa8pww9d8";
         let parse_address = Address::parse(address, Chain::LitecoinTestnet).unwrap();
-        let display_address = parse_address.to_string();
+        let script_pubkey = parse_address.script_pubkey();
+        let address_from_script =
+            Address::from_script(&script_pubkey, Chain::LitecoinTestnet).unwrap();
+        let display_address = address_from_script.to_string();
         assert_eq!(display_address, address);
 
         // test parse zcash mainnet address
         let address = "t1ggQ7ZgHRoR34Z2xCcF155VcDe5zDZpZF1";
         let parse_address = Address::parse(address, Chain::ZcashMainnet).unwrap();
-        let display_address = parse_address.to_string();
+        let script_pubkey = parse_address.script_pubkey();
+        let address_from_script =
+            Address::from_script(&script_pubkey, Chain::ZcashMainnet).unwrap();
+        let display_address = address_from_script.to_string();
         assert_eq!(display_address, address);
 
         // test parse zcash testnet address
         let address = "tmJpMbYtRf9Hgi8HUJ4FGkoM3FUSHsu28wM";
         let parse_address = Address::parse(address, Chain::ZcashTestnet).unwrap();
-        let display_address = parse_address.to_string();
+        let script_pubkey = parse_address.script_pubkey();
+        let address_from_script =
+            Address::from_script(&script_pubkey, Chain::ZcashTestnet).unwrap();
+        let display_address = address_from_script.to_string();
         assert_eq!(display_address, address);
 
         // test parse dogecoin mainnet address
         let address = "DKNmffVbxrBcNvQ9uJEDLe8f6prxSmH2Vm";
         let parse_address = Address::parse(address, Chain::DogecoinMainnet).unwrap();
-        let display_address = parse_address.to_string();
+        let script_pubkey = parse_address.script_pubkey();
+        let address_from_script =
+            Address::from_script(&script_pubkey, Chain::DogecoinMainnet).unwrap();
+        let display_address = address_from_script.to_string();
         assert_eq!(display_address, address);
 
         // test parse dogecoin testnet address
         let address = "njyMWWyh1L7tSX6QkWRgetMVCVyVtfoDta";
         let parse_address = Address::parse(address, Chain::DogecoinTestnet).unwrap();
-        let display_address = parse_address.to_string();
+        let script_pubkey = parse_address.script_pubkey();
+        let address_from_script =
+            Address::from_script(&script_pubkey, Chain::DogecoinTestnet).unwrap();
+        let display_address = address_from_script.to_string();
         assert_eq!(display_address, address);
+    }
+
+    #[test]
+    fn test_from_pubkey() {
+        for chain in [
+            Chain::BitcoinMainnet,
+            Chain::BitcoinTestnet,
+            Chain::LitecoinMainnet,
+            Chain::LitecoinTestnet,
+            Chain::ZcashMainnet,
+            Chain::ZcashTestnet,
+            Chain::DogecoinMainnet,
+            Chain::DogecoinTestnet,
+        ] {
+            let btc_public_key = generate_btc_public_key("path");
+            let address = Address::from_pubkey(chain.clone(), btc_public_key);
+            let script_pubkey = address.script_pubkey();
+            let address_from_script = Address::from_script(&script_pubkey, chain.clone()).unwrap();
+            assert_eq!(address, address_from_script);
+            let address_from_str = Address::parse(&address_from_script.to_string(), chain).unwrap();
+            assert_eq!(address, address_from_str);
+        }
     }
 }
