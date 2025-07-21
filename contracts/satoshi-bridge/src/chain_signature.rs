@@ -1,10 +1,9 @@
+#[cfg(feature = "zcash")]
 use crate::transaction::Transaction;
 use crate::*;
-use bitcoin::consensus::serialize;
 use bitcoin::ecdsa::Signature;
-use bitcoin::hashes::Hash;
-use bitcoin::sighash::SighashCache;
-use bitcoin::Witness;
+#[cfg(not(feature = "zcash"))]
+use bitcoin::{consensus::serialize, hashes::Hash, sighash::SighashCache, Witness};
 
 pub const GAS_FOR_SIGN_CALL: Gas = Gas::from_tgas(50);
 pub const GAS_FOR_SIGN_BTC_TRANSACTION_CALL_BACK: Gas = Gas::from_tgas(30);
@@ -215,6 +214,7 @@ impl Contract {
     }
 }
 
+#[allow(unused_variables)]
 pub fn get_hash_to_sign(psbt: &Psbt, vin: usize, public_key: &bitcoin::PublicKey) -> [u8; 32] {
     #[cfg(not(feature = "zcash"))]
     {
