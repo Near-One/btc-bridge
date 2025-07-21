@@ -11,6 +11,7 @@ impl Contract {
         original_btc_pending_verify_id: &str,
         mut btc_pending_info: BTCPendingInfo,
         psbt: Psbt,
+        is_cancel: bool,
     ) -> String {
         let rbf_psbt_hex = psbt.serialize_hex();
         let btc_pending_id = psbt.extract_tx().unwrap().compute_txid().to_string();
@@ -29,10 +30,12 @@ impl Contract {
             .entry(original_btc_pending_verify_id.to_owned())
             .or_default();
         require!(rbf_txs.insert(btc_pending_id.clone()), "Rbf already exist");
-        require!(
-            rbf_txs.len() <= self.internal_config().rbf_num_limit.into(),
-            "Exceed rbf_num_limit"
-        );
+        if !is_cancel {
+            require!(
+                rbf_txs.len() <= self.internal_config().rbf_num_limit.into(),
+                "Exceed rbf_num_limit"
+            );
+        }
         btc_pending_id
     }
 }

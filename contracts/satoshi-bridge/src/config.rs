@@ -53,6 +53,8 @@ pub struct Config {
     pub confirmations_strategy: HashMap<String, u8>,
     // The number of confirmations that need to be increased when a relayer not on the whitelist performs a verify.
     pub confirmations_delta: u8,
+    // The number of confirmations that need to be increased when a relayer not on the extra msg whitelist performs a verify.
+    pub extra_msg_confirmations_delta: u8,
     // Used to calculate the deposit fee.
     pub deposit_bridge_fee: BridgeFee,
     // Used to calculate the withdraw fee.
@@ -182,6 +184,18 @@ impl Contract {
             config.get_confirmations(satoshi_amount)
         } else {
             config.get_confirmations(satoshi_amount) + config.confirmations_delta as u64
+        }
+    }
+
+    pub fn get_extra_msg_confirmations(&self, config: &Config, satoshi_amount: u128) -> u64 {
+        if self
+            .data()
+            .extra_msg_relayer_white_list
+            .contains(&env::predecessor_account_id())
+        {
+            config.get_confirmations(satoshi_amount)
+        } else {
+            config.get_confirmations(satoshi_amount) + config.extra_msg_confirmations_delta as u64
         }
     }
 }

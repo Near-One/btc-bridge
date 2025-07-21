@@ -121,6 +121,35 @@ impl Contract {
 
     #[payable]
     #[access_control_any(roles(Role::DAO))]
+    pub fn extend_extra_msg_relayer_white_list(&mut self, relayer_ids: Vec<AccountId>) {
+        assert_one_yocto();
+        for relayer_id in relayer_ids {
+            let is_success = self
+                .data_mut()
+                .extra_msg_relayer_white_list
+                .insert(relayer_id.clone());
+            require!(
+                is_success,
+                format!("Already exist relayer_id: {}", relayer_id)
+            );
+        }
+    }
+
+    #[payable]
+    #[access_control_any(roles(Role::DAO))]
+    pub fn remove_extra_msg_relayer_white_list(&mut self, relayer_ids: Vec<AccountId>) {
+        assert_one_yocto();
+        for relayer_id in relayer_ids {
+            let is_success = self
+                .data_mut()
+                .extra_msg_relayer_white_list
+                .remove(&relayer_id);
+            require!(is_success, format!("Invalid relayer_id: {}", relayer_id));
+        }
+    }
+
+    #[payable]
+    #[access_control_any(roles(Role::DAO))]
     pub fn extend_post_action_receiver_id_white_list(&mut self, receiver_ids: Vec<AccountId>) {
         assert_one_yocto();
         for receiver_id in receiver_ids {
@@ -256,6 +285,10 @@ impl Contract {
             .remove(&range_upper_bound.0.to_string())
             .is_some();
         require!(is_success, "Invalid range_upper_bound");
+        require!(
+            !self.internal_config().confirmations_strategy.is_empty(),
+            "confirmations_strategy must not be empty"
+        );
     }
 
     #[payable]
@@ -263,6 +296,13 @@ impl Contract {
     pub fn set_confirmations_delta(&mut self, confirmations_delta: u8) {
         assert_one_yocto();
         self.internal_mut_config().confirmations_delta = confirmations_delta;
+    }
+
+    #[payable]
+    #[access_control_any(roles(Role::DAO))]
+    pub fn set_extra_msg_confirmations_delta(&mut self, extra_msg_confirmations_delta: u8) {
+        assert_one_yocto();
+        self.internal_mut_config().extra_msg_confirmations_delta = extra_msg_confirmations_delta;
     }
 
     #[payable]

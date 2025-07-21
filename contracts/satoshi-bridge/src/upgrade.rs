@@ -10,6 +10,7 @@ impl Contract {
         let mut contract: Contract = env::state_read().expect("NOT INIT");
         contract.data = match contract.data {
             VersionedContractData::V0(data) => VersionedContractData::Current(data.into()),
+            VersionedContractData::V1(data) => VersionedContractData::Current(data.into()),
             VersionedContractData::Current(data) => VersionedContractData::Current(data),
         };
         contract

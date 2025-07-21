@@ -74,6 +74,7 @@ enum StorageKey {
     PostActionReceiverIdWhiteListWhiteList,
     LostFound,
     PostActionMsgTemplates,
+    ExtraMsgRelayerWhiteList,
 }
 
 #[derive(AccessControlRole, Deserialize, Serialize, Copy, Clone)]
@@ -96,6 +97,7 @@ pub struct ContractData {
     pub btc_pending_infos: IterableMap<String, VBTCPendingInfo>,
     pub rbf_txs: IterableMap<String, HashSet<String>>,
     pub relayer_white_list: IterableSet<AccountId>,
+    pub extra_msg_relayer_white_list: IterableSet<AccountId>,
     pub post_action_receiver_id_white_list: IterableSet<AccountId>,
     pub post_action_msg_templates: IterableMap<AccountId, HashSet<String>>,
     pub lost_found: IterableMap<AccountId, u128>,
@@ -109,6 +111,7 @@ pub struct ContractData {
 #[near(serializers = [borsh])]
 pub enum VersionedContractData {
     V0(ContractDataV0),
+    V1(ContractDataV1),
     Current(ContractData),
 }
 
@@ -150,6 +153,9 @@ impl Contract {
                 btc_pending_infos: IterableMap::new(StorageKey::BTCPendingInfos),
                 rbf_txs: IterableMap::new(StorageKey::RbfTxs),
                 relayer_white_list: IterableSet::new(StorageKey::RelayerWhiteList),
+                extra_msg_relayer_white_list: IterableSet::new(
+                    StorageKey::ExtraMsgRelayerWhiteList,
+                ),
                 post_action_receiver_id_white_list: IterableSet::new(
                     StorageKey::PostActionReceiverIdWhiteListWhiteList,
                 ),
