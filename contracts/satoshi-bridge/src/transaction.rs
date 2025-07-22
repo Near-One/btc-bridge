@@ -48,6 +48,7 @@ mod transaction_impl {
         Transaction as ZCashTransaction, TransactionData, TxVersion, Unauthorized,
     };
     use zcash_protocol::value::Zatoshis;
+    use zcash_transparent::builder::TransparentBuilder;
 
     #[derive(Debug, PartialEq)]
     pub struct Transaction {
@@ -88,10 +89,10 @@ mod transaction_impl {
             Ok(Self { inner_tx: tx })
         }
 
-        pub fn to_zcash_tx(
+        pub fn get_transparent_builder(
             psbt: &Psbt,
             public_key: &bitcoin::PublicKey,
-        ) -> TransactionData<Unauthorized> {
+        ) -> TransparentBuilder {
             let mut builder = zcash_transparent::builder::TransparentBuilder::empty();
 
             for (index, input) in psbt.inputs.iter().enumerate() {
@@ -123,7 +124,16 @@ mod transaction_impl {
                     .unwrap();
             }
 
-            let transparent_bundle = builder.build().unwrap();
+            builder
+        }
+
+        pub fn to_zcash_tx(
+            psbt: &Psbt,
+            public_key: &bitcoin::PublicKey,
+        ) -> TransactionData<Unauthorized> {
+            let transparent_bundle = Self::get_transparent_builder(psbt, public_key)
+                .build()
+                .unwrap();
 
             let lock_time = 0;
             let expiry_height = BlockHeight::from_u32(0);

@@ -5211,6 +5211,7 @@ dependencies = [
  "redjubjub",
  "ripemd 0.1.3",
  "sapling-crypto",
+ "secp256k1 0.29.1",
  "sha2 0.10.9",
  "subtle",
  "tracing",

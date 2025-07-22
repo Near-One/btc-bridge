@@ -1,5 +1,8 @@
 use crate::network::Address;
 use crate::*;
+use zcash_primitives::transaction::fees::transparent::{InputView, OutputView};
+use zcash_primitives::transaction::fees::FeeRule;
+use zcash_protocol::consensus::BlockHeight;
 
 impl Contract {
     pub fn check_withdraw_psbt_valid(
@@ -219,7 +222,46 @@ impl Contract {
                 gas_fee, config.min_btc_gas_fee, config.max_btc_gas_fee
             )
         );
+
+        #[cfg(feature = "zcash")]
+        self.check_zcash(psbt, vutxos, gas_fee);
+
         (input_num, change_num, actual_received_amount, gas_fee)
+    }
+
+    #[cfg(feature = "zcash")]
+    pub fn check_zcash(&self, psbt: &Psbt, vutxos: &[VUTXO], gas_fee: u128) {
+        let public_key = self.generate_btc_public_key(&vutxos[0].get_path());
+
+        let fee_rule = zcash_primitives::transaction::fees::zip317::FeeRule::standard();
+        let transparent_builder =
+            crate::transaction::Transaction::get_transparent_builder(psbt, &public_key);
+        let min_fee = fee_rule
+            .fee_required(
+                &zcash_protocol::consensus::MainNetwork,
+                BlockHeight::from_u32(0u32),
+                transparent_builder
+                    .inputs()
+                    .iter()
+                    .map(|i| i.serialized_size()),
+                transparent_builder
+                    .outputs()
+                    .iter()
+                    .map(|i| i.serialized_size()),
+                0,
+                0,
+                0,
+            )
+            .unwrap();
+
+        require!(
+            gas_fee >= min_fee.into_u64() as u128,
+            format!(
+                "Invalid gas fee ({}). min fee = {}.",
+                gas_fee,
+                min_fee.into_u64()
+            )
+        );
     }
 }
 
