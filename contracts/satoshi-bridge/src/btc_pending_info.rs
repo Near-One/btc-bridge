@@ -118,6 +118,8 @@ pub struct BTCPendingInfo {
     pub create_time_sec: u32,
     pub last_sign_time_sec: u32,
     pub state: PendingInfoState,
+    #[cfg(feature = "zcash")]
+    pub expiry_height: u32,
 }
 
 impl BTCPendingInfo {

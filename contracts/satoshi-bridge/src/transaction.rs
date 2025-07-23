@@ -130,13 +130,14 @@ mod transaction_impl {
         pub fn to_zcash_tx(
             psbt: &Psbt,
             public_key: &bitcoin::PublicKey,
+            expiry_height: u32,
         ) -> TransactionData<Unauthorized> {
             let transparent_bundle = Self::get_transparent_builder(psbt, public_key)
                 .build()
                 .unwrap();
 
             let lock_time = 0;
-            let expiry_height = BlockHeight::from_u32(0);
+            let expiry_height = BlockHeight::from_u32(expiry_height);
             let inner_tx = TransactionData::from_parts(
                 TxVersion::V5,
                 BranchId::Nu6,

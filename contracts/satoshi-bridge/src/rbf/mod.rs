@@ -59,5 +59,7 @@ pub fn init_rbf_btc_pending_info(
         create_time_sec: nano_to_sec(env::block_timestamp()),
         last_sign_time_sec: 0,
         state,
+        #[cfg(feature = "zcash")]
+        expiry_height: original_tx_btc_pending_info.expiry_height,
     }
 }
