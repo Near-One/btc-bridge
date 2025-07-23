@@ -152,7 +152,10 @@ mod transaction_impl {
             inner_tx
         }
 
-        pub fn tx_bytes_with_sign(tx: bitcoin::Transaction) -> Result<Vec<u8>, std::io::Error> {
+        pub fn tx_bytes_with_sign(
+            tx: bitcoin::Transaction,
+            expiry_height: u32,
+        ) -> Result<Vec<u8>, std::io::Error> {
             let transparent_bundle = zcash_transparent::bundle::Bundle {
                 vin: tx
                     .input
@@ -180,7 +183,7 @@ mod transaction_impl {
             };
 
             let lock_time = 0;
-            let expiry_height = BlockHeight::from_u32(0);
+            let expiry_height = BlockHeight::from_u32(expiry_height);
             let inner_tx = TransactionData::from_parts(
                 TxVersion::V5,
                 BranchId::Nu6,

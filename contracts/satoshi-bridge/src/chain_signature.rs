@@ -190,7 +190,9 @@ impl Contract {
             if btc_pending_info.is_all_signed() {
                 let transaction = psbt.extract_tx().expect("extract_tx failed");
                 #[cfg(feature = "zcash")]
-                let tx_bytes_with_sign = Transaction::tx_bytes_with_sign(transaction).unwrap();
+                let tx_bytes_with_sign =
+                    Transaction::tx_bytes_with_sign(transaction, btc_pending_info.expiry_height)
+                        .unwrap();
                 #[cfg(not(feature = "zcash"))]
                 let tx_bytes_with_sign = serialize(&transaction);
                 Event::SignedBtcTransaction {
