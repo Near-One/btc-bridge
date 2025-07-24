@@ -311,6 +311,10 @@ impl Contract {
         original_tx_btc_pending_info: &BTCPendingInfo,
         output: Vec<TxOut>,
     ) -> Psbt {
+        #[cfg(not(feature = "zcash"))]
+        let sequence = bitcoin::Sequence::ENABLE_RBF_NO_LOCKTIME;
+        #[cfg(feature = "zcash")]
+        let sequence = bitcoin::Sequence::MAX;
         let original_psbt = original_tx_btc_pending_info.get_psbt();
         let transaction = BtcTransaction {
             version: Version::TWO,
@@ -321,7 +325,7 @@ impl Contract {
                 .into_iter()
                 .map(|original_psbt_input| TxIn {
                     previous_output: original_psbt_input.previous_output,
-                    sequence: bitcoin::Sequence::ENABLE_RBF_NO_LOCKTIME,
+                    sequence,
                     ..Default::default()
                 })
                 .collect(),
