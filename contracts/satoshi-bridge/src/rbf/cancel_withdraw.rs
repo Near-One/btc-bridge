@@ -19,6 +19,7 @@ impl Contract {
         &mut self,
         original_btc_pending_verify_id: String,
         output: Vec<TxOut>,
+        #[cfg(feature = "zcash")] expiry_height: u32,
     ) -> String {
         let original_tx_btc_pending_info =
             self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
@@ -39,7 +40,7 @@ impl Contract {
                 original_tx_id: original_btc_pending_verify_id.clone(),
             }),
             #[cfg(feature = "zcash")]
-            0u32,
+            expiry_height,
         );
         let (actual_received_amount, gas_fee) = self.check_cancel_withdraw_rbf_psbt_valid(
             original_tx_btc_pending_info,
@@ -49,10 +50,13 @@ impl Contract {
         btc_pending_info.gas_fee = gas_fee;
         btc_pending_info.burn_amount = gas_fee;
         btc_pending_info.actual_received_amount = actual_received_amount;
-        // Ensure that the RBF transaction pays more gas than the previous transaction.
-        let max_gas_fee = original_tx_btc_pending_info.get_max_gas_fee();
-        let additional_gas_amount = gas_fee.saturating_sub(max_gas_fee);
-        require!(additional_gas_amount > 0, "No gas increase.");
+        #[cfg(not(feature = "zcash"))]
+        {
+            // Ensure that the RBF transaction pays more gas than the previous transaction.
+            let max_gas_fee = original_tx_btc_pending_info.get_max_gas_fee();
+            let additional_gas_amount = gas_fee.saturating_sub(max_gas_fee);
+            require!(additional_gas_amount > 0, "No gas increase.");
+        }
         let excess_gas_fee = gas_fee
             .saturating_sub(btc_pending_info.transfer_amount - btc_pending_info.withdraw_fee);
         if excess_gas_fee > 0 {
