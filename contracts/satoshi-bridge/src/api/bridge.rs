@@ -5,6 +5,7 @@ use near_plugins::{access_control_any, pause};
 pub const GAS_WITHDRAW_RBF_CALL_BACK: Gas = Gas::from_tgas(100);
 pub const GAS_WITHDRAW_CALL_BACK: Gas = Gas::from_tgas(100);
 pub const GAS_CANCEL_ACTIVA_UTXO_MANAGMENT_CALL_BACK: Gas = Gas::from_tgas(100);
+pub const GAS_ACTIVA_UTXO_MANAGMENT_CALL_BACK: Gas = Gas::from_tgas(100);
 
 #[near]
 impl Contract {
@@ -383,10 +384,54 @@ impl Contract {
                 .is_none(),
             "Previous btc tx has not been signed"
         );
+        #[cfg(feature = "zcash")]
+        {
+            self.get_last_block_header_promise().then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(GAS_ACTIVA_UTXO_MANAGMENT_CALL_BACK)
+                    .active_utxo_managment_callback(
+                        account_id,
+                        original_btc_pending_verify_id,
+                        output,
+                    ),
+            );
+        }
+
+        #[cfg(not(feature = "zcash"))]
+        {
+            let btc_pending_id = self.internal_active_utxo_management_rbf(
+                &account_id,
+                original_btc_pending_verify_id,
+                output,
+            );
+            self.internal_unwrap_mut_account(&account_id)
+                .btc_pending_sign_id = Some(btc_pending_id.clone());
+            Event::GenerateBtcPendingInfo {
+                account_id: &account_id,
+                btc_pending_id: &btc_pending_id,
+            }
+            .emit();
+        }
+    }
+
+    #[cfg(feature = "zcash")]
+    #[private]
+    pub fn active_utxo_managment_callback(
+        &mut self,
+        account_id: AccountId,
+        original_btc_pending_verify_id: String,
+        output: Vec<TxOut>,
+    ) {
+        let result_bytes = promise_result_as_success().expect("Call get_last_block_header failed");
+        let last_header = serde_json::from_slice::<ExtendedHeader>(&result_bytes).unwrap();
+        let expiry_height: u32 =
+            <u64 as TryInto<u32>>::try_into(last_header.block_height).unwrap() + 1000u32;
+
         let btc_pending_id = self.internal_active_utxo_management_rbf(
             &account_id,
             original_btc_pending_verify_id,
             output,
+            expiry_height,
         );
         self.internal_unwrap_mut_account(&account_id)
             .btc_pending_sign_id = Some(btc_pending_id.clone());
