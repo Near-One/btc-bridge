@@ -38,6 +38,7 @@ impl Contract {
                 stage: PendingInfoStage::PendingSign,
                 original_tx_id: original_btc_pending_verify_id.clone(),
             }),
+            #[cfg(feature = "zcash")] 0u32,
         );
         let (actual_received_amount, gas_fee) = self.check_cancel_withdraw_rbf_psbt_valid(
             original_tx_btc_pending_info,

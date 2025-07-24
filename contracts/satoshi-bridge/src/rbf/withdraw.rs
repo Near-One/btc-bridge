@@ -36,6 +36,7 @@ impl Contract {
         account_id: &AccountId,
         original_btc_pending_verify_id: String,
         output: Vec<TxOut>,
+        #[cfg(feature = "zcash")] expiry_height: u32,
     ) -> String {
         let original_tx_btc_pending_info =
             self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
@@ -54,6 +55,8 @@ impl Contract {
                 stage: PendingInfoStage::PendingSign,
                 original_tx_id: original_btc_pending_verify_id.clone(),
             }),
+            #[cfg(feature = "zcash")]
+            expiry_height,
         );
         let (actual_received_amount, gas_fee) =
             self.check_withdraw_rbf_psbt_valid(original_tx_btc_pending_info, &withdraw_rbf_psbt);
