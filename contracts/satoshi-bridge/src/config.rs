@@ -106,6 +106,8 @@ pub struct Config {
     pub max_btc_tx_pending_sec: u32,
     // UTXOs less than or equal to this amount are allowed to be merged through active management.
     pub unhealthy_utxo_amount: u64,
+    #[cfg(feature = "zcash")]
+    pub expiry_height_gap: u32,
 }
 
 impl Config {

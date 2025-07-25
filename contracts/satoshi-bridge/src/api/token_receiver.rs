@@ -98,8 +98,8 @@ impl Contract {
     ) -> U128 {
         let result_bytes = promise_result_as_success().expect("Call get_last_block_header failed");
         let last_header = serde_json::from_slice::<ExtendedHeader>(&result_bytes).unwrap();
-        let expiry_height: u32 =
-            <u64 as TryInto<u32>>::try_into(last_header.block_height).unwrap() + 1000u32;
+        let expiry_height: u32 = <u64 as TryInto<u32>>::try_into(last_header.block_height).unwrap()
+            + self.get_config().expiry_height_gap;
 
         self.create_btc_pending_info(
             sender_id,
