@@ -6,6 +6,7 @@ pub const GAS_WITHDRAW_RBF_CALL_BACK: Gas = Gas::from_tgas(100);
 pub const GAS_WITHDRAW_CALL_BACK: Gas = Gas::from_tgas(100);
 pub const GAS_CANCEL_ACTIVA_UTXO_MANAGMENT_CALL_BACK: Gas = Gas::from_tgas(100);
 pub const GAS_ACTIVA_UTXO_MANAGMENT_CALL_BACK: Gas = Gas::from_tgas(100);
+pub const GAS_FOR_ACTIVE_UTXO_MANAGMENT_CALLBACK: Gas = Gas::from_tgas(100);
 
 #[near]
 impl Contract {
@@ -304,6 +305,43 @@ impl Contract {
     pub fn active_utxo_management(&mut self, input: Vec<OutPoint>, output: Vec<TxOut>) {
         assert_one_yocto();
         let account_id = env::predecessor_account_id();
+        #[cfg(not(feature = "zcash"))]
+        {
+            create_active_utxo_management_pending_info(account_id, input, output);
+        }
+        #[cfg(feature = "zcash")]
+        {
+            self.get_last_block_header_promise().then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(GAS_FOR_ACTIVE_UTXO_MANAGMENT_CALLBACK)
+                    .active_utxo_management_callback(account_id, input, output),
+            );
+        }
+    }
+
+    #[cfg(feature = "zcash")]
+    #[private]
+    pub fn active_utxo_management_callback(
+        &mut self,
+        account_id: AccountId,
+        input: Vec<OutPoint>,
+        output: Vec<TxOut>,
+    ) {
+        let result_bytes = promise_result_as_success().expect("Call get_last_block_header failed");
+        let last_header = serde_json::from_slice::<ExtendedHeader>(&result_bytes).unwrap();
+        let expiry_height: u32 =
+            <u64 as TryInto<u32>>::try_into(last_header.block_height).unwrap() + 1000u32;
+
+        self.create_active_utxo_management_pending_info(account_id, input, output, expiry_height);
+    }
+
+    fn create_active_utxo_management_pending_info(
+        &mut self,
+        account_id: AccountId,
+        input: Vec<OutPoint>,
+        output: Vec<TxOut>,
+        #[cfg(feature = "zcash")] expiry_height: u32,
+    ) {
         let account = self.internal_unwrap_account(&account_id);
         require!(
             account.btc_pending_sign_id.is_none(),
@@ -343,7 +381,7 @@ impl Contract {
                 cancel_rbf_reserved: None,
             }),
             #[cfg(feature = "zcash")]
-            expiry_height: 0,
+            expiry_height,
         };
         require!(
             self.data_mut()
