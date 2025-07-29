@@ -58,29 +58,33 @@ impl Contract {
         let utxo_num = self.data().utxos.len() + vutxos.len() as u32;
         let input_num = psbt.unsigned_tx.input.len();
         let output_num = psbt.unsigned_tx.output.len();
-        if utxo_num < config.active_management_lower_limit {
-            require!(input_num < output_num, "require input_num < output_num");
-            require!(
-                output_num <= config.max_active_utxo_management_output_number as usize,
-                format!(
-                    "require output_num <= {}",
-                    config.max_active_utxo_management_output_number
-                )
-            );
-        } else if utxo_num > config.active_management_upper_limit {
-            require!(input_num > output_num, "require input_num > output_num");
-            require!(
-                input_num <= config.max_active_utxo_management_input_number as usize,
-                format!(
-                    "require input_num <= {}",
-                    config.max_active_utxo_management_input_number
-                )
-            );
-        } else {
-            env::panic_str("Active management conditions are not met");
+
+        if !is_merge_unhealthy_utxos(output_num, vutxos, config.unhealthy_utxo_amount) {
+            if utxo_num < config.active_management_lower_limit {
+                require!(input_num < output_num, "require input_num < output_num");
+                require!(
+                    output_num <= config.max_active_utxo_management_output_number as usize,
+                    format!(
+                        "require output_num <= {}",
+                        config.max_active_utxo_management_output_number
+                    )
+                );
+            } else if utxo_num > config.active_management_upper_limit {
+                require!(input_num > output_num, "require input_num > output_num");
+                require!(
+                    input_num <= config.max_active_utxo_management_input_number as usize,
+                    format!(
+                        "require input_num <= {}",
+                        config.max_active_utxo_management_input_number
+                    )
+                );
+            } else {
+                env::panic_str("Active management conditions are not met");
+            }
         }
+
         let (output_amount, gas_fee) =
-            self.check_psbt_output_all_change_address(psbt, vutxos, false);
+            self.check_psbt_output_all_change_address(psbt, vutxos, true, false);
         (output_amount, gas_fee)
     }
 
@@ -88,6 +92,7 @@ impl Contract {
         &self,
         psbt: &Psbt,
         vutxos: &[VUTXO],
+        force_healthy_output: bool,
         is_cancel: bool,
     ) -> (u128, u128) {
         let config = self.internal_config();
@@ -101,11 +106,19 @@ impl Contract {
             .output
             .iter()
             .map(|v| {
-                require!(
-                    v.value.to_sat() as u128 >= config.min_change_amount
-                        && v.value.to_sat() as u128 <= config.max_change_amount,
-                    "The output amount is not in the valid range"
-                );
+                if force_healthy_output {
+                    require!(
+                        v.value.to_sat() > config.unhealthy_utxo_amount
+                            && v.value.to_sat() as u128 <= config.max_change_amount,
+                        "The output amount is not in the valid range"
+                    );
+                } else {
+                    require!(
+                        v.value.to_sat() as u128 >= config.min_change_amount
+                            && v.value.to_sat() as u128 <= config.max_change_amount,
+                        "The output amount is not in the valid range"
+                    );
+                }
                 require!(
                     v.script_pubkey == withdraw_change_address_script_pubkey,
                     "Invalid output script_pubkey"
@@ -269,4 +282,15 @@ impl Contract {
         });
         psbt
     }
+}
+
+pub fn is_merge_unhealthy_utxos(
+    output_num: usize,
+    vutxos: &[VUTXO],
+    unhealthy_utxo_amount: u64,
+) -> bool {
+    output_num == 1
+        && vutxos
+            .iter()
+            .all(|v| v.get_amount() <= unhealthy_utxo_amount)
 }

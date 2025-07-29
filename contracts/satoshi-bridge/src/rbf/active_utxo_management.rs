@@ -14,6 +14,7 @@ impl Contract {
         let (actual_received_amount, gas_fee) = self.check_psbt_output_all_change_address(
             active_utxo_management_rbf_psbt,
             &original_tx_btc_pending_info.vutxos,
+            true,
             false,
         );
         (actual_received_amount, gas_fee)

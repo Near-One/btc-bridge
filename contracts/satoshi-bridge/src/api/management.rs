@@ -444,4 +444,15 @@ impl Contract {
         assert_one_yocto();
         self.internal_mut_config().max_btc_tx_pending_sec = max_btc_tx_pending_sec;
     }
+
+    #[payable]
+    #[access_control_any(roles(Role::DAO))]
+    pub fn set_unhealthy_utxo_amount(&mut self, unhealthy_utxo_amount: U64) {
+        assert_one_yocto();
+        require!(
+            unhealthy_utxo_amount.0 as u128 > self.internal_config().min_change_amount,
+            "Invalid unhealthy_utxo_amount"
+        );
+        self.internal_mut_config().unhealthy_utxo_amount = unhealthy_utxo_amount.0;
+    }
 }

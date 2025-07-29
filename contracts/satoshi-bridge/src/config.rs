@@ -101,6 +101,8 @@ pub struct Config {
     pub rbf_num_limit: u8,
     // If the transaction exceeds this configuration and has not been verified, the protocol will be allowed to cancel the transaction.
     pub max_btc_tx_pending_sec: u32,
+    // UTXOs less than or equal to this amount are allowed to be merged through active management.
+    pub unhealthy_utxo_amount: u64,
 }
 
 impl Config {

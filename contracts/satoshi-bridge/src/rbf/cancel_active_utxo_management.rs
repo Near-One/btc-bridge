@@ -10,6 +10,7 @@ impl Contract {
             cancel_active_utxo_management_rbf_psbt,
             &original_tx_btc_pending_info.vutxos,
             true,
+            true,
         );
         (actual_received_amount, gas_fee)
     }

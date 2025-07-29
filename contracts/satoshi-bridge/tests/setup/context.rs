@@ -193,6 +193,7 @@ impl Context {
                     "passive_management_upper_limit": u32::MAX,
                     "rbf_num_limit": 99,
                     "max_btc_tx_pending_sec": 3600 * 24,
+                    "unhealthy_utxo_amount": 1000,
                 }
             }))
             .transact()
@@ -1115,6 +1116,7 @@ impl UpgradeContext {
                     "passive_management_upper_limit": u32::MAX,
                     "rbf_num_limit": 99,
                     "max_btc_tx_pending_sec": 3600 * 24,
+                    "unhealthy_utxo_amount": 1000,
                 }
             }))
             .transact()
