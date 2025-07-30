@@ -1,4 +1,4 @@
-use crate::network::Chain::{BitcoinMainnet, BitcoinTestnet};
+use crate::network::Chain::BitcoinTestnet;
 use crate::*;
 use near_sdk::test_utils::VMContextBuilder;
 pub use near_sdk::testing_env;

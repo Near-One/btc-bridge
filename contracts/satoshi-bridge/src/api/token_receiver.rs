@@ -1,4 +1,3 @@
-use crate::btc_light_client::ExtendedHeader;
 use crate::*;
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_plugins::pause;
@@ -66,7 +65,7 @@ impl FungibleTokenReceiver for Contract {
                 #[cfg(feature = "zcash")]
                 {
                     PromiseOrValue::Promise(
-                        self.get_last_block_header_promise().then(
+                        self.get_last_block_height_promise().then(
                             Self::ext(env::current_account_id())
                                 .with_static_gas(GAS_FOR_FT_ON_TRANSFER_CALL_BACK)
                                 .ft_on_transfer_callback(
@@ -95,11 +94,9 @@ impl Contract {
         target_btc_address: String,
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
+        #[callback_unwrap] last_block_height: u32,
     ) -> U128 {
-        let result_bytes = promise_result_as_success().expect("Call get_last_block_header failed");
-        let last_header = serde_json::from_slice::<ExtendedHeader>(&result_bytes).unwrap();
-        let expiry_height: u32 = <u64 as TryInto<u32>>::try_into(last_header.block_height).unwrap()
-            + self.get_config().expiry_height_gap;
+        let expiry_height = last_block_height + self.get_config().expiry_height_gap;
 
         self.create_btc_pending_info(
             sender_id,

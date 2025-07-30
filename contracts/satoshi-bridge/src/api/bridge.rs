@@ -1,4 +1,3 @@
-use crate::btc_light_client::ExtendedHeader;
 use crate::*;
 use near_plugins::{access_control_any, pause};
 
@@ -130,7 +129,7 @@ impl Contract {
 
         #[cfg(feature = "zcash")]
         {
-            self.get_last_block_header_promise().then(
+            self.get_last_block_height_promise().then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_WITHDRAW_RBF_CALL_BACK)
                     .withdraw_rbf_callback(account_id, original_btc_pending_verify_id, output),
@@ -158,11 +157,9 @@ impl Contract {
         account_id: AccountId,
         original_btc_pending_verify_id: String,
         output: Vec<TxOut>,
+        #[callback_unwrap] last_block_height: u32,
     ) {
-        let result_bytes = promise_result_as_success().expect("Call get_last_block_header failed");
-        let last_header = serde_json::from_slice::<ExtendedHeader>(&result_bytes).unwrap();
-        let expiry_height: u32 = <u64 as TryInto<u32>>::try_into(last_header.block_height).unwrap()
-            + self.get_config().expiry_height_gap;
+        let expiry_height = last_block_height + self.get_config().expiry_height_gap;
 
         let btc_pending_id = self.internal_withdraw_rbf(
             &account_id,
@@ -203,7 +200,7 @@ impl Contract {
 
         #[cfg(feature = "zcash")]
         {
-            self.get_last_block_header_promise().then(
+            self.get_last_block_height_promise().then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_WITHDRAW_CALL_BACK)
                     .cancel_withdraw_callback(
@@ -235,11 +232,9 @@ impl Contract {
         user_account_id: AccountId,
         original_btc_pending_verify_id: String,
         output: Vec<TxOut>,
+        #[callback_unwrap] last_block_height: u32,
     ) {
-        let result_bytes = promise_result_as_success().expect("Call get_last_block_header failed");
-        let last_header = serde_json::from_slice::<ExtendedHeader>(&result_bytes).unwrap();
-        let expiry_height: u32 = <u64 as TryInto<u32>>::try_into(last_header.block_height).unwrap()
-            + self.get_config().expiry_height_gap;
+        let expiry_height = last_block_height + self.get_config().expiry_height_gap;
 
         let btc_pending_id =
             self.internal_cancel_withdraw(original_btc_pending_verify_id, output, expiry_height);
@@ -311,7 +306,7 @@ impl Contract {
         }
         #[cfg(feature = "zcash")]
         {
-            self.get_last_block_header_promise().then(
+            self.get_last_block_height_promise().then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_ACTIVE_UTXO_MANAGMENT_CALLBACK)
                     .active_utxo_management_callback(account_id, input, output),
@@ -326,11 +321,9 @@ impl Contract {
         account_id: AccountId,
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
+        #[callback_unwrap] last_block_height: u32,
     ) {
-        let result_bytes = promise_result_as_success().expect("Call get_last_block_header failed");
-        let last_header = serde_json::from_slice::<ExtendedHeader>(&result_bytes).unwrap();
-        let expiry_height: u32 = <u64 as TryInto<u32>>::try_into(last_header.block_height).unwrap()
-            + self.get_config().expiry_height_gap;
+        let expiry_height = last_block_height + self.get_config().expiry_height_gap;
 
         self.create_active_utxo_management_pending_info(account_id, input, output, expiry_height);
     }
@@ -424,7 +417,7 @@ impl Contract {
         );
         #[cfg(feature = "zcash")]
         {
-            self.get_last_block_header_promise().then(
+            self.get_last_block_height_promise().then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_ACTIVA_UTXO_MANAGMENT_CALL_BACK)
                     .active_utxo_managment_callback(
@@ -459,11 +452,9 @@ impl Contract {
         account_id: AccountId,
         original_btc_pending_verify_id: String,
         output: Vec<TxOut>,
+        #[callback_unwrap] last_block_height: u32,
     ) {
-        let result_bytes = promise_result_as_success().expect("Call get_last_block_header failed");
-        let last_header = serde_json::from_slice::<ExtendedHeader>(&result_bytes).unwrap();
-        let expiry_height: u32 = <u64 as TryInto<u32>>::try_into(last_header.block_height).unwrap()
-            + self.get_config().expiry_height_gap;
+        let expiry_height = last_block_height + self.get_config().expiry_height_gap;
 
         let btc_pending_id = self.internal_active_utxo_management_rbf(
             &account_id,
@@ -507,7 +498,7 @@ impl Contract {
         );
         #[cfg(feature = "zcash")]
         {
-            self.get_last_block_header_promise().then(
+            self.get_last_block_height_promise().then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_CANCEL_ACTIVA_UTXO_MANAGMENT_CALL_BACK)
                     .cancel_active_utxo_managment_callback(
@@ -539,11 +530,9 @@ impl Contract {
         user_account_id: AccountId,
         original_btc_pending_verify_id: String,
         output: Vec<TxOut>,
+        #[callback_unwrap] last_block_height: u32,
     ) {
-        let result_bytes = promise_result_as_success().expect("Call get_last_block_header failed");
-        let last_header = serde_json::from_slice::<ExtendedHeader>(&result_bytes).unwrap();
-        let expiry_height: u32 = <u64 as TryInto<u32>>::try_into(last_header.block_height).unwrap()
-            + self.get_config().expiry_height_gap;
+        let expiry_height = last_block_height + self.get_config().expiry_height_gap;
 
         let btc_pending_id = self.internal_cancel_active_utxo_management(
             original_btc_pending_verify_id,
