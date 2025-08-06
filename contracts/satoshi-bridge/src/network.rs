@@ -6,7 +6,7 @@ use near_sdk::near;
 use std::fmt;
 use zcash_address;
 use zcash_address::unified::{Container, Receiver, Typecode};
-use zcash_address::{ConversionError, ZcashAddress};
+use zcash_address::{ConversionError, ToAddress, ZcashAddress};
 
 #[near(serializers = [borsh, json])]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -233,7 +233,14 @@ impl fmt::Display for Address {
                 }
             }
             Unified { address, chain } => {
-                todo!()
+                let network = match chain {
+                    Chain::ZcashMainnet => zcash_address::Network::Main,
+                    Chain::ZcashTestnet => zcash_address::Network::Test,
+                    _ => unreachable!(),
+                };
+
+                let str_address = ZcashAddress::from_unified(network, address.clone()).encode();
+                write!(fmt, "{}", str_address)
             }
         }
     }
