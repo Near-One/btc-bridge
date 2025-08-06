@@ -5,6 +5,7 @@ use k256::elliptic_curve::weierstrass::add;
 use near_sdk::near;
 use std::fmt;
 use zcash_address;
+use zcash_address::unified::{Container, Receiver, Typecode};
 use zcash_address::{ConversionError, ZcashAddress};
 
 #[near(serializers = [borsh, json])]
@@ -138,7 +139,22 @@ impl Address {
             Address::P2pkh { hash, .. } => bitcoin::ScriptBuf::new_p2pkh(hash),
             Address::P2sh { hash, .. } => bitcoin::ScriptBuf::new_p2sh(hash),
             Address::Segwit { program, .. } => bitcoin::ScriptBuf::new_witness_program(program),
-            Address::Unified { .. } => todo!(),
+            Address::Unified { address, .. } => {
+                let receiver_list = address.items_as_parsed();
+                for receiver in receiver_list {
+                    return match receiver {
+                        Receiver::P2pkh(data) => bitcoin::ScriptBuf::new_p2pkh(
+                            &PubkeyHash::from_slice(&data[..]).unwrap(),
+                        ),
+                        Receiver::P2sh(data) => bitcoin::ScriptBuf::new_p2sh(
+                            &ScriptHash::from_slice(&data[..]).unwrap(),
+                        ),
+                        _ => panic!("Unsupported receiver type"),
+                    };
+                }
+
+                panic!("No receiver found in address")
+            }
         }
     }
 
