@@ -316,6 +316,21 @@ impl Contract {
         #[cfg(feature = "zcash")]
         let sequence = bitcoin::Sequence::MAX;
         let original_psbt = original_tx_btc_pending_info.get_psbt();
+
+        let mut output = output;
+        #[cfg(feature = "zcash")]
+        if (output.is_empty()) {
+            output = original_psbt
+                .unsigned_tx
+                .output
+                .into_iter()
+                .map(|original_psbt_output| TxOut {
+                    value: original_psbt_output.value,
+                    script_pubkey: original_psbt_output.script_pubkey,
+                })
+                .collect()
+        }
+
         let transaction = BtcTransaction {
             version: Version::TWO,
             lock_time: LockTime::ZERO,
