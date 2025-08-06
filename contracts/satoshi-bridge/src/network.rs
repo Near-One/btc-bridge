@@ -1,8 +1,11 @@
 use bitcoin::bech32::Hrp;
 use bitcoin::hashes::Hash;
 use bitcoin::{base58, bech32, PubkeyHash, ScriptHash, WitnessProgram, WitnessVersion};
+use k256::elliptic_curve::weierstrass::add;
 use near_sdk::near;
 use std::fmt;
+use zcash_address;
+use zcash_address::ZcashAddress;
 
 #[near(serializers = [borsh, json])]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -17,7 +20,7 @@ pub enum Chain {
     DogecoinTestnet,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Address {
     P2pkh {
         hash: PubkeyHash,
@@ -31,11 +34,41 @@ pub enum Address {
         program: WitnessProgram,
         chain: Chain,
     },
+    Unified {
+        address: zcash_address::unified::Address,
+        chain: Chain,
+    },
+}
+
+impl zcash_address::TryFromAddress for Address {
+    type Error = &'static str;
+    fn try_from_transparent_p2pkh(
+        net: zcash_address::Network,
+        data: [u8; 20],
+    ) -> Result<Self, zcash_address::ConversionError<Self::Error>> {
+        let chain = match net {
+            zcash_address::Network::Main => Chain::ZcashMainnet,
+            zcash_address::Network::Test => Chain::ZcashTestnet,
+            zcash_address::Network::Regtest => {
+                return Err("Regtest network not supported".into());
+            }
+        };
+
+        Ok(Self::P2pkh {
+            hash: PubkeyHash::from_slice(&data[..]).unwrap(),
+            chain,
+        })
+    }
 }
 
 impl Address {
     /// Parse an address string + chain into AddressInner
     pub fn parse(address: &str, chain: Chain) -> Result<Self, String> {
+        if chain == Chain::ZcashMainnet || chain == Chain::ZcashTestnet {
+            ZcashAddress::try_from_encoded(address)
+                .map_err(|e| format!("Error on parsing ZCash Address: {e}"))?;
+        }
+
         if let Some(hrp) = get_segwit_hrp(&chain) {
             if let Ok((decoded_hrp, witness_version, data)) = bech32::segwit::decode(address) {
                 if decoded_hrp.as_str() != hrp {
@@ -79,6 +112,7 @@ impl Address {
             Address::P2pkh { hash, .. } => bitcoin::ScriptBuf::new_p2pkh(hash),
             Address::P2sh { hash, .. } => bitcoin::ScriptBuf::new_p2sh(hash),
             Address::Segwit { program, .. } => bitcoin::ScriptBuf::new_witness_program(program),
+            Address::Unified { .. } => todo!(),
         }
     }
 
@@ -155,6 +189,9 @@ impl fmt::Display for Address {
                 } else {
                     bech32::segwit::encode_lower_to_fmt_unchecked(fmt, hrp, version, program)
                 }
+            }
+            Unified { address, chain } => {
+                todo!()
             }
         }
     }

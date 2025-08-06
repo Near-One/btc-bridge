@@ -3722,8 +3722,9 @@ dependencies = [
  "near-sdk",
  "near-workspaces",
  "tokio",
+ "zcash_address 0.9.0",
  "zcash_primitives",
- "zcash_protocol",
+ "zcash_protocol 0.5.4",
  "zcash_transparent",
 ]
 
@@ -5157,7 +5158,21 @@ dependencies = [
  "core2",
  "f4jumble",
  "zcash_encoding",
- "zcash_protocol",
+ "zcash_protocol 0.5.4",
+]
+
+[[package]]
+name = "zcash_address"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c984ae01367a4a3d20e9d34ae4e4cc0dca004b22d9a10a51eec43f43934612e"
+dependencies = [
+ "bech32",
+ "bs58 0.5.1",
+ "core2",
+ "f4jumble",
+ "zcash_encoding",
+ "zcash_protocol 0.6.0",
 ]
 
 [[package]]
@@ -5215,10 +5230,10 @@ dependencies = [
  "sha2 0.10.9",
  "subtle",
  "tracing",
- "zcash_address",
+ "zcash_address 0.8.0",
  "zcash_encoding",
  "zcash_note_encryption",
- "zcash_protocol",
+ "zcash_protocol 0.5.4",
  "zcash_spec",
  "zcash_transparent",
  "zip32",
@@ -5229,6 +5244,18 @@ name = "zcash_protocol"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42344f5735237d6e0eedd3680f1c92f64e9c4144045d7b5c82f4867c2cbc0a02"
+dependencies = [
+ "core2",
+ "document-features",
+ "hex",
+ "memuse",
+]
+
+[[package]]
+name = "zcash_protocol"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1cab2d6871bcbe416318513118b41420d07e58cb912b78d6e7041b84d2f6c7ca"
 dependencies = [
  "core2",
  "document-features",
@@ -5262,9 +5289,9 @@ dependencies = [
  "secp256k1 0.29.1",
  "sha2 0.10.9",
  "subtle",
- "zcash_address",
+ "zcash_address 0.8.0",
  "zcash_encoding",
- "zcash_protocol",
+ "zcash_protocol 0.5.4",
  "zcash_spec",
  "zip32",
 ]
