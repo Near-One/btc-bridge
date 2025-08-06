@@ -5,7 +5,7 @@ use k256::elliptic_curve::weierstrass::add;
 use near_sdk::near;
 use std::fmt;
 use zcash_address;
-use zcash_address::ZcashAddress;
+use zcash_address::{ConversionError, ZcashAddress};
 
 #[near(serializers = [borsh, json])]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -59,14 +59,40 @@ impl zcash_address::TryFromAddress for Address {
             chain,
         })
     }
+
+    fn try_from_unified(
+        net: zcash_address::Network,
+        data: zcash_address::unified::Address,
+    ) -> Result<Self, ConversionError<Self::Error>> {
+        let chain = match net {
+            zcash_address::Network::Main => Chain::ZcashMainnet,
+            zcash_address::Network::Test => Chain::ZcashTestnet,
+            zcash_address::Network::Regtest => {
+                return Err("Regtest network not supported".into());
+            }
+        };
+
+        Ok(Self::Unified {
+            address: data,
+            chain,
+        })
+    }
 }
 
 impl Address {
     /// Parse an address string + chain into AddressInner
     pub fn parse(address: &str, chain: Chain) -> Result<Self, String> {
         if chain == Chain::ZcashMainnet || chain == Chain::ZcashTestnet {
-            ZcashAddress::try_from_encoded(address)
+            let addr = ZcashAddress::try_from_encoded(address)
                 .map_err(|e| format!("Error on parsing ZCash Address: {e}"))?;
+
+            let network = match chain {
+                Chain::ZcashMainnet => zcash_address::Network::Main,
+                Chain::ZcashTestnet => zcash_address::Network::Test,
+                _ => unreachable!(),
+            };
+
+            return Ok(addr.convert_if_network::<Self>(network).unwrap());
         }
 
         if let Some(hrp) = get_segwit_hrp(&chain) {
