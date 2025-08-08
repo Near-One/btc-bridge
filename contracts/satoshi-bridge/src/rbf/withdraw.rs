@@ -76,7 +76,7 @@ impl Contract {
         self.set_rbf_pending_info(
             &original_btc_pending_verify_id,
             btc_pending_info,
-            withdraw_rbf_psbt.psbt,
+            withdraw_rbf_psbt,
             false,
         )
     }

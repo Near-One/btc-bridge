@@ -56,14 +56,14 @@ impl Contract {
 
     pub fn check_active_management_psbt_valid(
         &self,
-        psbt: &Psbt,
+        psbt: &PsbtWrapper,
         vutxos: &[VUTXO],
     ) -> (u128, u128) {
         let config = self.internal_config();
         let utxo_num = self.data().utxos.len() + vutxos.len() as u32;
-        let input_num = psbt.unsigned_tx.input.len();
-        let output_num = psbt.unsigned_tx.output.len();
 
+        let input_num = psbt.get_input().len();
+        let output_num = psbt.get_output().len();
         if !is_merge_unhealthy_utxos(output_num, vutxos, config.unhealthy_utxo_amount) {
             if utxo_num < config.active_management_lower_limit {
                 require!(input_num < output_num, "require input_num < output_num");
@@ -95,7 +95,7 @@ impl Contract {
 
     pub fn check_psbt_output_all_change_address(
         &self,
-        psbt: &Psbt,
+        psbt: &PsbtWrapper,
         vutxos: &[VUTXO],
         force_healthy_output: bool,
         is_cancel: bool,
@@ -107,8 +107,7 @@ impl Contract {
             .map(|vutxo| vutxo.get_amount() as u128)
             .sum::<u128>();
         let output_amount = psbt
-            .unsigned_tx
-            .output
+            .get_output()
             .iter()
             .map(|v| {
                 if force_healthy_output {
@@ -233,28 +232,7 @@ impl Contract {
     #[cfg(feature = "zcash")]
     pub fn check_zcash(&self, psbt: &PsbtWrapper, vutxos: &[VUTXO], gas_fee: u128) {
         let public_key = self.generate_btc_public_key(&vutxos[0].get_path());
-
-        let fee_rule = zcash_primitives::transaction::fees::zip317::FeeRule::standard();
-        let transparent_builder =
-            crate::transaction::Transaction::get_transparent_builder(&psbt.psbt, &public_key);
-        let min_fee = fee_rule
-            .fee_required(
-                &zcash_protocol::consensus::MainNetwork,
-                BlockHeight::from_u32(0u32),
-                transparent_builder
-                    .inputs()
-                    .iter()
-                    .map(|i| i.serialized_size()),
-                transparent_builder
-                    .outputs()
-                    .iter()
-                    .map(|i| i.serialized_size()),
-                0,
-                0,
-                0,
-            )
-            .unwrap();
-
+        let min_fee = psbt.get_min_fee(&public_key);
         require!(
             gas_fee >= min_fee.into_u64() as u128,
             format!(
@@ -296,53 +274,8 @@ impl Contract {
         original_tx_btc_pending_info: &BTCPendingInfo,
         output: Vec<TxOut>,
     ) -> PsbtWrapper {
-        #[cfg(not(feature = "zcash"))]
-        let sequence = bitcoin::Sequence::ENABLE_RBF_NO_LOCKTIME;
-        #[cfg(feature = "zcash")]
-        let sequence = bitcoin::Sequence::MAX;
         let original_psbt = original_tx_btc_pending_info.get_psbt();
-
-        let mut output = output;
-        #[cfg(feature = "zcash")]
-        if output.is_empty() {
-            output = original_psbt
-                .psbt
-                .unsigned_tx
-                .output
-                .into_iter()
-                .map(|original_psbt_output| TxOut {
-                    value: original_psbt_output.value,
-                    script_pubkey: original_psbt_output.script_pubkey,
-                })
-                .collect()
-        }
-
-        let transaction = BtcTransaction {
-            version: Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: original_psbt
-                .psbt
-                .unsigned_tx
-                .input
-                .into_iter()
-                .map(|original_psbt_input| TxIn {
-                    previous_output: original_psbt_input.previous_output,
-                    sequence,
-                    ..Default::default()
-                })
-                .collect(),
-            output,
-        };
-        let mut psbt = Psbt::from_unsigned_tx(transaction).expect("Failed to generate PSBT");
-        original_psbt
-            .psbt
-            .inputs
-            .iter()
-            .enumerate()
-            .for_each(|(i, v)| {
-                psbt.inputs[i].witness_utxo.clone_from(&v.witness_utxo);
-            });
-        PsbtWrapper { psbt }
+        PsbtWrapper::from_original_psbt(original_psbt, output)
     }
 }
 

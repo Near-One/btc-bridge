@@ -8,7 +8,7 @@ use bitcoin::{OutPoint, Transaction, TxIn, TxOut, Witness};
 use near_sdk::require;
 
 pub struct PsbtWrapper {
-    pub psbt: Psbt,
+    psbt: Psbt,
 }
 impl PsbtWrapper {
     pub fn new(input: Vec<OutPoint>, output: Vec<TxOut>) -> Self {
@@ -32,6 +32,38 @@ impl PsbtWrapper {
         };
         let psbt = Psbt::from_unsigned_tx(transaction).expect("Failed to generate PSBT");
 
+        Self { psbt }
+    }
+
+    pub fn from_original_psbt(
+        original_psbt: crate::psbt_wrapper::PsbtWrapper,
+        output: Vec<TxOut>,
+    ) -> Self {
+        let sequence = bitcoin::Sequence::MAX;
+
+        let transaction = BtcTransaction {
+            version: Version::TWO,
+            lock_time: LockTime::ZERO,
+            input: original_psbt
+                .get_input()
+                .into_iter()
+                .map(|original_psbt_input| TxIn {
+                    previous_output: original_psbt_input.previous_output,
+                    sequence,
+                    ..Default::default()
+                })
+                .collect(),
+            output,
+        };
+        let mut psbt = Psbt::from_unsigned_tx(transaction).expect("Failed to generate PSBT");
+        original_psbt
+            .psbt
+            .inputs
+            .iter()
+            .enumerate()
+            .for_each(|(i, v)| {
+                psbt.inputs[i].witness_utxo.clone_from(&v.witness_utxo);
+            });
         Self { psbt }
     }
 

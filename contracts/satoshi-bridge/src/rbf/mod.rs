@@ -1,3 +1,4 @@
+use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 
 pub mod active_utxo_management;
@@ -10,11 +11,11 @@ impl Contract {
         &mut self,
         original_btc_pending_verify_id: &str,
         mut btc_pending_info: BTCPendingInfo,
-        psbt: Psbt,
+        psbt: PsbtWrapper,
         is_cancel: bool,
     ) -> String {
-        let rbf_psbt_hex = psbt.serialize_hex();
-        let btc_pending_id = psbt.extract_tx().unwrap().compute_txid().to_string();
+        let rbf_psbt_hex = psbt.serialize();
+        let btc_pending_id = psbt.get_pending_id();
         btc_pending_info.btc_pending_id.clone_from(&btc_pending_id);
         btc_pending_info.psbt_hex = rbf_psbt_hex;
         require!(

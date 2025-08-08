@@ -1,10 +1,11 @@
+use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 
 impl Contract {
     pub fn check_cancel_withdraw_rbf_psbt_valid(
         &self,
         original_tx_btc_pending_info: &BTCPendingInfo,
-        cancel_withdraw_rbf_psbt: &Psbt,
+        cancel_withdraw_rbf_psbt: &PsbtWrapper,
     ) -> (u128, u128) {
         let (actual_received_amount, gas_fee) = self.check_psbt_output_all_change_address(
             cancel_withdraw_rbf_psbt,
@@ -44,7 +45,7 @@ impl Contract {
         );
         let (actual_received_amount, gas_fee) = self.check_cancel_withdraw_rbf_psbt_valid(
             original_tx_btc_pending_info,
-            &cancel_withdraw_rbf_psbt.psbt,
+            &cancel_withdraw_rbf_psbt,
         );
 
         btc_pending_info.gas_fee = gas_fee;
@@ -76,7 +77,7 @@ impl Contract {
         self.set_rbf_pending_info(
             &original_btc_pending_verify_id,
             btc_pending_info,
-            cancel_withdraw_rbf_psbt.psbt,
+            cancel_withdraw_rbf_psbt,
             true,
         )
     }
