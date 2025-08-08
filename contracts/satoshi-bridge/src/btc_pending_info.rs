@@ -1,5 +1,6 @@
 use std::borrow::{Borrow, BorrowMut};
 
+use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 
 #[near(serializers = [borsh, json])]
@@ -277,8 +278,8 @@ impl BTCPendingInfo {
         self.signatures.iter().all(|v| v.is_some())
     }
 
-    pub fn get_psbt(&self) -> Psbt {
-        to_psbt(&self.psbt_hex)
+    pub fn get_psbt(&self) -> PsbtWrapper {
+        PsbtWrapper::deserialize(&self.psbt_hex)
     }
 
     pub fn get_transaction(&self) -> crate::transaction::Transaction {
@@ -401,11 +402,6 @@ pub fn generate_btc_pending_sign_id(payload_preimages: &[Vec<u8>]) -> String {
 
 pub fn bytes_to_btc_transaction(tx_bytes: &[u8]) -> crate::transaction::Transaction {
     crate::transaction::Transaction::decode(tx_bytes).expect("Deserialization tx_bytes failed")
-}
-
-pub fn to_psbt(psbt_hex: &String) -> Psbt {
-    let psbt_bytes = hex::decode(psbt_hex).unwrap();
-    Psbt::deserialize(&psbt_bytes).expect("ERR_INVALID_PSBT_HEX")
 }
 
 #[cfg(test)]

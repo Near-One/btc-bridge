@@ -306,6 +306,7 @@ impl Contract {
         #[cfg(feature = "zcash")]
         if output.is_empty() {
             output = original_psbt
+                .psbt
                 .unsigned_tx
                 .output
                 .into_iter()
@@ -320,6 +321,7 @@ impl Contract {
             version: Version::TWO,
             lock_time: LockTime::ZERO,
             input: original_psbt
+                .psbt
                 .unsigned_tx
                 .input
                 .into_iter()
@@ -332,9 +334,14 @@ impl Contract {
             output,
         };
         let mut psbt = Psbt::from_unsigned_tx(transaction).expect("Failed to generate PSBT");
-        original_psbt.inputs.iter().enumerate().for_each(|(i, v)| {
-            psbt.inputs[i].witness_utxo.clone_from(&v.witness_utxo);
-        });
+        original_psbt
+            .psbt
+            .inputs
+            .iter()
+            .enumerate()
+            .for_each(|(i, v)| {
+                psbt.inputs[i].witness_utxo.clone_from(&v.witness_utxo);
+            });
         PsbtWrapper { psbt }
     }
 }

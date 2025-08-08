@@ -1,3 +1,4 @@
+use crate::psbt_wrapper::PsbtWrapper;
 #[cfg(feature = "zcash")]
 use crate::transaction::Transaction;
 use crate::*;
@@ -177,7 +178,7 @@ impl Contract {
 
             #[cfg(feature = "zcash")]
             {
-                psbt.inputs[sign_index].final_script_sig = Some(script_sig);
+                psbt.psbt.inputs[sign_index].final_script_sig = Some(script_sig);
             }
 
             #[cfg(not(feature = "zcash"))]
@@ -186,9 +187,9 @@ impl Contract {
                     Some(Witness::p2wpkh(&signature.to_btc_signature(), &public_key));
             }
 
-            btc_pending_info.psbt_hex = psbt.serialize_hex();
+            btc_pending_info.psbt_hex = psbt.serialize();
             if btc_pending_info.is_all_signed() {
-                let transaction = psbt.extract_tx().expect("extract_tx failed");
+                let transaction = psbt.extract_tx();
                 #[cfg(feature = "zcash")]
                 let tx_bytes_with_sign =
                     Transaction::tx_bytes_with_sign(transaction, btc_pending_info.expiry_height)
@@ -224,19 +225,19 @@ impl Contract {
 
 #[allow(unused_variables)]
 pub fn get_hash_to_sign(
-    psbt: &Psbt,
+    psbt: &PsbtWrapper,
     vin: usize,
     public_key: &bitcoin::PublicKey,
     #[cfg(feature = "zcash")] expiry_height: u32,
 ) -> [u8; 32] {
     #[cfg(not(feature = "zcash"))]
     {
-        let tx = psbt.unsigned_tx.clone();
+        let tx = psbt.psbt.unsigned_tx.clone();
         let mut cache = SighashCache::new(tx);
         cache
             .p2wpkh_signature_hash(
                 vin,
-                &psbt.inputs[vin]
+                &psbt.psbt.inputs[vin]
                     .witness_utxo
                     .as_ref()
                     .unwrap()
@@ -254,16 +255,16 @@ pub fn get_hash_to_sign(
         use zcash_protocol::value::Zatoshis;
         use zcash_transparent::sighash::SighashType;
 
-        let tx_data = Transaction::to_zcash_tx(psbt, public_key, expiry_height);
+        let tx_data = Transaction::to_zcash_tx(&psbt.psbt, public_key, expiry_height);
         let txid_parts = tx_data.digest(zcash_primitives::transaction::txid::TxIdDigester);
 
-        let script_pubkey = &psbt.inputs[vin]
+        let script_pubkey = &psbt.psbt.inputs[vin]
             .witness_utxo
             .as_ref()
             .unwrap()
             .script_pubkey;
 
-        let value: u64 = psbt.inputs[vin]
+        let value: u64 = psbt.psbt.inputs[vin]
             .witness_utxo
             .as_ref()
             .unwrap()

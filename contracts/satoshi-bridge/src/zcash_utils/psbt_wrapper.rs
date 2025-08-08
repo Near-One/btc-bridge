@@ -3,7 +3,7 @@ use crate::*;
 use bitcoin::absolute::LockTime;
 use bitcoin::psbt::Psbt;
 use bitcoin::transaction::Version;
-use bitcoin::{OutPoint, TxIn, TxOut};
+use bitcoin::{OutPoint, Transaction, TxIn, TxOut};
 use near_sdk::require;
 
 pub struct PsbtWrapper {
@@ -29,7 +29,7 @@ impl PsbtWrapper {
                 .collect(),
             output,
         };
-        let mut psbt = Psbt::from_unsigned_tx(transaction).expect("Failed to generate PSBT");
+        let psbt = Psbt::from_unsigned_tx(transaction).expect("Failed to generate PSBT");
 
         Self { psbt }
     }
@@ -51,6 +51,17 @@ impl PsbtWrapper {
 
     pub fn serialize(&self) -> String {
         self.psbt.serialize_hex()
+    }
+
+    pub fn deserialize(psbt_hex: &String) -> Self {
+        let psbt_bytes = hex::decode(psbt_hex).unwrap();
+        Self {
+            psbt: Psbt::deserialize(&psbt_bytes).expect("ERR_INVALID_PSBT_HEX"),
+        }
+    }
+
+    pub fn extract_tx(&self) -> Transaction {
+        self.psbt.clone().extract_tx().expect("extract_tx failed")
     }
 
     pub fn get_pending_id(&self) -> String {
