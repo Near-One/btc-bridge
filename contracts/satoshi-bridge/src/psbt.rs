@@ -319,7 +319,7 @@ impl Contract {
 
         let mut output = output;
         #[cfg(feature = "zcash")]
-        if (output.is_empty()) {
+        if output.is_empty() {
             output = original_psbt
                 .unsigned_tx
                 .output

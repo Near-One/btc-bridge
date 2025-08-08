@@ -1,12 +1,12 @@
 use bitcoin::bech32::Hrp;
 use bitcoin::hashes::Hash;
 use bitcoin::{base58, bech32, PubkeyHash, ScriptHash, WitnessProgram, WitnessVersion};
-use k256::elliptic_curve::weierstrass::add;
 use near_sdk::near;
 use std::fmt;
 use zcash_address;
-use zcash_address::unified::{Container, Receiver, Typecode};
+use zcash_address::unified::{Container, Receiver};
 use zcash_address::{ConversionError, ToAddress, ZcashAddress};
+use zcash_protocol_06;
 
 #[near(serializers = [borsh, json])]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -44,13 +44,13 @@ pub enum Address {
 impl zcash_address::TryFromAddress for Address {
     type Error = &'static str;
     fn try_from_transparent_p2pkh(
-        net: zcash_address::Network,
+        net: zcash_protocol_06::consensus::NetworkType,
         data: [u8; 20],
     ) -> Result<Self, zcash_address::ConversionError<Self::Error>> {
         let chain = match net {
-            zcash_address::Network::Main => Chain::ZcashMainnet,
-            zcash_address::Network::Test => Chain::ZcashTestnet,
-            zcash_address::Network::Regtest => {
+            zcash_protocol_06::consensus::NetworkType::Main => Chain::ZcashMainnet,
+            zcash_protocol_06::consensus::NetworkType::Test => Chain::ZcashTestnet,
+            zcash_protocol_06::consensus::NetworkType::Regtest => {
                 return Err("Regtest network not supported".into());
             }
         };
@@ -62,13 +62,13 @@ impl zcash_address::TryFromAddress for Address {
     }
 
     fn try_from_unified(
-        net: zcash_address::Network,
+        net: zcash_protocol_06::consensus::NetworkType,
         data: zcash_address::unified::Address,
     ) -> Result<Self, ConversionError<Self::Error>> {
         let chain = match net {
-            zcash_address::Network::Main => Chain::ZcashMainnet,
-            zcash_address::Network::Test => Chain::ZcashTestnet,
-            zcash_address::Network::Regtest => {
+            zcash_protocol_06::consensus::NetworkType::Main => Chain::ZcashMainnet,
+            zcash_protocol_06::consensus::NetworkType::Test => Chain::ZcashTestnet,
+            zcash_protocol_06::consensus::NetworkType::Regtest => {
                 return Err("Regtest network not supported".into());
             }
         };
@@ -88,8 +88,8 @@ impl Address {
                 .map_err(|e| format!("Error on parsing ZCash Address: {e}"))?;
 
             let network = match chain {
-                Chain::ZcashMainnet => zcash_address::Network::Main,
-                Chain::ZcashTestnet => zcash_address::Network::Test,
+                Chain::ZcashMainnet => zcash_protocol_06::consensus::NetworkType::Main,
+                Chain::ZcashTestnet => zcash_protocol_06::consensus::NetworkType::Test,
                 _ => unreachable!(),
             };
 
@@ -238,8 +238,8 @@ impl fmt::Display for Address {
             }
             Unified { address, chain } => {
                 let network = match chain {
-                    Chain::ZcashMainnet => zcash_address::Network::Main,
-                    Chain::ZcashTestnet => zcash_address::Network::Test,
+                    Chain::ZcashMainnet => zcash_protocol_06::consensus::NetworkType::Main,
+                    Chain::ZcashTestnet => zcash_protocol_06::consensus::NetworkType::Test,
                     _ => unreachable!(),
                 };
 

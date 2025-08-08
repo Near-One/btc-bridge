@@ -3725,6 +3725,7 @@ dependencies = [
  "zcash_address 0.9.0",
  "zcash_primitives",
  "zcash_protocol 0.5.4",
+ "zcash_protocol 0.6.0",
  "zcash_transparent",
 ]
 

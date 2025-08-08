@@ -46,6 +46,7 @@ crypto-shared = { git = "https://github.com/near/mpc_old", rev = "0afee9004a1b1c
 zcash_primitives = { version = "0.23.1", default-features = false, features = ["circuits", "transparent-inputs"] }
 zcash_transparent = { version = "0.3.0", features = ["transparent-inputs"] }
 zcash_protocol = "0.5.4"
+zcash_protocol_06 = { version = "0.6.0", package = "zcash_protocol" }
 core2 = "0.3"
 zcash_address = "0.9.0"
 
