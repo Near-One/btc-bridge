@@ -2,6 +2,7 @@ use crate::*;
 
 use bitcoin::absolute::LockTime;
 use bitcoin::psbt::Psbt;
+use bitcoin::sighash::SighashCache;
 use bitcoin::transaction::Version;
 use bitcoin::{OutPoint, Transaction, TxIn, TxOut};
 use near_sdk::require;
@@ -9,6 +10,7 @@ use near_sdk::require;
 pub struct PsbtWrapper {
     pub psbt: Psbt,
 }
+
 impl PsbtWrapper {
     pub fn new(input: Vec<OutPoint>, output: Vec<TxOut>) -> Self {
         require!(!input.is_empty(), "empty input");
@@ -71,5 +73,49 @@ impl PsbtWrapper {
             .unwrap()
             .compute_txid()
             .to_string()
+    }
+
+    #[allow(unused_variables)]
+    pub fn get_hash_to_sign(
+        &self,
+        vin: usize,
+        public_key: &bitcoin::PublicKey,
+        expiry_height: u32,
+    ) -> [u8; 32] {
+        use zcash_protocol::value::Zatoshis;
+        use zcash_transparent::sighash::SighashType;
+
+        let tx_data =
+            crate::transaction::Transaction::to_zcash_tx(&self.psbt, public_key, expiry_height);
+        let txid_parts = tx_data.digest(zcash_primitives::transaction::txid::TxIdDigester);
+
+        let script_pubkey = &self.psbt.inputs[vin]
+            .witness_utxo
+            .as_ref()
+            .unwrap()
+            .script_pubkey;
+
+        let value: u64 = self.psbt.inputs[vin]
+            .witness_utxo
+            .as_ref()
+            .unwrap()
+            .value
+            .to_sat();
+
+        let script = zcash_primitives::legacy::Script(script_pubkey.clone().into_bytes());
+
+        let sig_input = zcash_primitives::transaction::sighash::SignableInput::Transparent(
+            zcash_transparent::sighash::SignableInput::from_parts(
+                SighashType::ALL,
+                vin,
+                &script,
+                &script,
+                Zatoshis::from_u64(value).unwrap(),
+            ),
+        );
+
+        zcash_primitives::transaction::sighash::signature_hash(&tx_data, &sig_input, &txid_parts)
+            .as_ref()
+            .clone()
     }
 }

@@ -93,8 +93,7 @@ impl Contract {
             btc_pending_info.signatures[sign_index].is_none(),
             "Already signed"
         );
-        let payload = get_hash_to_sign(
-            &btc_pending_info.get_psbt(),
+        let payload = btc_pending_info.get_psbt().get_hash_to_sign(
             sign_index,
             &public_key,
             #[cfg(feature = "zcash")]
@@ -220,71 +219,5 @@ impl Contract {
         } else {
             false
         }
-    }
-}
-
-#[allow(unused_variables)]
-pub fn get_hash_to_sign(
-    psbt: &PsbtWrapper,
-    vin: usize,
-    public_key: &bitcoin::PublicKey,
-    #[cfg(feature = "zcash")] expiry_height: u32,
-) -> [u8; 32] {
-    #[cfg(not(feature = "zcash"))]
-    {
-        let tx = psbt.psbt.unsigned_tx.clone();
-        let mut cache = SighashCache::new(tx);
-        cache
-            .p2wpkh_signature_hash(
-                vin,
-                &psbt.psbt.inputs[vin]
-                    .witness_utxo
-                    .as_ref()
-                    .unwrap()
-                    .script_pubkey,
-                psbt.inputs[vin].witness_utxo.as_ref().unwrap().value,
-                bitcoin::EcdsaSighashType::All,
-            )
-            .unwrap()
-            .to_raw_hash()
-            .to_byte_array()
-    }
-
-    #[cfg(feature = "zcash")]
-    {
-        use zcash_protocol::value::Zatoshis;
-        use zcash_transparent::sighash::SighashType;
-
-        let tx_data = Transaction::to_zcash_tx(&psbt.psbt, public_key, expiry_height);
-        let txid_parts = tx_data.digest(zcash_primitives::transaction::txid::TxIdDigester);
-
-        let script_pubkey = &psbt.psbt.inputs[vin]
-            .witness_utxo
-            .as_ref()
-            .unwrap()
-            .script_pubkey;
-
-        let value: u64 = psbt.psbt.inputs[vin]
-            .witness_utxo
-            .as_ref()
-            .unwrap()
-            .value
-            .to_sat();
-
-        let script = zcash_primitives::legacy::Script(script_pubkey.clone().into_bytes());
-
-        let sig_input = zcash_primitives::transaction::sighash::SignableInput::Transparent(
-            zcash_transparent::sighash::SignableInput::from_parts(
-                SighashType::ALL,
-                vin,
-                &script,
-                &script,
-                Zatoshis::from_u64(value).unwrap(),
-            ),
-        );
-
-        zcash_primitives::transaction::sighash::signature_hash(&tx_data, &sig_input, &txid_parts)
-            .as_ref()
-            .clone()
     }
 }

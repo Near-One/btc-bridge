@@ -2,6 +2,7 @@ use crate::*;
 
 use bitcoin::absolute::LockTime;
 use bitcoin::psbt::Psbt;
+use bitcoin::sighash::SighashCache;
 use bitcoin::transaction::Version;
 use bitcoin::{OutPoint, Transaction, TxIn, TxOut};
 use near_sdk::require;
@@ -71,5 +72,25 @@ impl PsbtWrapper {
             .unwrap()
             .compute_txid()
             .to_string()
+    }
+
+    #[allow(unused_variables)]
+    pub fn get_hash_to_sign(&self, vin: usize, public_key: &bitcoin::PublicKey) -> [u8; 32] {
+        let tx = self.psbt.unsigned_tx.clone();
+        let mut cache = SighashCache::new(tx);
+        cache
+            .p2wpkh_signature_hash(
+                vin,
+                &psbt.psbt.inputs[vin]
+                    .witness_utxo
+                    .as_ref()
+                    .unwrap()
+                    .script_pubkey,
+                psbt.inputs[vin].witness_utxo.as_ref().unwrap().value,
+                bitcoin::EcdsaSighashType::All,
+            )
+            .unwrap()
+            .to_raw_hash()
+            .to_byte_array()
     }
 }
