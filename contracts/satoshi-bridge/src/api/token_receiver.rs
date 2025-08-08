@@ -141,9 +141,9 @@ impl Contract {
             withdraw_fee,
         );
 
-        let need_signature_num = psbt.unsigned_tx.input.len();
-        let psbt_hex = psbt.serialize_hex();
-        let btc_pending_id = psbt.extract_tx().unwrap().compute_txid().to_string();
+        let need_signature_num = psbt.get_input().len();
+        let psbt_hex = psbt.serialize();
+        let btc_pending_id = psbt.get_pending_id();
         let btc_pending_info = BTCPendingInfo {
             account_id: sender_id.clone(),
             btc_pending_id: btc_pending_id.clone(),

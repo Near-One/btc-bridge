@@ -342,7 +342,7 @@ impl Contract {
         );
         let (psbt, utxo_storage_keys, vutxos) = self.generate_psbt_and_vutxos(input, output);
         let (actual_received_amount, gas_fee) =
-            self.check_active_management_psbt_valid(&psbt, &vutxos);
+            self.check_active_management_psbt_valid(&psbt.psbt, &vutxos);
         require!(
             gas_fee <= self.data().cur_available_protocol_fee,
             "Insufficient protocol_fee"
@@ -350,9 +350,9 @@ impl Contract {
         self.data_mut().cur_available_protocol_fee -= gas_fee;
         self.data_mut().cur_reserved_protocol_fee += gas_fee;
 
-        let need_signature_num = psbt.unsigned_tx.input.len();
-        let psbt_hex = psbt.serialize_hex();
-        let btc_pending_id = psbt.extract_tx().unwrap().compute_txid().to_string();
+        let need_signature_num = psbt.get_input().len();
+        let psbt_hex = psbt.psbt.serialize_hex();
+        let btc_pending_id = psbt.psbt.extract_tx().unwrap().compute_txid().to_string();
         let btc_pending_info = BTCPendingInfo {
             account_id: account_id.clone(),
             btc_pending_id: btc_pending_id.clone(),

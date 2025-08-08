@@ -20,6 +20,11 @@ use bitcoin::{
 
 pub mod account;
 pub mod api;
+#[cfg(not(feature = "zcash"))]
+pub mod bitcoin_utils;
+#[cfg(feature = "zcash")]
+pub mod zcash_utils;
+
 pub mod btc_light_client;
 pub mod btc_pending_info;
 pub mod chain_signature;
@@ -55,6 +60,13 @@ pub use crate::rbf::*;
 pub use crate::token_transfer::*;
 pub use crate::utils::*;
 pub use crate::utxo::*;
+
+#[cfg(not(feature = "zcash"))]
+pub use crate::bitcoin_utils::*;
+
+#[cfg(feature = "zcash")]
+pub use crate::zcash_utils::*;
+
 #[cfg(test)]
 pub use unit::*;
 

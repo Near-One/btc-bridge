@@ -1,4 +1,5 @@
 use crate::network::Address;
+use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 use zcash_primitives::transaction::fees::transparent::{InputView, OutputView};
 use zcash_primitives::transaction::fees::FeeRule;
@@ -9,7 +10,7 @@ impl Contract {
         &self,
         target_address_script_pubkey: &ScriptBuf,
         withdraw_change_address_script_pubkey: &ScriptBuf,
-        withdraw_psbt: &Psbt,
+        withdraw_psbt: &PsbtWrapper,
         vutxos: &[VUTXO],
         amount: u128,
         withdraw_fee: u128,
@@ -145,7 +146,7 @@ impl Contract {
 
     pub fn check_withdraw_psbt(
         &self,
-        psbt: &Psbt,
+        psbt: &PsbtWrapper,
         target_address_script_pubkey: &ScriptBuf,
         withdraw_change_address_script_pubkey: &ScriptBuf,
         vutxos: &[VUTXO],
@@ -159,7 +160,7 @@ impl Contract {
         let mut total_output_amount = 0;
         let mut actual_received_amounts = vec![];
         let mut change_amounts = vec![];
-        psbt.unsigned_tx.output.iter().for_each(|output| {
+        psbt.get_output().iter().for_each(|output| {
             let output_value = output.value.to_sat() as u128;
             total_output_amount += output_value;
             if &output.script_pubkey == target_address_script_pubkey {
@@ -188,7 +189,7 @@ impl Contract {
             "only one user output is allowed."
         );
         let actual_received_amount = actual_received_amounts[0];
-        let input_num = psbt.unsigned_tx.input.len();
+        let input_num = psbt.get_input().len();
         let change_num = change_amounts.len();
         if input_num > change_num {
             require!(
@@ -230,12 +231,12 @@ impl Contract {
     }
 
     #[cfg(feature = "zcash")]
-    pub fn check_zcash(&self, psbt: &Psbt, vutxos: &[VUTXO], gas_fee: u128) {
+    pub fn check_zcash(&self, psbt: &PsbtWrapper, vutxos: &[VUTXO], gas_fee: u128) {
         let public_key = self.generate_btc_public_key(&vutxos[0].get_path());
 
         let fee_rule = zcash_primitives::transaction::fees::zip317::FeeRule::standard();
         let transparent_builder =
-            crate::transaction::Transaction::get_transparent_builder(psbt, &public_key);
+            crate::transaction::Transaction::get_transparent_builder(&psbt.psbt, &public_key);
         let min_fee = fee_rule
             .fee_required(
                 &zcash_protocol::consensus::MainNetwork,
@@ -270,39 +271,23 @@ impl Contract {
         &mut self,
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
-    ) -> (Psbt, Vec<String>, Vec<VUTXO>) {
-        require!(!input.is_empty(), "empty input");
-        require!(!output.is_empty(), "empty output");
+    ) -> (psbt_wrapper::PsbtWrapper, Vec<String>, Vec<VUTXO>) {
+        let mut psbt = PsbtWrapper::new(input, output);
 
-        #[cfg(not(feature = "zcash"))]
-        let sequence = bitcoin::Sequence::ENABLE_RBF_NO_LOCKTIME;
-
-        #[cfg(feature = "zcash")]
-        let sequence = bitcoin::Sequence::MAX;
-
-        let transaction = BtcTransaction {
-            version: Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: input
-                .into_iter()
-                .map(|previous_output| TxIn {
-                    previous_output,
-                    sequence,
-                    ..Default::default()
-                })
-                .collect(),
-            output,
-        };
-        let mut psbt = Psbt::from_unsigned_tx(transaction).expect("Failed to generate PSBT");
         let (utxo_storage_keys, vutxos) = self.remove_vutxo_by_psbt(&psbt);
-        vutxos.iter().enumerate().for_each(|(i, v)| {
-            psbt.inputs[i].witness_utxo = Some(TxOut {
+
+        let input_utxo = vutxos
+            .iter()
+            .map(|v| TxOut {
                 value: Amount::from_sat(v.get_amount()),
                 script_pubkey: self
                     .generate_utxo_chain_address(&v.get_path())
                     .script_pubkey(),
             })
-        });
+            .collect();
+
+        psbt.set_input_utxo(input_utxo);
+
         (psbt, utxo_storage_keys, vutxos)
     }
 
@@ -310,7 +295,7 @@ impl Contract {
         &self,
         original_tx_btc_pending_info: &BTCPendingInfo,
         output: Vec<TxOut>,
-    ) -> Psbt {
+    ) -> PsbtWrapper {
         #[cfg(not(feature = "zcash"))]
         let sequence = bitcoin::Sequence::ENABLE_RBF_NO_LOCKTIME;
         #[cfg(feature = "zcash")]
@@ -350,7 +335,7 @@ impl Contract {
         original_psbt.inputs.iter().enumerate().for_each(|(i, v)| {
             psbt.inputs[i].witness_utxo.clone_from(&v.witness_utxo);
         });
-        psbt
+        PsbtWrapper { psbt }
     }
 }
 

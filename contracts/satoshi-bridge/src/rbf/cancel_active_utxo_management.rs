@@ -45,7 +45,7 @@ impl Contract {
         let (actual_received_amount, gas_fee) = self
             .check_cancel_active_utxo_management_rbf_psbt_valid(
                 original_tx_btc_pending_info,
-                &cancel_active_utxo_management_rbf_psbt,
+                &cancel_active_utxo_management_rbf_psbt.psbt,
             );
         btc_pending_info.gas_fee = gas_fee;
         btc_pending_info.burn_amount = gas_fee;
@@ -65,7 +65,7 @@ impl Contract {
         self.set_rbf_pending_info(
             &original_btc_pending_verify_id,
             btc_pending_info,
-            cancel_active_utxo_management_rbf_psbt,
+            cancel_active_utxo_management_rbf_psbt.psbt,
             true,
         )
     }
