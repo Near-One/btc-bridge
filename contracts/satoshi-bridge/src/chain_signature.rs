@@ -168,23 +168,7 @@ impl Contract {
             }
             .emit();
             let mut psbt = btc_pending_info.get_psbt();
-
-            #[cfg(feature = "zcash")]
-            let script_sig = bitcoin::script::Builder::new()
-                .push_slice(signature.to_btc_signature().serialize())
-                .push_key(&bitcoin::PublicKey::new(public_key))
-                .into_script();
-
-            #[cfg(feature = "zcash")]
-            {
-                psbt.psbt.inputs[sign_index].final_script_sig = Some(script_sig);
-            }
-
-            #[cfg(not(feature = "zcash"))]
-            {
-                psbt.inputs[sign_index].final_script_witness =
-                    Some(Witness::p2wpkh(&signature.to_btc_signature(), &public_key));
-            }
+            psbt.save_signature(sign_index, signature, public_key);
 
             btc_pending_info.psbt_hex = psbt.serialize();
             if btc_pending_info.is_all_signed() {

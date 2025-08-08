@@ -4,7 +4,7 @@ use bitcoin::absolute::LockTime;
 use bitcoin::psbt::Psbt;
 use bitcoin::sighash::SighashCache;
 use bitcoin::transaction::Version;
-use bitcoin::{OutPoint, Transaction, TxIn, TxOut};
+use bitcoin::{OutPoint, Transaction, TxIn, TxOut, Witness};
 use near_sdk::require;
 
 pub struct PsbtWrapper {
@@ -92,5 +92,15 @@ impl PsbtWrapper {
             .unwrap()
             .to_raw_hash()
             .to_byte_array()
+    }
+
+    pub fn save_signature(
+        &mut self,
+        sign_index: usize,
+        signature: SignatureResponse,
+        public_key: bitcoin::secp256k1::PublicKey,
+    ) {
+        self.psbt.inputs[sign_index].final_script_witness =
+            Some(Witness::p2wpkh(&signature.to_btc_signature(), &public_key));
     }
 }
