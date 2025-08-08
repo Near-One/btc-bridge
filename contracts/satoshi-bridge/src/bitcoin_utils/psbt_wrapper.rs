@@ -61,8 +61,8 @@ impl PsbtWrapper {
         }
     }
 
-    pub fn extract_tx(&self) -> Transaction {
-        self.psbt.clone().extract_tx().expect("extract_tx failed")
+    pub fn extract_tx_bytes_with_sign(&self) -> Vec<u8> {
+        serialize(&self.psbt.clone().extract_tx().expect("extract_tx failed"))
     }
 
     pub fn get_pending_id(&self) -> String {

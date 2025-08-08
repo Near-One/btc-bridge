@@ -62,8 +62,9 @@ impl PsbtWrapper {
         }
     }
 
-    pub fn extract_tx(&self) -> Transaction {
-        self.psbt.clone().extract_tx().expect("extract_tx failed")
+    pub fn extract_tx_bytes_with_sign(&self, expiry_height: u32) -> Vec<u8> {
+        let transaction = self.psbt.clone().extract_tx().expect("extract_tx failed");
+        crate::transaction::Transaction::tx_bytes_with_sign(transaction, expiry_height).unwrap()
     }
 
     pub fn get_pending_id(&self) -> String {
