@@ -51,7 +51,6 @@ impl PsbtWrapper {
     ) -> Self {
         let sequence = bitcoin::Sequence::MAX;
         let mut output = output;
-        #[cfg(feature = "zcash")]
         if output.is_empty() {
             output = original_psbt
                 .get_output()

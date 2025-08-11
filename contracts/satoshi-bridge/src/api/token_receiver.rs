@@ -1,3 +1,4 @@
+use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_plugins::pause;
@@ -52,13 +53,8 @@ impl FungibleTokenReceiver for Contract {
             } => {
                 #[cfg(not(feature = "zcash"))]
                 {
-                    self.create_btc_pending_info(
-                        sender_id,
-                        amount,
-                        target_btc_address,
-                        input,
-                        output,
-                    );
+                    let mut psbt = PsbtWrapper::new(input, output);
+                    self.create_btc_pending_info(sender_id, amount, target_btc_address, psbt);
                     PromiseOrValue::Value(U128(0))
                 }
 
@@ -83,47 +79,15 @@ impl FungibleTokenReceiver for Contract {
     }
 }
 
-#[near]
 impl Contract {
-    #[cfg(feature = "zcash")]
-    #[private]
-    pub fn ft_on_transfer_callback(
+    pub(crate) fn create_btc_pending_info(
         &mut self,
         sender_id: AccountId,
         amount: u128,
         target_btc_address: String,
-        input: Vec<OutPoint>,
-        output: Vec<TxOut>,
-        #[callback_unwrap] last_block_height: u32,
-    ) -> U128 {
-        let expiry_height = last_block_height + self.get_config().expiry_height_gap;
-
-        self.create_btc_pending_info(
-            sender_id,
-            amount,
-            target_btc_address,
-            input,
-            output,
-            expiry_height,
-        );
-
-        U128(0)
-    }
-    fn create_btc_pending_info(
-        &mut self,
-        sender_id: AccountId,
-        amount: u128,
-        target_btc_address: String,
-        input: Vec<OutPoint>,
-        output: Vec<TxOut>,
-        #[cfg(feature = "zcash")] expiry_height: u32,
+        psbt: &mut PsbtWrapper,
     ) {
-        let (psbt, utxo_storage_keys, vutxos) = self.generate_psbt_and_vutxos(
-            input,
-            output,
-            #[cfg(feature = "zcash")]
-            expiry_height,
-        );
+        let (utxo_storage_keys, vutxos) = self.generate_vutxos(psbt);
         require!(
             self.internal_unwrap_or_create_mut_account(&sender_id)
                 .btc_pending_sign_id

@@ -223,41 +223,13 @@ impl Contract {
             )
         );
 
-        #[cfg(feature = "zcash")]
-        self.check_zcash(psbt, vutxos, gas_fee);
-
+        self.check_psbt_chain_specific(psbt, vutxos, gas_fee);
         (input_num, change_num, actual_received_amount, gas_fee)
-    }
-
-    #[cfg(feature = "zcash")]
-    pub fn check_zcash(&self, psbt: &PsbtWrapper, vutxos: &[VUTXO], gas_fee: u128) {
-        let public_key = self.generate_btc_public_key(&vutxos[0].get_path());
-        let min_fee = psbt.get_min_fee(&public_key);
-        require!(
-            gas_fee >= min_fee.into_u64() as u128,
-            format!(
-                "Invalid gas fee ({}). min fee = {}.",
-                gas_fee,
-                min_fee.into_u64()
-            )
-        );
     }
 }
 
 impl Contract {
-    pub fn generate_psbt_and_vutxos(
-        &mut self,
-        input: Vec<OutPoint>,
-        output: Vec<TxOut>,
-        #[cfg(feature = "zcash")] expiry_height: u32,
-    ) -> (psbt_wrapper::PsbtWrapper, Vec<String>, Vec<VUTXO>) {
-        let mut psbt = PsbtWrapper::new(
-            input,
-            output,
-            #[cfg(feature = "zcash")]
-            expiry_height,
-        );
-
+    pub fn generate_vutxos(&mut self, psbt: &mut PsbtWrapper) -> (Vec<String>, Vec<VUTXO>) {
         let (utxo_storage_keys, vutxos) = self.remove_vutxo_by_psbt(&psbt);
 
         let input_utxo = vutxos
@@ -272,7 +244,7 @@ impl Contract {
 
         psbt.set_input_utxo(input_utxo);
 
-        (psbt, utxo_storage_keys, vutxos)
+        (utxo_storage_keys, vutxos)
     }
 
     pub fn generate_psbt_from_original_psbt_and_new_output(
@@ -282,7 +254,12 @@ impl Contract {
         #[cfg(feature = "zcash")] expiry_height: u32,
     ) -> PsbtWrapper {
         let original_psbt = original_tx_btc_pending_info.get_psbt();
-        PsbtWrapper::from_original_psbt(original_psbt, output, expiry_height)
+        PsbtWrapper::from_original_psbt(
+            original_psbt,
+            output,
+            #[cfg(feature = "zcash")]
+            expiry_height,
+        )
     }
 }
 
