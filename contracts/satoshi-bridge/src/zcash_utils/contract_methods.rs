@@ -189,8 +189,8 @@ impl Contract {
     }
 
     pub(crate) fn check_withdraw_chain_specific(
-        original_tx_btc_pending_info: &BTCPendingInfo,
-        gas_fee: u128,
+        _original_tx_btc_pending_info: &BTCPendingInfo,
+        _gas_fee: u128,
     ) {
     }
 

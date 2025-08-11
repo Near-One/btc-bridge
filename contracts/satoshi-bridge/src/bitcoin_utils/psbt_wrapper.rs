@@ -1,6 +1,7 @@
 use crate::*;
 
 use bitcoin::absolute::LockTime;
+use bitcoin::hashes::Hash;
 use bitcoin::psbt::Psbt;
 use bitcoin::sighash::SighashCache;
 use bitcoin::transaction::Version;
@@ -113,12 +114,12 @@ impl PsbtWrapper {
         cache
             .p2wpkh_signature_hash(
                 vin,
-                &psbt.psbt.inputs[vin]
+                &self.psbt.inputs[vin]
                     .witness_utxo
                     .as_ref()
                     .unwrap()
                     .script_pubkey,
-                psbt.inputs[vin].witness_utxo.as_ref().unwrap().value,
+                self.psbt.inputs[vin].witness_utxo.as_ref().unwrap().value,
                 bitcoin::EcdsaSighashType::All,
             )
             .unwrap()

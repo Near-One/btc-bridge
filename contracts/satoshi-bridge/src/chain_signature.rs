@@ -1,4 +1,3 @@
-use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 use bitcoin::ecdsa::Signature;
 pub const GAS_FOR_SIGN_CALL: Gas = Gas::from_tgas(50);

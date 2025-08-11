@@ -1,6 +1,7 @@
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::{BTCPendingInfo, Contract, Event, VUTXO};
 use bitcoin::{OutPoint, TxOut};
+use near_sdk::json_types::U128;
 use near_sdk::{env, require, AccountId, PromiseOrValue};
 
 impl Contract {
@@ -23,7 +24,7 @@ impl Contract {
     }
 
     pub(crate) fn ft_on_transfer_withdraw_chain_specific(
-        &self,
+        &mut self,
         sender_id: AccountId,
         amount: u128,
         target_btc_address: String,
@@ -31,16 +32,16 @@ impl Contract {
         output: Vec<TxOut>,
     ) -> PromiseOrValue<U128> {
         let mut psbt = PsbtWrapper::new(input, output);
-        self.create_btc_pending_info(sender_id, amount, target_btc_address, psbt);
+        self.create_btc_pending_info(sender_id, amount, target_btc_address, &mut psbt);
         PromiseOrValue::Value(U128(0))
     }
 
     pub(crate) fn withdraw_rbf_chain_specific(
-        &self,
+        &mut self,
         account_id: AccountId,
         original_btc_pending_verify_id: String,
         output: Vec<TxOut>,
-    ) -> PromiseOrValue<U128> {
+    ) {
         let original_tx_btc_pending_info =
             self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
         let withdraw_rbf_psbt = self
@@ -138,7 +139,7 @@ impl Contract {
         output: Vec<TxOut>,
     ) {
         let mut psbt = PsbtWrapper::new(input, output);
-        create_active_utxo_management_pending_info(account_id, &mut psbt);
+        self.create_active_utxo_management_pending_info(account_id, &mut psbt);
     }
 
     pub(crate) fn generate_psbt_from_original_psbt_and_new_output(

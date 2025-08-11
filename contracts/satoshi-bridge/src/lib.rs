@@ -14,8 +14,8 @@ use near_sdk::{
 use std::collections::{HashMap, HashSet};
 
 use bitcoin::{
-    absolute::LockTime, transaction::Version, Amount, OutPoint, Psbt, PublicKey as BtcPublicKey,
-    ScriptBuf, Transaction as BtcTransaction, TxIn, TxOut,
+    absolute::LockTime, Amount, OutPoint, PublicKey as BtcPublicKey, ScriptBuf,
+    Transaction as BtcTransaction, TxOut,
 };
 
 pub mod account;

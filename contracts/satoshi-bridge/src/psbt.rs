@@ -1,10 +1,6 @@
 use crate::network::Address;
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
-use zcash_primitives::transaction::fees::transparent::{InputView, OutputView};
-use zcash_primitives::transaction::fees::FeeRule;
-use zcash_protocol::consensus::BlockHeight;
-
 impl Contract {
     pub fn check_withdraw_psbt_valid(
         &self,

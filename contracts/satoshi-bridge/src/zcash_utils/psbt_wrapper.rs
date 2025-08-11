@@ -2,9 +2,8 @@ use crate::*;
 
 use bitcoin::absolute::LockTime;
 use bitcoin::psbt::Psbt;
-use bitcoin::sighash::SighashCache;
 use bitcoin::transaction::Version;
-use bitcoin::{secp256k1, OutPoint, Transaction, TxIn, TxOut, Witness};
+use bitcoin::{OutPoint, TxIn, TxOut};
 use near_sdk::require;
 use zcash_primitives::transaction::fees::transparent::{InputView, OutputView};
 use zcash_primitives::transaction::fees::FeeRule;
