@@ -1,6 +1,4 @@
 use crate::psbt_wrapper::PsbtWrapper;
-#[cfg(feature = "zcash")]
-use crate::transaction::Transaction;
 use crate::*;
 use bitcoin::ecdsa::Signature;
 #[cfg(not(feature = "zcash"))]

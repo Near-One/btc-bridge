@@ -109,7 +109,7 @@ impl PsbtWrapper {
 
     pub fn extract_tx_bytes_with_sign(&self, expiry_height: u32) -> Vec<u8> {
         let transaction = self.psbt.clone().extract_tx().expect("extract_tx failed");
-        crate::transaction::Transaction::tx_bytes_with_sign(transaction, expiry_height).unwrap()
+        WrappedTransaction::tx_bytes_with_sign(transaction, expiry_height).unwrap()
     }
 
     pub fn get_pending_id(&self) -> String {
@@ -132,7 +132,7 @@ impl PsbtWrapper {
         use zcash_transparent::sighash::SighashType;
 
         let tx_data =
-            crate::transaction::Transaction::to_zcash_tx(&self.psbt, public_key, expiry_height);
+            WrappedTransaction::to_zcash_tx(&self.psbt, public_key, expiry_height);
         let txid_parts = tx_data.digest(zcash_primitives::transaction::txid::TxIdDigester);
 
         let script_pubkey = &self.psbt.inputs[vin]
@@ -182,7 +182,7 @@ impl PsbtWrapper {
     pub fn get_min_fee(&self, public_key: &bitcoin::PublicKey) -> Zatoshis {
         let fee_rule = zcash_primitives::transaction::fees::zip317::FeeRule::standard();
         let transparent_builder =
-            crate::transaction::Transaction::get_transparent_builder(&self.psbt, public_key);
+            WrappedTransaction::get_transparent_builder(&self.psbt, public_key);
         fee_rule
             .fee_required(
                 &zcash_protocol::consensus::MainNetwork,

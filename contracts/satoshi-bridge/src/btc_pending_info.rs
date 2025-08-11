@@ -282,7 +282,7 @@ impl BTCPendingInfo {
         PsbtWrapper::deserialize(&self.psbt_hex)
     }
 
-    pub fn get_transaction(&self) -> crate::transaction::Transaction {
+    pub fn get_transaction(&self) -> WrappedTransaction {
         bytes_to_btc_transaction(
             self.tx_bytes_with_sign
                 .as_ref()
@@ -400,8 +400,8 @@ pub fn generate_btc_pending_sign_id(payload_preimages: &[Vec<u8>]) -> String {
     hex::encode(hash_bytes)
 }
 
-pub fn bytes_to_btc_transaction(tx_bytes: &[u8]) -> crate::transaction::Transaction {
-    crate::transaction::Transaction::decode(tx_bytes).expect("Deserialization tx_bytes failed")
+pub fn bytes_to_btc_transaction(tx_bytes: &[u8]) -> WrappedTransaction {
+    WrappedTransaction::decode(tx_bytes).expect("Deserialization tx_bytes failed")
 }
 
 #[cfg(test)]

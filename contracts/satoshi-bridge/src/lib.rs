@@ -39,7 +39,6 @@ mod network;
 pub mod psbt;
 pub mod rbf;
 pub mod token_transfer;
-pub mod transaction;
 #[cfg(test)]
 mod unit;
 pub mod upgrade;
@@ -62,10 +61,14 @@ pub use crate::utils::*;
 pub use crate::utxo::*;
 
 #[cfg(not(feature = "zcash"))]
-pub use crate::bitcoin_utils::*;
+pub use crate::bitcoin_utils::psbt_wrapper;
+#[cfg(not(feature = "zcash"))]
+pub use crate::bitcoin_utils::transaction::Transaction as WrappedTransaction;
 
 #[cfg(feature = "zcash")]
-pub use crate::zcash_utils::*;
+pub use crate::zcash_utils::psbt_wrapper;
+#[cfg(feature = "zcash")]
+pub use crate::zcash_utils::transaction::Transaction as WrappedTransaction;
 
 #[cfg(test)]
 pub use unit::*;
