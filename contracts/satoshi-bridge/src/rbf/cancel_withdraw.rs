@@ -46,13 +46,7 @@ impl Contract {
         btc_pending_info.gas_fee = gas_fee;
         btc_pending_info.burn_amount = gas_fee;
         btc_pending_info.actual_received_amount = actual_received_amount;
-        #[cfg(not(feature = "zcash"))]
-        {
-            // Ensure that the RBF transaction pays more gas than the previous transaction.
-            let max_gas_fee = original_tx_btc_pending_info.get_max_gas_fee();
-            let additional_gas_amount = gas_fee.saturating_sub(max_gas_fee);
-            require!(additional_gas_amount > 0, "No gas increase.");
-        }
+        Self::check_withdraw_chain_specific(original_tx_btc_pending_info, gas_fee);
         let excess_gas_fee = gas_fee
             .saturating_sub(btc_pending_info.transfer_amount - btc_pending_info.withdraw_fee);
         if excess_gas_fee > 0 {

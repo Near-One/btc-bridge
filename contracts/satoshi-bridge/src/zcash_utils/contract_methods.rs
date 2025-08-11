@@ -188,6 +188,12 @@ impl Contract {
         );
     }
 
+    pub(crate) fn check_withdraw_chain_specific(
+        original_tx_btc_pending_info: &BTCPendingInfo,
+        gas_fee: u128,
+    ) {
+    }
+
     pub(crate) fn ft_on_transfer_withdraw_chain_specific(
         &self,
         sender_id: AccountId,

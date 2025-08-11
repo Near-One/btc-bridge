@@ -12,6 +12,16 @@ impl Contract {
     ) {
     }
 
+    pub(crate) fn check_withdraw_chain_specific(
+        original_tx_btc_pending_info: &BTCPendingInfo,
+        gas_fee: u128,
+    ) {
+        // Ensure that the RBF transaction pays more gas than the previous transaction.
+        let max_gas_fee = original_tx_btc_pending_info.get_max_gas_fee();
+        let additional_gas_amount = gas_fee.saturating_sub(max_gas_fee);
+        require!(additional_gas_amount > 0, "No gas increase.");
+    }
+
     pub(crate) fn ft_on_transfer_withdraw_chain_specific(
         &self,
         sender_id: AccountId,
