@@ -246,21 +246,6 @@ impl Contract {
 
         (utxo_storage_keys, vutxos)
     }
-
-    pub fn generate_psbt_from_original_psbt_and_new_output(
-        &self,
-        original_tx_btc_pending_info: &BTCPendingInfo,
-        output: Vec<TxOut>,
-        #[cfg(feature = "zcash")] expiry_height: u32,
-    ) -> PsbtWrapper {
-        let original_psbt = original_tx_btc_pending_info.get_psbt();
-        PsbtWrapper::from_original_psbt(
-            original_psbt,
-            output,
-            #[cfg(feature = "zcash")]
-            expiry_height,
-        )
-    }
 }
 
 pub fn is_merge_unhealthy_utxos(

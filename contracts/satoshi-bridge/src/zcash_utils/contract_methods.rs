@@ -38,12 +38,18 @@ impl Contract {
         #[callback_unwrap] last_block_height: u32,
     ) {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
+        let original_tx_btc_pending_info =
+            self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
+        let withdraw_rbf_psbt = self.generate_psbt_from_original_psbt_and_new_output(
+            original_tx_btc_pending_info,
+            output,
+            expiry_height,
+        );
 
         let btc_pending_id = self.internal_withdraw_rbf(
             &account_id,
             original_btc_pending_verify_id,
-            output,
-            expiry_height,
+            withdraw_rbf_psbt,
         );
         self.internal_unwrap_mut_account(&account_id)
             .btc_pending_sign_id = Some(btc_pending_id.clone());
@@ -64,8 +70,17 @@ impl Contract {
     ) {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
 
+        let original_tx_btc_pending_info =
+            self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
+        let cancel_withdraw_rbf_psbt = self.generate_psbt_from_original_psbt_and_new_output(
+            original_tx_btc_pending_info,
+            output,
+            expiry_height,
+        );
+
         let btc_pending_id =
-            self.internal_cancel_withdraw(original_btc_pending_verify_id, output, expiry_height);
+            self.internal_cancel_withdraw(original_btc_pending_verify_id, cancel_withdraw_rbf_psbt);
+
         self.internal_unwrap_mut_account(&user_account_id)
             .btc_pending_sign_id = Some(btc_pending_id.clone());
         Event::GenerateBtcPendingInfo {
@@ -99,13 +114,20 @@ impl Contract {
         #[callback_unwrap] last_block_height: u32,
     ) {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
+        let original_tx_btc_pending_info =
+            self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
+        let active_utxo_management_rbf_psbt = self.generate_psbt_from_original_psbt_and_new_output(
+            original_tx_btc_pending_info,
+            output,
+            expiry_height,
+        );
 
         let btc_pending_id = self.internal_active_utxo_management_rbf(
             &account_id,
             original_btc_pending_verify_id,
-            output,
-            expiry_height,
+            active_utxo_management_rbf_psbt,
         );
+
         self.internal_unwrap_mut_account(&account_id)
             .btc_pending_sign_id = Some(btc_pending_id.clone());
         Event::GenerateBtcPendingInfo {
@@ -124,10 +146,18 @@ impl Contract {
         #[callback_unwrap] last_block_height: u32,
     ) {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
+        let original_tx_btc_pending_info =
+            self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
+        let cancel_active_utxo_management_rbf_psbt = self
+            .generate_psbt_from_original_psbt_and_new_output(
+                original_tx_btc_pending_info,
+                output,
+                expiry_height,
+            );
+
         let btc_pending_id = self.internal_cancel_active_utxo_management(
             original_btc_pending_verify_id,
-            output,
-            expiry_height,
+            cancel_active_utxo_management_rbf_psbt,
         );
         self.internal_unwrap_mut_account(&user_account_id)
             .btc_pending_sign_id = Some(btc_pending_id.clone());
@@ -246,5 +276,15 @@ impl Contract {
                 .with_static_gas(GAS_FOR_ACTIVE_UTXO_MANAGMENT_CALLBACK)
                 .active_utxo_management_callback(account_id, input, output),
         );
+    }
+
+    pub(crate) fn generate_psbt_from_original_psbt_and_new_output(
+        &self,
+        original_tx_btc_pending_info: &BTCPendingInfo,
+        output: Vec<TxOut>,
+        expiry_height: u32,
+    ) -> PsbtWrapper {
+        let original_psbt = original_tx_btc_pending_info.get_psbt();
+        PsbtWrapper::from_original_psbt(original_psbt, output, expiry_height)
     }
 }

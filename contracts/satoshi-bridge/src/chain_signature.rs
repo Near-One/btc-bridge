@@ -1,9 +1,6 @@
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 use bitcoin::ecdsa::Signature;
-#[cfg(not(feature = "zcash"))]
-use bitcoin::{consensus::serialize, hashes::Hash, sighash::SighashCache, Witness};
-
 pub const GAS_FOR_SIGN_CALL: Gas = Gas::from_tgas(50);
 pub const GAS_FOR_SIGN_BTC_TRANSACTION_CALL_BACK: Gas = Gas::from_tgas(30);
 

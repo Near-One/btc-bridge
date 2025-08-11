@@ -19,8 +19,7 @@ impl Contract {
     pub fn internal_cancel_withdraw(
         &mut self,
         original_btc_pending_verify_id: String,
-        output: Vec<TxOut>,
-        #[cfg(feature = "zcash")] expiry_height: u32,
+        cancel_withdraw_rbf_psbt: PsbtWrapper,
     ) -> String {
         let original_tx_btc_pending_info =
             self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
@@ -31,12 +30,6 @@ impl Contract {
         );
         original_tx_btc_pending_info.assert_not_canceled();
         original_tx_btc_pending_info.assert_withdraw_original_pending_verify_tx();
-        let cancel_withdraw_rbf_psbt = self.generate_psbt_from_original_psbt_and_new_output(
-            original_tx_btc_pending_info,
-            output,
-            #[cfg(feature = "zcash")]
-            expiry_height,
-        );
 
         let mut btc_pending_info = init_rbf_btc_pending_info(
             original_tx_btc_pending_info,
