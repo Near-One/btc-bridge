@@ -13,10 +13,11 @@ use zcash_protocol::value::Zatoshis;
 
 pub struct PsbtWrapper {
     psbt: Psbt,
+    expiry_height: u32,
 }
 
 impl PsbtWrapper {
-    pub fn new(input: Vec<OutPoint>, output: Vec<TxOut>) -> Self {
+    pub fn new(input: Vec<OutPoint>, output: Vec<TxOut>, expiry_height: u32) -> Self {
         require!(!input.is_empty(), "empty input");
         require!(!output.is_empty(), "empty output");
 
@@ -37,10 +38,17 @@ impl PsbtWrapper {
         };
         let psbt = Psbt::from_unsigned_tx(transaction).expect("Failed to generate PSBT");
 
-        Self { psbt }
+        Self {
+            psbt,
+            expiry_height,
+        }
     }
 
-    pub fn from_original_psbt(original_psbt: PsbtWrapper, output: Vec<TxOut>) -> Self {
+    pub fn from_original_psbt(
+        original_psbt: PsbtWrapper,
+        output: Vec<TxOut>,
+        expiry_height: u32,
+    ) -> Self {
         let sequence = bitcoin::Sequence::MAX;
         let mut output = output;
         #[cfg(feature = "zcash")]
@@ -78,7 +86,10 @@ impl PsbtWrapper {
             .for_each(|(i, v)| {
                 psbt.inputs[i].witness_utxo.clone_from(&v.witness_utxo);
             });
-        Self { psbt }
+        Self {
+            psbt,
+            expiry_height,
+        }
     }
 
     pub fn set_input_utxo(&mut self, input_utxo: Vec<TxOut>) {
@@ -97,19 +108,22 @@ impl PsbtWrapper {
     }
 
     pub fn serialize(&self) -> String {
-        self.psbt.serialize_hex()
+        let h_encode = hex::encode(self.expiry_height.to_le_bytes());
+        format!("{}{}", h_encode, self.psbt.serialize_hex())
     }
 
     pub fn deserialize(psbt_hex: &String) -> Self {
-        let psbt_bytes = hex::decode(psbt_hex).unwrap();
+        let h_hex = hex::decode(&psbt_hex[..8]).unwrap();
+        let psbt_bytes = hex::decode(&psbt_hex[8..]).unwrap();
         Self {
             psbt: Psbt::deserialize(&psbt_bytes).expect("ERR_INVALID_PSBT_HEX"),
+            expiry_height: u32::from_le_bytes(h_hex.try_into().unwrap()),
         }
     }
 
-    pub fn extract_tx_bytes_with_sign(&self, expiry_height: u32) -> Vec<u8> {
+    pub fn extract_tx_bytes_with_sign(&self) -> Vec<u8> {
         let transaction = self.psbt.clone().extract_tx().expect("extract_tx failed");
-        WrappedTransaction::tx_bytes_with_sign(transaction, expiry_height).unwrap()
+        WrappedTransaction::tx_bytes_with_sign(transaction, self.expiry_height).unwrap()
     }
 
     pub fn get_pending_id(&self) -> String {
@@ -122,17 +136,11 @@ impl PsbtWrapper {
     }
 
     #[allow(unused_variables)]
-    pub fn get_hash_to_sign(
-        &self,
-        vin: usize,
-        public_key: &bitcoin::PublicKey,
-        expiry_height: u32,
-    ) -> [u8; 32] {
+    pub fn get_hash_to_sign(&self, vin: usize, public_key: &bitcoin::PublicKey) -> [u8; 32] {
         use zcash_protocol::value::Zatoshis;
         use zcash_transparent::sighash::SighashType;
 
-        let tx_data =
-            WrappedTransaction::to_zcash_tx(&self.psbt, public_key, expiry_height);
+        let tx_data = WrappedTransaction::to_zcash_tx(&self.psbt, public_key, self.expiry_height);
         let txid_parts = tx_data.digest(zcash_primitives::transaction::txid::TxIdDigester);
 
         let script_pubkey = &self.psbt.inputs[vin]

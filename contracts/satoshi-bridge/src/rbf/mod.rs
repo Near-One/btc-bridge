@@ -44,7 +44,6 @@ impl Contract {
 pub fn init_rbf_btc_pending_info(
     original_tx_btc_pending_info: &BTCPendingInfo,
     state: PendingInfoState,
-    #[cfg(feature = "zcash")] expiry_height: u32,
 ) -> BTCPendingInfo {
     BTCPendingInfo {
         account_id: original_tx_btc_pending_info.account_id.clone(),
@@ -61,7 +60,5 @@ pub fn init_rbf_btc_pending_info(
         create_time_sec: nano_to_sec(env::block_timestamp()),
         last_sign_time_sec: 0,
         state,
-        #[cfg(feature = "zcash")]
-        expiry_height,
     }
 }

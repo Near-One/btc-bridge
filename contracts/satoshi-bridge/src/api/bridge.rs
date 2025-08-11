@@ -340,7 +340,12 @@ impl Contract {
             account.btc_pending_sign_id.is_none(),
             "Previous btc tx has not been signed"
         );
-        let (psbt, utxo_storage_keys, vutxos) = self.generate_psbt_and_vutxos(input, output);
+        let (psbt, utxo_storage_keys, vutxos) = self.generate_psbt_and_vutxos(
+            input,
+            output,
+            #[cfg(feature = "zcash")]
+            expiry_height,
+        );
         let (actual_received_amount, gas_fee) =
             self.check_active_management_psbt_valid(&psbt, &vutxos);
         require!(
@@ -373,8 +378,6 @@ impl Contract {
                 last_rbf_time_sec: None,
                 cancel_rbf_reserved: None,
             }),
-            #[cfg(feature = "zcash")]
-            expiry_height,
         };
         require!(
             self.data_mut()

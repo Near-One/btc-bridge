@@ -249,8 +249,14 @@ impl Contract {
         &mut self,
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
+        #[cfg(feature = "zcash")] expiry_height: u32,
     ) -> (psbt_wrapper::PsbtWrapper, Vec<String>, Vec<VUTXO>) {
-        let mut psbt = PsbtWrapper::new(input, output);
+        let mut psbt = PsbtWrapper::new(
+            input,
+            output,
+            #[cfg(feature = "zcash")]
+            expiry_height,
+        );
 
         let (utxo_storage_keys, vutxos) = self.remove_vutxo_by_psbt(&psbt);
 
@@ -273,9 +279,10 @@ impl Contract {
         &self,
         original_tx_btc_pending_info: &BTCPendingInfo,
         output: Vec<TxOut>,
+        #[cfg(feature = "zcash")] expiry_height: u32,
     ) -> PsbtWrapper {
         let original_psbt = original_tx_btc_pending_info.get_psbt();
-        PsbtWrapper::from_original_psbt(original_psbt, output)
+        PsbtWrapper::from_original_psbt(original_psbt, output, expiry_height)
     }
 }
 

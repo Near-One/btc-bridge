@@ -118,7 +118,12 @@ impl Contract {
         output: Vec<TxOut>,
         #[cfg(feature = "zcash")] expiry_height: u32,
     ) {
-        let (psbt, utxo_storage_keys, vutxos) = self.generate_psbt_and_vutxos(input, output);
+        let (psbt, utxo_storage_keys, vutxos) = self.generate_psbt_and_vutxos(
+            input,
+            output,
+            #[cfg(feature = "zcash")]
+            expiry_height,
+        );
         require!(
             self.internal_unwrap_or_create_mut_account(&sender_id)
                 .btc_pending_sign_id
@@ -164,8 +169,6 @@ impl Contract {
                 last_rbf_time_sec: None,
                 cancel_rbf_reserved: None,
             }),
-            #[cfg(feature = "zcash")]
-            expiry_height,
         };
         require!(
             self.data_mut()

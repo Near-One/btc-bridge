@@ -36,16 +36,18 @@ impl Contract {
         );
         original_tx_btc_pending_info.assert_not_canceled();
         original_tx_btc_pending_info.assert_active_utxo_management_original_pending_verify_tx();
-        let active_utxo_management_rbf_psbt = self
-            .generate_psbt_from_original_psbt_and_new_output(original_tx_btc_pending_info, output);
+        let active_utxo_management_rbf_psbt = self.generate_psbt_from_original_psbt_and_new_output(
+            original_tx_btc_pending_info,
+            output,
+            #[cfg(feature = "zcash")]
+            expiry_height,
+        );
         let mut btc_pending_info = init_rbf_btc_pending_info(
             original_tx_btc_pending_info,
             PendingInfoState::ActiveUtxoManagementRbf(RbfState {
                 stage: PendingInfoStage::PendingSign,
                 original_tx_id: original_btc_pending_verify_id.clone(),
             }),
-            #[cfg(feature = "zcash")]
-            expiry_height,
         );
         let (actual_received_amount, gas_fee) = self.check_active_utxo_management_rbf_psbt_valid(
             original_tx_btc_pending_info,
