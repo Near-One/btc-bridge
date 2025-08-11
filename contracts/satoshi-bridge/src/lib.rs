@@ -61,8 +61,6 @@ pub use crate::utils::*;
 pub use crate::utxo::*;
 
 #[cfg(not(feature = "zcash"))]
-pub use crate::bitcoin_utils::contract_methods::*;
-#[cfg(not(feature = "zcash"))]
 pub use crate::bitcoin_utils::psbt_wrapper;
 #[cfg(not(feature = "zcash"))]
 pub use crate::bitcoin_utils::transaction::Transaction as WrappedTransaction;

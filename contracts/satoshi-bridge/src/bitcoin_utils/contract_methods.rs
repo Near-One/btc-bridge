@@ -2,14 +2,14 @@ use crate::psbt_wrapper::PsbtWrapper;
 use crate::{BTCPendingInfo, Contract, Event, VUTXO};
 use bitcoin::{OutPoint, TxOut};
 use near_sdk::json_types::U128;
-use near_sdk::{env, require, AccountId, PromiseOrValue};
+use near_sdk::{require, AccountId, PromiseOrValue};
 
 impl Contract {
     pub(crate) fn check_psbt_chain_specific(
         &self,
-        psbt: &PsbtWrapper,
-        vutxos: &[VUTXO],
-        gas_fee: u128,
+        _psbt: &PsbtWrapper,
+        _vutxos: &[VUTXO],
+        _gas_fee: u128,
     ) {
     }
 

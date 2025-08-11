@@ -1,11 +1,12 @@
 use crate::*;
 
 use bitcoin::absolute::LockTime;
+use bitcoin::consensus::serialize;
 use bitcoin::hashes::Hash;
 use bitcoin::psbt::Psbt;
 use bitcoin::sighash::SighashCache;
 use bitcoin::transaction::Version;
-use bitcoin::{OutPoint, Transaction, TxIn, TxOut, Witness};
+use bitcoin::{OutPoint, TxIn, TxOut, Witness};
 use near_sdk::require;
 
 pub struct PsbtWrapper {
