@@ -4,6 +4,12 @@ use bitcoin::{OutPoint, TxOut};
 use near_sdk::json_types::U128;
 use near_sdk::{near, require, AccountId};
 
+pub const GAS_WITHDRAW_CALL_BACK: Gas = Gas::from_tgas(100);
+pub const GAS_WITHDRAW_RBF_CALL_BACK: Gas = Gas::from_tgas(100);
+pub const GAS_CANCEL_ACTIVA_UTXO_MANAGMENT_CALL_BACK: Gas = Gas::from_tgas(100);
+pub const GAS_ACTIVA_UTXO_MANAGMENT_CALL_BACK: Gas = Gas::from_tgas(100);
+pub const GAS_FOR_ACTIVE_UTXO_MANAGMENT_CALLBACK: Gas = Gas::from_tgas(100);
+
 #[near]
 impl Contract {
     #[private]
@@ -149,6 +155,96 @@ impl Contract {
                 gas_fee,
                 min_fee.into_u64()
             )
+        );
+    }
+
+    pub(crate) fn ft_on_transfer_withdraw_chain_specific(
+        &self,
+        sender_id: AccountId,
+        amount: u128,
+        target_btc_address: String,
+        input: Vec<OutPoint>,
+        output: Vec<TxOut>,
+    ) -> PromiseOrValue<U128> {
+        PromiseOrValue::Promise(
+            self.get_last_block_height_promise().then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(GAS_FOR_FT_ON_TRANSFER_CALL_BACK)
+                    .ft_on_transfer_callback(sender_id, amount, target_btc_address, input, output),
+            ),
+        )
+    }
+
+    pub(crate) fn withdraw_rbf_chain_specific(
+        &self,
+        account_id: AccountId,
+        original_btc_pending_verify_id: String,
+        output: Vec<TxOut>,
+    ) {
+        self.get_last_block_height_promise().then(
+            Self::ext(env::current_account_id())
+                .with_static_gas(GAS_WITHDRAW_RBF_CALL_BACK)
+                .withdraw_rbf_callback(account_id, original_btc_pending_verify_id, output),
+        );
+    }
+
+    pub(crate) fn cancel_withdraw_chain_specific(
+        &mut self,
+        user_account_id: AccountId,
+        original_btc_pending_verify_id: String,
+        output: Vec<TxOut>,
+    ) {
+        self.get_last_block_height_promise().then(
+            Self::ext(env::current_account_id())
+                .with_static_gas(GAS_WITHDRAW_CALL_BACK)
+                .cancel_withdraw_callback(user_account_id, original_btc_pending_verify_id, output),
+        );
+    }
+
+    pub(crate) fn cancel_active_utxo_management_chain_specific(
+        &mut self,
+        user_account_id: AccountId,
+        original_btc_pending_verify_id: String,
+        output: Vec<TxOut>,
+    ) {
+        self.get_last_block_height_promise().then(
+            Self::ext(env::current_account_id())
+                .with_static_gas(GAS_CANCEL_ACTIVA_UTXO_MANAGMENT_CALL_BACK)
+                .cancel_active_utxo_managment_callback(
+                    user_account_id,
+                    original_btc_pending_verify_id,
+                    output,
+                ),
+        );
+    }
+
+    pub(crate) fn active_utxo_management_rbf_chain_specific(
+        &mut self,
+        user_account_id: AccountId,
+        original_btc_pending_verify_id: String,
+        output: Vec<TxOut>,
+    ) {
+        self.get_last_block_height_promise().then(
+            Self::ext(env::current_account_id())
+                .with_static_gas(GAS_ACTIVA_UTXO_MANAGMENT_CALL_BACK)
+                .active_utxo_managment_callback(
+                    user_account_id,
+                    original_btc_pending_verify_id,
+                    output,
+                ),
+        );
+    }
+
+    pub(crate) fn active_utxo_management_chain_specific(
+        &mut self,
+        account_id: AccountId,
+        input: Vec<OutPoint>,
+        output: Vec<TxOut>,
+    ) {
+        self.get_last_block_height_promise().then(
+            Self::ext(env::current_account_id())
+                .with_static_gas(GAS_FOR_ACTIVE_UTXO_MANAGMENT_CALLBACK)
+                .active_utxo_management_callback(account_id, input, output),
         );
     }
 }

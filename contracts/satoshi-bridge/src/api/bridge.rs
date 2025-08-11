@@ -2,12 +2,6 @@ use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 use near_plugins::{access_control_any, pause};
 
-pub const GAS_WITHDRAW_RBF_CALL_BACK: Gas = Gas::from_tgas(100);
-pub const GAS_WITHDRAW_CALL_BACK: Gas = Gas::from_tgas(100);
-pub const GAS_CANCEL_ACTIVA_UTXO_MANAGMENT_CALL_BACK: Gas = Gas::from_tgas(100);
-pub const GAS_ACTIVA_UTXO_MANAGMENT_CALL_BACK: Gas = Gas::from_tgas(100);
-pub const GAS_FOR_ACTIVE_UTXO_MANAGMENT_CALLBACK: Gas = Gas::from_tgas(100);
-
 #[near]
 impl Contract {
     /// Verify that the user has transferred BTC asset to the protocol's designated BTC deposit account, and mint NBTC to the user's NEAR account.
@@ -128,27 +122,7 @@ impl Contract {
             "Previous btc tx has not been signed"
         );
 
-        #[cfg(feature = "zcash")]
-        {
-            self.get_last_block_height_promise().then(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(GAS_WITHDRAW_RBF_CALL_BACK)
-                    .withdraw_rbf_callback(account_id, original_btc_pending_verify_id, output),
-            );
-        }
-
-        #[cfg(not(feature = "zcash"))]
-        {
-            let btc_pending_id =
-                self.internal_withdraw_rbf(&account_id, original_btc_pending_verify_id, output);
-            self.internal_unwrap_mut_account(&account_id)
-                .btc_pending_sign_id = Some(btc_pending_id.clone());
-            Event::GenerateBtcPendingInfo {
-                account_id: &account_id,
-                btc_pending_id: &btc_pending_id,
-            }
-            .emit();
-        }
+        self.withdraw_rbf_chain_specific(account_id, original_btc_pending_verify_id, output);
     }
 
     /// If the user's Withdraw is not verified within a certain time, the protocol can actively cancel the Withdraw through RBF, with the gas fee borne by the user.
@@ -173,31 +147,11 @@ impl Contract {
             "Assisted user previous btc tx has not been signed"
         );
 
-        #[cfg(feature = "zcash")]
-        {
-            self.get_last_block_height_promise().then(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(GAS_WITHDRAW_CALL_BACK)
-                    .cancel_withdraw_callback(
-                        user_account_id,
-                        original_btc_pending_verify_id,
-                        output,
-                    ),
-            );
-        }
-
-        #[cfg(not(feature = "zcash"))]
-        {
-            let btc_pending_id =
-                self.internal_cancel_withdraw(original_btc_pending_verify_id, output);
-            self.internal_unwrap_mut_account(&user_account_id)
-                .btc_pending_sign_id = Some(btc_pending_id.clone());
-            Event::GenerateBtcPendingInfo {
-                account_id: &user_account_id,
-                btc_pending_id: &btc_pending_id,
-            }
-            .emit();
-        }
+        self.cancel_withdraw_chain_specific(
+            user_account_id,
+            original_btc_pending_verify_id,
+            output,
+        );
     }
 
     /// Verify that the active utxo management has been successful, and then burn the corresponding amount of tokens.
@@ -253,19 +207,7 @@ impl Contract {
     pub fn active_utxo_management(&mut self, input: Vec<OutPoint>, output: Vec<TxOut>) {
         assert_one_yocto();
         let account_id = env::predecessor_account_id();
-        #[cfg(not(feature = "zcash"))]
-        {
-            let mut psbt = PsbtWrapper::new(input, output);
-            create_active_utxo_management_pending_info(account_id, &mut psbt);
-        }
-        #[cfg(feature = "zcash")]
-        {
-            self.get_last_block_height_promise().then(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(GAS_FOR_ACTIVE_UTXO_MANAGMENT_CALLBACK)
-                    .active_utxo_management_callback(account_id, input, output),
-            );
-        }
+        self.active_utxo_management_chain_specific(account_id, input, output);
     }
 
     /// The initiator of active UTXO management accelerates the transaction by increasing the gas fee.
@@ -290,34 +232,11 @@ impl Contract {
                 .is_none(),
             "Previous btc tx has not been signed"
         );
-        #[cfg(feature = "zcash")]
-        {
-            self.get_last_block_height_promise().then(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(GAS_ACTIVA_UTXO_MANAGMENT_CALL_BACK)
-                    .active_utxo_managment_callback(
-                        account_id,
-                        original_btc_pending_verify_id,
-                        output,
-                    ),
-            );
-        }
-
-        #[cfg(not(feature = "zcash"))]
-        {
-            let btc_pending_id = self.internal_active_utxo_management_rbf(
-                &account_id,
-                original_btc_pending_verify_id,
-                output,
-            );
-            self.internal_unwrap_mut_account(&account_id)
-                .btc_pending_sign_id = Some(btc_pending_id.clone());
-            Event::GenerateBtcPendingInfo {
-                account_id: &account_id,
-                btc_pending_id: &btc_pending_id,
-            }
-            .emit();
-        }
+        self.active_utxo_management_rbf_chain_specific(
+            account_id,
+            original_btc_pending_verify_id,
+            output,
+        );
     }
 
     /// Active UTXO management transactions that have not been verified for a long time are allowed to be canceled through RBF.
@@ -345,31 +264,11 @@ impl Contract {
                 .is_none(),
             "Assisted user previous btc tx has not been signed"
         );
-        #[cfg(feature = "zcash")]
-        {
-            self.get_last_block_height_promise().then(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(GAS_CANCEL_ACTIVA_UTXO_MANAGMENT_CALL_BACK)
-                    .cancel_active_utxo_managment_callback(
-                        user_account_id,
-                        original_btc_pending_verify_id,
-                        output,
-                    ),
-            );
-        }
-
-        #[cfg(not(feature = "zcash"))]
-        {
-            let btc_pending_id =
-                self.internal_cancel_active_utxo_management(original_btc_pending_verify_id, output);
-            self.internal_unwrap_mut_account(&user_account_id)
-                .btc_pending_sign_id = Some(btc_pending_id.clone());
-            Event::GenerateBtcPendingInfo {
-                account_id: &user_account_id,
-                btc_pending_id: &btc_pending_id,
-            }
-            .emit();
-        }
+        self.cancel_active_utxo_management_chain_specific(
+            user_account_id,
+            original_btc_pending_verify_id,
+            output,
+        );
     }
 
     /// Since there can be many RBFs, removing all RBF pending info at once after verifying the transaction on-chain might not have enough gas.

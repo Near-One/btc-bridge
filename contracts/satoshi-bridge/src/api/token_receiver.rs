@@ -50,31 +50,13 @@ impl FungibleTokenReceiver for Contract {
                 target_btc_address,
                 input,
                 output,
-            } => {
-                #[cfg(not(feature = "zcash"))]
-                {
-                    let mut psbt = PsbtWrapper::new(input, output);
-                    self.create_btc_pending_info(sender_id, amount, target_btc_address, psbt);
-                    PromiseOrValue::Value(U128(0))
-                }
-
-                #[cfg(feature = "zcash")]
-                {
-                    PromiseOrValue::Promise(
-                        self.get_last_block_height_promise().then(
-                            Self::ext(env::current_account_id())
-                                .with_static_gas(GAS_FOR_FT_ON_TRANSFER_CALL_BACK)
-                                .ft_on_transfer_callback(
-                                    sender_id,
-                                    amount,
-                                    target_btc_address,
-                                    input,
-                                    output,
-                                ),
-                        ),
-                    )
-                }
-            }
+            } => self.ft_on_transfer_withdraw_chain_specific(
+                sender_id,
+                amount,
+                target_btc_address,
+                input,
+                output,
+            ),
         }
     }
 }
