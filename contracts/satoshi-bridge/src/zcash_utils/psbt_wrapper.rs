@@ -1,18 +1,23 @@
 use crate::*;
 
 use bitcoin::absolute::LockTime;
+use bitcoin::hashes::Hash;
 use bitcoin::psbt::Psbt;
 use bitcoin::transaction::Version;
 use bitcoin::{OutPoint, TxIn, TxOut};
 use near_sdk::require;
-use zcash_primitives::transaction::fees::transparent::{InputView, OutputView};
+use zcash_primitives::transaction::fees::transparent::{InputSize, OutputView};
 use zcash_primitives::transaction::fees::FeeRule;
 use zcash_protocol::consensus::BlockHeight;
 use zcash_protocol::value::Zatoshis;
+use zcash_transparent::bundle::Authorized;
 
 pub struct PsbtWrapper {
     psbt: Psbt,
     expiry_height: u32,
+    pub vin: Vec<zcash_transparent::bundle::TxIn<Authorized>>,
+    pub vout: Vec<zcash_transparent::bundle::TxOut>,
+    pub inputs: Vec<zcash_transparent::bundle::TxOut>,
 }
 
 impl PsbtWrapper {
@@ -26,6 +31,7 @@ impl PsbtWrapper {
             version: Version::TWO,
             lock_time: LockTime::ZERO,
             input: input
+                .clone()
                 .into_iter()
                 .map(|previous_output| TxIn {
                     previous_output,
@@ -33,13 +39,48 @@ impl PsbtWrapper {
                     ..Default::default()
                 })
                 .collect(),
-            output,
+            output: output.clone(),
         };
         let psbt = Psbt::from_unsigned_tx(transaction).expect("Failed to generate PSBT");
+
+        let vout = output
+            .clone()
+            .into_iter()
+            .map(|o| zcash_transparent::bundle::TxOut {
+                value: Zatoshis::from_u64(o.value.to_sat()).unwrap(),
+                script_pubkey: zcash_primitives::legacy::Script(o.script_pubkey.to_bytes()),
+            })
+            .collect();
+
+        let vin: Vec<zcash_transparent::bundle::TxIn<Authorized>> = psbt
+            .clone()
+            .unsigned_tx
+            .input
+            .into_iter()
+            .map(|i| zcash_transparent::bundle::TxIn {
+                prevout: zcash_transparent::bundle::OutPoint::new(
+                    i.previous_output.txid.to_byte_array(),
+                    i.previous_output.vout,
+                ),
+                script_sig: zcash_primitives::legacy::Script::default(),
+                sequence: sequence.0,
+            })
+            .collect();
+
+        let inputs = vec![
+            zcash_transparent::bundle::TxOut {
+                value: Zatoshis::from_u64(0).unwrap(),
+                script_pubkey: zcash_primitives::legacy::Script::default(),
+            };
+            vin.len()
+        ];
 
         Self {
             psbt,
             expiry_height,
+            vout,
+            vin,
+            inputs,
         }
     }
 
@@ -60,6 +101,15 @@ impl PsbtWrapper {
                 })
                 .collect()
         }
+
+        let vout = output
+            .clone()
+            .into_iter()
+            .map(|o| zcash_transparent::bundle::TxOut {
+                value: Zatoshis::from_u64(o.value.to_sat()).unwrap(),
+                script_pubkey: zcash_primitives::legacy::Script(o.script_pubkey.to_bytes()),
+            })
+            .collect();
 
         let transaction = BtcTransaction {
             version: Version::TWO,
@@ -84,9 +134,13 @@ impl PsbtWrapper {
             .for_each(|(i, v)| {
                 psbt.inputs[i].witness_utxo.clone_from(&v.witness_utxo);
             });
+
         Self {
             psbt,
             expiry_height,
+            vin: original_psbt.vin,
+            vout,
+            inputs: original_psbt.inputs,
         }
     }
 
@@ -95,6 +149,13 @@ impl PsbtWrapper {
             .iter()
             .enumerate()
             .for_each(|(i, v)| self.psbt.inputs[i].witness_utxo = Some(v.clone()));
+
+        input_utxo.iter().enumerate().for_each(|(i, v)| {
+            self.inputs[i] = zcash_transparent::bundle::TxOut {
+                value: Zatoshis::from_u64(v.value.to_sat()).unwrap(),
+                script_pubkey: zcash_primitives::legacy::Script(v.script_pubkey.to_bytes()),
+            }
+        });
     }
 
     pub fn get_input(&self) -> &Vec<TxIn> {
@@ -113,9 +174,54 @@ impl PsbtWrapper {
     pub fn deserialize(psbt_hex: &String) -> Self {
         let h_hex = hex::decode(&psbt_hex[..8]).unwrap();
         let psbt_bytes = hex::decode(&psbt_hex[8..]).unwrap();
+
+        let psbt = Psbt::deserialize(&psbt_bytes).expect("ERR_INVALID_PSBT_HEX");
+
+        let vout = psbt
+            .clone()
+            .unsigned_tx
+            .output
+            .clone()
+            .into_iter()
+            .map(|o| zcash_transparent::bundle::TxOut {
+                value: Zatoshis::from_u64(o.value.to_sat()).unwrap(),
+                script_pubkey: zcash_primitives::legacy::Script(o.script_pubkey.to_bytes()),
+            })
+            .collect();
+
+        let vin: Vec<zcash_transparent::bundle::TxIn<Authorized>> = psbt
+            .clone()
+            .unsigned_tx
+            .input
+            .into_iter()
+            .map(|i| zcash_transparent::bundle::TxIn {
+                prevout: zcash_transparent::bundle::OutPoint::new(
+                    i.previous_output.txid.to_byte_array(),
+                    i.previous_output.vout,
+                ),
+                script_sig: zcash_primitives::legacy::Script(i.script_sig.to_bytes()),
+                sequence: i.sequence.0,
+            })
+            .collect();
+
+        let inputs = psbt
+            .clone()
+            .inputs
+            .into_iter()
+            .map(|i| zcash_transparent::bundle::TxOut {
+                value: Zatoshis::from_u64(i.witness_utxo.clone().unwrap().value.to_sat()).unwrap(),
+                script_pubkey: zcash_primitives::legacy::Script(
+                    i.witness_utxo.clone().unwrap().script_pubkey.to_bytes(),
+                ),
+            })
+            .collect();
+
         Self {
-            psbt: Psbt::deserialize(&psbt_bytes).expect("ERR_INVALID_PSBT_HEX"),
+            psbt,
             expiry_height: u32::from_le_bytes(h_hex.try_into().unwrap()),
+            vin,
+            vout,
+            inputs,
         }
     }
 
@@ -185,22 +291,14 @@ impl PsbtWrapper {
         self.psbt.inputs[sign_index].final_script_sig = Some(script_sig);
     }
 
-    pub fn get_min_fee(&self, public_key: &bitcoin::PublicKey) -> Zatoshis {
+    pub fn get_min_fee(&self) -> Zatoshis {
         let fee_rule = zcash_primitives::transaction::fees::zip317::FeeRule::standard();
-        let transparent_builder =
-            WrappedTransaction::get_transparent_builder(&self.psbt, public_key);
         fee_rule
             .fee_required(
                 &zcash_protocol::consensus::MainNetwork,
                 BlockHeight::from_u32(0u32),
-                transparent_builder
-                    .inputs()
-                    .iter()
-                    .map(|i| i.serialized_size()),
-                transparent_builder
-                    .outputs()
-                    .iter()
-                    .map(|i| i.serialized_size()),
+                vec![InputSize::STANDARD_P2PKH; self.vin.len()],
+                self.vout.iter().map(|i| i.serialized_size()),
                 0,
                 0,
                 0,

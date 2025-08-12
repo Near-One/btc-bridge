@@ -170,14 +170,8 @@ impl Contract {
 }
 
 impl Contract {
-    pub(crate) fn check_psbt_chain_specific(
-        &self,
-        psbt: &PsbtWrapper,
-        vutxos: &[VUTXO],
-        gas_fee: u128,
-    ) {
-        let public_key = self.generate_btc_public_key(&vutxos[0].get_path());
-        let min_fee = psbt.get_min_fee(&public_key);
+    pub(crate) fn check_psbt_chain_specific(&self, psbt: &PsbtWrapper, gas_fee: u128) {
+        let min_fee = psbt.get_min_fee();
         require!(
             gas_fee >= min_fee.into_u64() as u128,
             format!(

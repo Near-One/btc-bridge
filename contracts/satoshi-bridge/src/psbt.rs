@@ -219,7 +219,7 @@ impl Contract {
             )
         );
 
-        self.check_psbt_chain_specific(psbt, vutxos, gas_fee);
+        self.check_psbt_chain_specific(psbt, gas_fee);
         (input_num, change_num, actual_received_amount, gas_fee)
     }
 }

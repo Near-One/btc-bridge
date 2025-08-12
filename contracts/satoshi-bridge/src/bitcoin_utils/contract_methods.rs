@@ -5,13 +5,7 @@ use near_sdk::json_types::U128;
 use near_sdk::{require, AccountId, PromiseOrValue};
 
 impl Contract {
-    pub(crate) fn check_psbt_chain_specific(
-        &self,
-        _psbt: &PsbtWrapper,
-        _vutxos: &[VUTXO],
-        _gas_fee: u128,
-    ) {
-    }
+    pub(crate) fn check_psbt_chain_specific(&self, _psbt: &PsbtWrapper, _gas_fee: u128) {}
 
     pub(crate) fn check_withdraw_chain_specific(
         original_tx_btc_pending_info: &BTCPendingInfo,
