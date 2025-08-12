@@ -59,10 +59,9 @@ impl Contract {
     pub fn remove_vutxo_by_psbt(&mut self, psbt: &PsbtWrapper) -> (Vec<String>, Vec<VUTXO>) {
         let mut utxo_storage_keys = vec![];
         let vutxos = psbt
-            .get_input()
+            .get_utxo_storage_keys()
             .into_iter()
-            .map(|input| {
-                let utxo_storage_key = out_point_to_utxo_storage_key(&input.previous_output);
+            .map(|utxo_storage_key| {
                 utxo_storage_keys.push(utxo_storage_key.clone());
                 self.data_mut()
                     .utxos

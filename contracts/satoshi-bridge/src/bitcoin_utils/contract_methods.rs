@@ -1,5 +1,5 @@
 use crate::psbt_wrapper::PsbtWrapper;
-use crate::{BTCPendingInfo, Contract, Event, VUTXO};
+use crate::{BTCPendingInfo, Contract, Event};
 use bitcoin::{OutPoint, TxOut};
 use near_sdk::json_types::U128;
 use near_sdk::{require, AccountId, PromiseOrValue};

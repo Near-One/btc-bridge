@@ -47,7 +47,9 @@ impl PsbtWrapper {
             version: Version::TWO,
             lock_time: LockTime::ZERO,
             input: original_psbt
-                .get_input()
+                .psbt
+                .unsigned_tx
+                .input
                 .into_iter()
                 .map(|original_psbt_input| TxIn {
                     previous_output: original_psbt_input.previous_output,
@@ -76,14 +78,32 @@ impl PsbtWrapper {
             .for_each(|(i, v)| self.psbt.inputs[i].witness_utxo = Some(v.clone()));
     }
 
-    pub fn get_input(&self) -> &Vec<TxIn> {
-        &self.psbt.unsigned_tx.input
-    }
-
     pub fn get_output(&self) -> &Vec<TxOut> {
         &self.psbt.unsigned_tx.output
     }
 
+    pub fn get_input_num(&self) -> usize {
+        self.psbt.unsigned_tx.input.len()
+    }
+
+    pub fn get_output_num(&self) -> usize {
+        self.psbt.unsigned_tx.output.len()
+    }
+
+    pub fn get_utxo_storage_keys(&self) -> Vec<String> {
+        self.psbt
+            .unsigned_tx
+            .input
+            .clone()
+            .into_iter()
+            .map(|out_point| {
+                generate_utxo_storage_key(
+                    out_point.previous_output.txid.to_string(),
+                    out_point.previous_output.vout,
+                )
+            })
+            .collect()
+    }
     pub fn serialize(&self) -> String {
         self.psbt.serialize_hex()
     }

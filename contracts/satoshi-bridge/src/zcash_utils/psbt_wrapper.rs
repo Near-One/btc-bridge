@@ -7,7 +7,7 @@ use bitcoin::absolute::LockTime;
 use bitcoin::hashes::Hash;
 use bitcoin::psbt::Psbt;
 use bitcoin::transaction::Version;
-use bitcoin::{OutPoint, Sequence, TxIn, TxOut};
+use bitcoin::{OutPoint, TxIn, TxOut};
 use near_sdk::require;
 use zcash_primitives::transaction::fees::transparent::{InputSize, OutputView};
 use zcash_primitives::transaction::fees::FeeRule;
@@ -129,19 +129,15 @@ impl PsbtWrapper {
     pub fn get_output_num(&self) -> usize {
         self.vout.len()
     }
-
-    pub fn get_input(&self) -> Vec<TxIn> {
+    pub fn get_utxo_storage_keys(&self) -> Vec<String> {
         self.vin
             .clone()
             .into_iter()
-            .map(|i| TxIn {
-                previous_output: OutPoint::new(
-                    bitcoin::Txid::from_slice(i.prevout.txid().as_ref()).unwrap(),
-                    i.prevout.n(),
-                ),
-                script_sig: Default::default(),
-                sequence: Sequence::MAX,
-                witness: Default::default(),
+            .map(|out_point| {
+                generate_utxo_storage_key(
+                    out_point.prevout.txid().to_string(),
+                    out_point.prevout.n(),
+                )
             })
             .collect()
     }
