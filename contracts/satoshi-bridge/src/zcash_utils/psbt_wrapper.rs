@@ -3,11 +3,8 @@ use std::io;
 use std::io::{Cursor, Read, Write};
 
 use crate::zcash_utils::transaction::Transaction;
-use bitcoin::absolute::LockTime;
 use bitcoin::hashes::Hash;
-use bitcoin::psbt::Psbt;
-use bitcoin::transaction::Version;
-use bitcoin::{OutPoint, TxIn, TxOut};
+use bitcoin::{OutPoint, TxOut};
 use near_sdk::require;
 use zcash_primitives::transaction::fees::transparent::{InputSize, OutputView};
 use zcash_primitives::transaction::fees::FeeRule;
@@ -21,7 +18,7 @@ pub struct PsbtWrapper {
     expiry_height: u32,
     pub vin: Vec<zcash_transparent::bundle::TxIn<Authorized>>,
     pub vout: Vec<zcash_transparent::bundle::TxOut>,
-    pub inputs: Vec<zcash_transparent::bundle::TxOut>,
+    pub inputs_utxo: Vec<zcash_transparent::bundle::TxOut>,
 }
 
 impl PsbtWrapper {
@@ -30,23 +27,6 @@ impl PsbtWrapper {
         require!(!output.is_empty(), "empty output");
 
         let sequence = bitcoin::Sequence::MAX;
-
-        let transaction = BtcTransaction {
-            version: Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: input
-                .clone()
-                .into_iter()
-                .map(|previous_output| TxIn {
-                    previous_output,
-                    sequence,
-                    ..Default::default()
-                })
-                .collect(),
-            output: output.clone(),
-        };
-        let psbt = Psbt::from_unsigned_tx(transaction).expect("Failed to generate PSBT");
-
         let vout = output
             .clone()
             .into_iter()
@@ -56,16 +36,10 @@ impl PsbtWrapper {
             })
             .collect();
 
-        let vin: Vec<zcash_transparent::bundle::TxIn<Authorized>> = psbt
-            .clone()
-            .unsigned_tx
-            .input
+        let vin: Vec<zcash_transparent::bundle::TxIn<Authorized>> = input
             .into_iter()
             .map(|i| zcash_transparent::bundle::TxIn {
-                prevout: zcash_transparent::bundle::OutPoint::new(
-                    i.previous_output.txid.to_byte_array(),
-                    i.previous_output.vout,
-                ),
+                prevout: zcash_transparent::bundle::OutPoint::new(*i.txid.as_byte_array(), i.vout),
                 script_sig: zcash_primitives::legacy::Script::default(),
                 sequence: sequence.0,
             })
@@ -83,7 +57,7 @@ impl PsbtWrapper {
             expiry_height,
             vout,
             vin,
-            inputs,
+            inputs_utxo: inputs,
         }
     }
 
@@ -109,13 +83,13 @@ impl PsbtWrapper {
             expiry_height,
             vin: original_psbt.vin,
             vout,
-            inputs: original_psbt.inputs,
+            inputs_utxo: original_psbt.inputs_utxo,
         }
     }
 
     pub fn set_input_utxo(&mut self, input_utxo: Vec<TxOut>) {
         input_utxo.iter().enumerate().for_each(|(i, v)| {
-            self.inputs[i] = zcash_transparent::bundle::TxOut {
+            self.inputs_utxo[i] = zcash_transparent::bundle::TxOut {
                 value: Zatoshis::from_u64(v.value.to_sat()).unwrap(),
                 script_pubkey: zcash_primitives::legacy::Script(v.script_pubkey.to_bytes()),
             }
@@ -171,10 +145,10 @@ impl PsbtWrapper {
             t.write(&mut buf).unwrap();
         }
 
-        let len = self.inputs.len() as u64;
+        let len = self.inputs_utxo.len() as u64;
         buf.write_all(&len.to_le_bytes()).unwrap();
 
-        for t in self.inputs.clone() {
+        for t in self.inputs_utxo.clone() {
             t.write(&mut buf).unwrap();
         }
 
@@ -212,7 +186,7 @@ impl PsbtWrapper {
             expiry_height,
             vin,
             vout,
-            inputs,
+            inputs_utxo: inputs,
         }
     }
 
@@ -252,19 +226,19 @@ impl PsbtWrapper {
         let tx_data = WrappedTransaction::to_zcash_tx(
             &self.vin,
             &self.vout,
-            &self.inputs,
+            &self.inputs_utxo,
             self.expiry_height,
             public_key,
         );
         let txid_parts = tx_data.digest(zcash_primitives::transaction::txid::TxIdDigester);
-        let script = &self.inputs[vin].script_pubkey;
+        let script = &self.inputs_utxo[vin].script_pubkey;
         let sig_input = zcash_primitives::transaction::sighash::SignableInput::Transparent(
             zcash_transparent::sighash::SignableInput::from_parts(
                 SighashType::ALL,
                 vin,
                 script,
                 script,
-                self.inputs[vin].value,
+                self.inputs_utxo[vin].value,
             ),
         );
 

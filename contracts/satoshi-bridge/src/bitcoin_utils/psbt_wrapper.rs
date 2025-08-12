@@ -6,6 +6,7 @@ use bitcoin::hashes::Hash;
 use bitcoin::psbt::Psbt;
 use bitcoin::sighash::SighashCache;
 use bitcoin::transaction::Version;
+use bitcoin::Transaction as BtcTransaction;
 use bitcoin::{OutPoint, TxIn, TxOut, Witness};
 use near_sdk::require;
 
