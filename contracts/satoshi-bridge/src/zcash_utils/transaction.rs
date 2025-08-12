@@ -1,11 +1,12 @@
 use bitcoin::hashes::Hash;
-use bitcoin::{absolute, Psbt, ScriptBuf, TxOut, Txid};
+use bitcoin::{absolute, ScriptBuf, TxOut, Txid};
 use zcash_primitives::consensus::{BlockHeight, BranchId};
 use zcash_primitives::transaction::{
     Transaction as ZCashTransaction, TransactionData, TxVersion, Unauthorized,
 };
 use zcash_protocol::value::Zatoshis;
 use zcash_transparent::builder::TransparentBuilder;
+use zcash_transparent::bundle::Authorized;
 
 #[derive(Debug, PartialEq)]
 pub struct Transaction {
@@ -47,49 +48,40 @@ impl Transaction {
     }
 
     pub fn get_transparent_builder(
-        psbt: &Psbt,
+        vin: &Vec<zcash_transparent::bundle::TxIn<Authorized>>,
+        vout: &Vec<zcash_transparent::bundle::TxOut>,
+        input: &Vec<zcash_transparent::bundle::TxOut>,
         public_key: &bitcoin::PublicKey,
     ) -> TransparentBuilder {
         let mut builder = zcash_transparent::builder::TransparentBuilder::empty();
 
-        for (index, input) in psbt.inputs.iter().enumerate() {
-            let i = input.witness_utxo.as_ref().unwrap();
-            let outpoint = zcash_transparent::bundle::OutPoint::new(
-                psbt.unsigned_tx.input[index]
-                    .previous_output
-                    .txid
-                    .to_byte_array(),
-                psbt.unsigned_tx.input[index].previous_output.vout,
-            );
-
-            let txout = zcash_transparent::bundle::TxOut {
-                value: Zatoshis::from_u64(i.value.to_sat()).unwrap(),
-                script_pubkey: zcash_primitives::legacy::Script(i.script_pubkey.to_bytes()),
-            };
+        for index in 0..vin.len() {
             builder
-                .add_input(public_key.inner, outpoint, txout)
+                .add_input(
+                    public_key.inner,
+                    vin[index].prevout.clone(),
+                    input[index].clone(),
+                )
                 .unwrap();
         }
 
-        for output in psbt.unsigned_tx.output.iter() {
-            let key = output.script_pubkey.as_script().to_bytes()[3..23]
-                .try_into()
-                .unwrap();
+        for output in vout {
+            let key = output.script_pubkey.0[3..23].try_into().unwrap();
             let to = zcash_transparent::address::TransparentAddress::PublicKeyHash(key);
-            builder
-                .add_output(&to, Zatoshis::from_u64(output.value.to_sat()).unwrap())
-                .unwrap();
+            builder.add_output(&to, output.value).unwrap();
         }
 
         builder
     }
 
     pub fn to_zcash_tx(
-        psbt: &Psbt,
-        public_key: &bitcoin::PublicKey,
+        vin: &Vec<zcash_transparent::bundle::TxIn<Authorized>>,
+        vout: &Vec<zcash_transparent::bundle::TxOut>,
+        input: &Vec<zcash_transparent::bundle::TxOut>,
         expiry_height: u32,
+        public_key: &bitcoin::PublicKey,
     ) -> TransactionData<Unauthorized> {
-        let transparent_bundle = Self::get_transparent_builder(psbt, public_key)
+        let transparent_bundle = Self::get_transparent_builder(vin, vout, input, public_key)
             .build()
             .unwrap();
 

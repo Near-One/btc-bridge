@@ -58,5 +58,5 @@ near-workspaces = { version = "0.20", features = ["unstable"] }
 tokio = { version = "1.12.0", features = ["full"] }
 
 [features]
-default = ["zcash"]
+default = []
 zcash = []
