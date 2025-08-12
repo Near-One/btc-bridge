@@ -4,7 +4,6 @@ use zcash_primitives::consensus::{BlockHeight, BranchId};
 use zcash_primitives::transaction::{
     Transaction as ZCashTransaction, TransactionData, TxVersion, Unauthorized,
 };
-use zcash_protocol::value::Zatoshis;
 use zcash_transparent::builder::TransparentBuilder;
 use zcash_transparent::bundle::Authorized;
 
@@ -99,53 +98,5 @@ impl Transaction {
         );
 
         inner_tx
-    }
-
-    pub fn tx_bytes_with_sign(
-        tx: bitcoin::Transaction,
-        expiry_height: u32,
-    ) -> Result<Vec<u8>, std::io::Error> {
-        let transparent_bundle = zcash_transparent::bundle::Bundle {
-            vin: tx
-                .input
-                .iter()
-                .map(|input| zcash_transparent::bundle::TxIn {
-                    prevout: zcash_transparent::bundle::OutPoint::new(
-                        input.previous_output.txid.to_byte_array(),
-                        input.previous_output.vout,
-                    ),
-                    script_sig: zcash_primitives::legacy::Script(input.script_sig.to_bytes()),
-                    sequence: input.sequence.0,
-                })
-                .collect(),
-            vout: tx
-                .output
-                .iter()
-                .map(|output| zcash_transparent::bundle::TxOut {
-                    value: Zatoshis::from_u64(output.value.to_sat()).unwrap(),
-                    script_pubkey: zcash_primitives::legacy::Script(
-                        output.script_pubkey.to_bytes(),
-                    ),
-                })
-                .collect(),
-            authorization: zcash_transparent::bundle::Authorized,
-        };
-
-        let lock_time = 0;
-        let expiry_height = BlockHeight::from_u32(expiry_height);
-        let inner_tx = TransactionData::from_parts(
-            TxVersion::V5,
-            BranchId::Nu6,
-            lock_time,
-            expiry_height,
-            Some(transparent_bundle),
-            None,
-            None,
-            None,
-        )
-        .freeze()
-        .unwrap();
-
-        Transaction { inner_tx }.encode()
     }
 }
