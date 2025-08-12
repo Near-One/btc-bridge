@@ -92,7 +92,7 @@ impl Contract {
             withdraw_fee,
         );
 
-        let need_signature_num = psbt.get_input().len();
+        let need_signature_num = psbt.get_input_num();
         let psbt_hex = psbt.serialize();
         let btc_pending_id = psbt.get_pending_id();
         let btc_pending_info = BTCPendingInfo {

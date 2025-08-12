@@ -18,7 +18,7 @@ impl Contract {
             .expect("The original tx is not a user withdraw tx.")
             .script_pubkey;
         require!(
-            original_tx.output().len() == withdraw_rbf_psbt.get_output().len(),
+            original_tx.output().len() == withdraw_rbf_psbt.get_output_num(),
             "Invalid output num"
         );
         let (_, _, actual_received_amount, gas_fee) = self.check_withdraw_psbt(

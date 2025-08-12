@@ -58,8 +58,8 @@ impl Contract {
         let config = self.internal_config();
         let utxo_num = self.data().utxos.len() + vutxos.len() as u32;
 
-        let input_num = psbt.get_input().len();
-        let output_num = psbt.get_output().len();
+        let input_num = psbt.get_input_num();
+        let output_num = psbt.get_output_num();
         if !is_merge_unhealthy_utxos(output_num, vutxos, config.unhealthy_utxo_amount) {
             if utxo_num < config.active_management_lower_limit {
                 require!(input_num < output_num, "require input_num < output_num");
@@ -184,7 +184,7 @@ impl Contract {
             "only one user output is allowed."
         );
         let actual_received_amount = actual_received_amounts[0];
-        let input_num = psbt.get_input().len();
+        let input_num = psbt.get_input_num();
         let change_num = change_amounts.len();
         if input_num > change_num {
             require!(

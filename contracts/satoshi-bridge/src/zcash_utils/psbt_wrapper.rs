@@ -92,26 +92,18 @@ impl PsbtWrapper {
         output: Vec<TxOut>,
         expiry_height: u32,
     ) -> Self {
-        let mut output = output;
-        if output.is_empty() {
-            output = original_psbt
-                .get_output()
+        let vout = if output.is_empty() {
+            original_psbt.vout.clone()
+        } else {
+            output
+                .clone()
                 .into_iter()
-                .map(|original_psbt_output| TxOut {
-                    value: original_psbt_output.value,
-                    script_pubkey: original_psbt_output.script_pubkey.clone(),
+                .map(|o| zcash_transparent::bundle::TxOut {
+                    value: Zatoshis::from_u64(o.value.to_sat()).unwrap(),
+                    script_pubkey: zcash_primitives::legacy::Script(o.script_pubkey.to_bytes()),
                 })
                 .collect()
-        }
-
-        let vout = output
-            .clone()
-            .into_iter()
-            .map(|o| zcash_transparent::bundle::TxOut {
-                value: Zatoshis::from_u64(o.value.to_sat()).unwrap(),
-                script_pubkey: zcash_primitives::legacy::Script(o.script_pubkey.to_bytes()),
-            })
-            .collect();
+        };
 
         Self {
             expiry_height,
@@ -128,6 +120,14 @@ impl PsbtWrapper {
                 script_pubkey: zcash_primitives::legacy::Script(v.script_pubkey.to_bytes()),
             }
         });
+    }
+
+    pub fn get_input_num(&self) -> usize {
+        self.vin.len()
+    }
+
+    pub fn get_output_num(&self) -> usize {
+        self.vout.len()
     }
 
     pub fn get_input(&self) -> Vec<TxIn> {
