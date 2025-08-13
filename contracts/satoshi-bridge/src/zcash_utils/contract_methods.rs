@@ -10,6 +10,56 @@ pub const GAS_CANCEL_ACTIVA_UTXO_MANAGMENT_CALL_BACK: Gas = Gas::from_tgas(100);
 pub const GAS_ACTIVA_UTXO_MANAGMENT_CALL_BACK: Gas = Gas::from_tgas(100);
 pub const GAS_FOR_ACTIVE_UTXO_MANAGMENT_CALLBACK: Gas = Gas::from_tgas(100);
 
+macro_rules! define_rbf_callback {
+    ($method:ident, $internal_fn:ident) => {
+        #[near]
+        impl Contract {
+            #[private]
+            pub fn $method(
+                &mut self,
+                account_id: AccountId,
+                original_btc_pending_verify_id: String,
+                output: Vec<TxOut>,
+                #[callback_unwrap] last_block_height: u32,
+            ) {
+                let expiry_height = last_block_height + self.get_config().expiry_height_gap;
+
+                let original_tx_btc_pending_info =
+                    self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
+
+                let new_psbt = self.generate_psbt_from_original_psbt_and_new_output(
+                    original_tx_btc_pending_info,
+                    output,
+                    expiry_height,
+                );
+
+                let btc_pending_id =
+                    self.$internal_fn(&account_id, original_btc_pending_verify_id, new_psbt);
+
+                self.internal_unwrap_mut_account(&account_id)
+                    .btc_pending_sign_id = Some(btc_pending_id.clone());
+
+                Event::GenerateBtcPendingInfo {
+                    account_id: &account_id,
+                    btc_pending_id: &btc_pending_id,
+                }
+                .emit();
+            }
+        }
+    };
+}
+
+define_rbf_callback!(withdraw_rbf_callback, internal_withdraw_rbf);
+define_rbf_callback!(cancel_withdraw_callback, internal_cancel_withdraw);
+define_rbf_callback!(
+    active_utxo_managment_callback,
+    internal_active_utxo_management_rbf
+);
+define_rbf_callback!(
+    cancel_active_utxo_managment_callback,
+    internal_cancel_active_utxo_management
+);
+
 #[near]
 impl Contract {
     #[private]
@@ -30,67 +80,6 @@ impl Contract {
     }
 
     #[private]
-    pub fn withdraw_rbf_callback(
-        &mut self,
-        account_id: AccountId,
-        original_btc_pending_verify_id: String,
-        output: Vec<TxOut>,
-        #[callback_unwrap] last_block_height: u32,
-    ) {
-        let expiry_height = last_block_height + self.get_config().expiry_height_gap;
-        let original_tx_btc_pending_info =
-            self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
-        let withdraw_rbf_psbt = self.generate_psbt_from_original_psbt_and_new_output(
-            original_tx_btc_pending_info,
-            output,
-            expiry_height,
-        );
-
-        let btc_pending_id = self.internal_withdraw_rbf(
-            &account_id,
-            original_btc_pending_verify_id,
-            withdraw_rbf_psbt,
-        );
-        self.internal_unwrap_mut_account(&account_id)
-            .btc_pending_sign_id = Some(btc_pending_id.clone());
-        Event::GenerateBtcPendingInfo {
-            account_id: &account_id,
-            btc_pending_id: &btc_pending_id,
-        }
-        .emit();
-    }
-
-    #[private]
-    pub fn cancel_withdraw_callback(
-        &mut self,
-        user_account_id: AccountId,
-        original_btc_pending_verify_id: String,
-        output: Vec<TxOut>,
-        #[callback_unwrap] last_block_height: u32,
-    ) {
-        let expiry_height = last_block_height + self.get_config().expiry_height_gap;
-
-        let original_tx_btc_pending_info =
-            self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
-        let cancel_withdraw_rbf_psbt = self.generate_psbt_from_original_psbt_and_new_output(
-            original_tx_btc_pending_info,
-            output,
-            expiry_height,
-        );
-
-        let btc_pending_id =
-            self.internal_cancel_withdraw(original_btc_pending_verify_id, cancel_withdraw_rbf_psbt);
-
-        self.internal_unwrap_mut_account(&user_account_id)
-            .btc_pending_sign_id = Some(btc_pending_id.clone());
-        Event::GenerateBtcPendingInfo {
-            account_id: &user_account_id,
-            btc_pending_id: &btc_pending_id,
-        }
-        .emit();
-    }
-
-    #[private]
     pub fn active_utxo_management_callback(
         &mut self,
         account_id: AccountId,
@@ -103,69 +92,6 @@ impl Contract {
         let mut psbt = PsbtWrapper::new(input, output, expiry_height);
 
         self.create_active_utxo_management_pending_info(account_id, &mut psbt);
-    }
-
-    #[private]
-    pub fn active_utxo_managment_callback(
-        &mut self,
-        account_id: AccountId,
-        original_btc_pending_verify_id: String,
-        output: Vec<TxOut>,
-        #[callback_unwrap] last_block_height: u32,
-    ) {
-        let expiry_height = last_block_height + self.get_config().expiry_height_gap;
-        let original_tx_btc_pending_info =
-            self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
-        let active_utxo_management_rbf_psbt = self.generate_psbt_from_original_psbt_and_new_output(
-            original_tx_btc_pending_info,
-            output,
-            expiry_height,
-        );
-
-        let btc_pending_id = self.internal_active_utxo_management_rbf(
-            &account_id,
-            original_btc_pending_verify_id,
-            active_utxo_management_rbf_psbt,
-        );
-
-        self.internal_unwrap_mut_account(&account_id)
-            .btc_pending_sign_id = Some(btc_pending_id.clone());
-        Event::GenerateBtcPendingInfo {
-            account_id: &account_id,
-            btc_pending_id: &btc_pending_id,
-        }
-        .emit();
-    }
-
-    #[private]
-    pub fn cancel_active_utxo_managment_callback(
-        &mut self,
-        user_account_id: AccountId,
-        original_btc_pending_verify_id: String,
-        output: Vec<TxOut>,
-        #[callback_unwrap] last_block_height: u32,
-    ) {
-        let expiry_height = last_block_height + self.get_config().expiry_height_gap;
-        let original_tx_btc_pending_info =
-            self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
-        let cancel_active_utxo_management_rbf_psbt = self
-            .generate_psbt_from_original_psbt_and_new_output(
-                original_tx_btc_pending_info,
-                output,
-                expiry_height,
-            );
-
-        let btc_pending_id = self.internal_cancel_active_utxo_management(
-            original_btc_pending_verify_id,
-            cancel_active_utxo_management_rbf_psbt,
-        );
-        self.internal_unwrap_mut_account(&user_account_id)
-            .btc_pending_sign_id = Some(btc_pending_id.clone());
-        Event::GenerateBtcPendingInfo {
-            account_id: &user_account_id,
-            btc_pending_id: &btc_pending_id,
-        }
-        .emit();
     }
 }
 

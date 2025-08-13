@@ -18,6 +18,7 @@ impl Contract {
 
     pub fn internal_cancel_active_utxo_management(
         &mut self,
+        _account_id: &AccountId,
         original_btc_pending_verify_id: String,
         cancel_active_utxo_management_rbf_psbt: PsbtWrapper,
     ) -> String {
