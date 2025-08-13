@@ -1,4 +1,4 @@
-use crate::network::Chain::BitcoinTestnet;
+use crate::network::Chain::{BitcoinTestnet, ZcashTestnet};
 use crate::*;
 use near_sdk::test_utils::VMContextBuilder;
 pub use near_sdk::testing_env;
@@ -35,7 +35,10 @@ pub fn btc_light_client_id() -> AccountId {
 
 pub fn init_contract() -> Contract {
     Contract::new(Config {
+        #[cfg(not(feature = "zcash"))]
         chain: BitcoinTestnet,
+        #[cfg(feature = "zcash")]
+        chain: ZcashTestnet,
         chain_signatures_account_id: chain_signatures_id(),
         nbtc_account_id: nbtc_id(),
         btc_light_client_account_id: btc_light_client_id(),
