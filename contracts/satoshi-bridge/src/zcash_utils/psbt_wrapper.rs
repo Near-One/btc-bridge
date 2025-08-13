@@ -16,9 +16,9 @@ use zcash_transparent::sighash::SighashType;
 
 pub struct PsbtWrapper {
     expiry_height: u32,
-    pub vin: Vec<zcash_transparent::bundle::TxIn<Authorized>>,
-    pub vout: Vec<zcash_transparent::bundle::TxOut>,
-    pub inputs_utxo: Vec<zcash_transparent::bundle::TxOut>,
+    vin: Vec<zcash_transparent::bundle::TxIn<Authorized>>,
+    vout: Vec<zcash_transparent::bundle::TxOut>,
+    inputs_utxo: Vec<zcash_transparent::bundle::TxOut>,
 }
 
 impl PsbtWrapper {
