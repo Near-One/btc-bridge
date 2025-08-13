@@ -238,8 +238,8 @@ impl fmt::Display for Address {
                 base58::encode_check_to_fmt(fmt, &prefixed[..])
             }
             Segwit { program, chain } => {
-                let hrp = Hrp::parse(get_segwit_hrp(chain).ok_or(fmt::Error)?)
-                    .map_err(|_| fmt::Error)?;
+                let hrp =
+                    Hrp::parse(get_segwit_hrp(chain).ok_or(fmt::Error)?).map_err(|_| fmt::Error)?;
                 let version = program.version().to_fe();
                 let program = program.program().as_ref();
 
