@@ -1,3 +1,4 @@
+use crate::network;
 use bitcoin::consensus::{Decodable, Encodable};
 use bitcoin::{absolute, Transaction as BtcTransaction, TxOut, Txid};
 
@@ -25,7 +26,10 @@ impl Transaction {
         Ok(buf)
     }
 
-    pub fn decode(data: &[u8]) -> Result<Self, bitcoin::consensus::encode::Error> {
+    pub fn decode(
+        data: &[u8],
+        _chain: &network::Chain,
+    ) -> Result<Self, bitcoin::consensus::encode::Error> {
         let mut cursor = bitcoin::io::Cursor::new(data);
         let tx = BtcTransaction::consensus_decode(&mut cursor)?;
         Ok(Self { inner_tx: tx })

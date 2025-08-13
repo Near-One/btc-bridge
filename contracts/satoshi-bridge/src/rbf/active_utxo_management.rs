@@ -7,7 +7,8 @@ impl Contract {
         original_tx_btc_pending_info: &BTCPendingInfo,
         active_utxo_management_rbf_psbt: &PsbtWrapper,
     ) -> (u128, u128) {
-        let original_tx = original_tx_btc_pending_info.get_transaction();
+        let original_tx =
+            original_tx_btc_pending_info.get_transaction(&self.internal_config().chain);
         require!(
             original_tx.output().len() == active_utxo_management_rbf_psbt.get_output_num(),
             "Invalid output num"

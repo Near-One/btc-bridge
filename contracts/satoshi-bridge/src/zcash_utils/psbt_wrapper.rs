@@ -190,20 +190,25 @@ impl PsbtWrapper {
         }
     }
 
-    pub fn extract_tx_bytes_with_sign(&self) -> Vec<u8> {
-        self.get_zcash_tx().encode().unwrap()
+    pub fn extract_tx_bytes_with_sign(&self, chain: &network::Chain) -> Vec<u8> {
+        self.get_zcash_tx(chain).encode().unwrap()
     }
 
-    pub fn get_zcash_tx(&self) -> Transaction {
+    pub fn get_zcash_tx(&self, chain: &network::Chain) -> Transaction {
         let transparent_bundle = zcash_transparent::bundle::Bundle {
             vin: self.vin.clone(),
             vout: self.vout.clone(),
             authorization: zcash_transparent::bundle::Authorized,
         };
 
+        let branch_id = match chain {
+            network::Chain::ZcashTestnet => BranchId::Nu6_1,
+            _ => BranchId::Nu6,
+        };
+
         let inner_tx = TransactionData::from_parts(
             TxVersion::V5,
-            BranchId::Nu6,
+            branch_id,
             0,
             BlockHeight::from(self.expiry_height),
             Some(transparent_bundle),
@@ -217,18 +222,24 @@ impl PsbtWrapper {
         Transaction { inner_tx }
     }
 
-    pub fn get_pending_id(&self) -> String {
-        self.get_zcash_tx().compute_txid().to_string()
+    pub fn get_pending_id(&self, chain: &network::Chain) -> String {
+        self.get_zcash_tx(chain).compute_txid().to_string()
     }
 
     #[allow(unused_variables)]
-    pub fn get_hash_to_sign(&self, vin: usize, public_key: &bitcoin::PublicKey) -> [u8; 32] {
+    pub fn get_hash_to_sign(
+        &self,
+        vin: usize,
+        public_key: &bitcoin::PublicKey,
+        chain: &network::Chain,
+    ) -> [u8; 32] {
         let tx_data = WrappedTransaction::to_zcash_tx(
             &self.vin,
             &self.vout,
             &self.inputs_utxo,
             self.expiry_height,
             public_key,
+            chain,
         );
         let txid_parts = tx_data.digest(zcash_primitives::transaction::txid::TxIdDigester);
         let script = &self.inputs_utxo[vin].script_pubkey;

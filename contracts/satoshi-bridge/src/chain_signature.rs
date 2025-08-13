@@ -87,9 +87,11 @@ impl Contract {
             btc_pending_info.signatures[sign_index].is_none(),
             "Already signed"
         );
-        let payload = btc_pending_info
-            .get_psbt()
-            .get_hash_to_sign(sign_index, &public_key);
+        let payload = btc_pending_info.get_psbt().get_hash_to_sign(
+            sign_index,
+            &public_key,
+            &self.internal_config().chain,
+        );
         let path = btc_pending_info.vutxos[sign_index].get_path();
         self.sign_promise(SignRequest {
             payload,
@@ -144,6 +146,7 @@ impl Contract {
                         .get_path(),
                 )
                 .inner;
+            let chain_id = self.internal_config().chain.clone();
             let btc_pending_info = self.internal_unwrap_mut_btc_pending_info(&btc_pending_sign_id);
             require!(
                 btc_pending_info.signatures[sign_index].is_none(),
@@ -163,7 +166,7 @@ impl Contract {
 
             btc_pending_info.psbt_hex = psbt.serialize();
             if btc_pending_info.is_all_signed() {
-                let tx_bytes_with_sign = psbt.extract_tx_bytes_with_sign();
+                let tx_bytes_with_sign = psbt.extract_tx_bytes_with_sign(&chain_id);
                 Event::SignedBtcTransaction {
                     account_id: &account_id,
                     tx_id: btc_pending_sign_id.clone(),

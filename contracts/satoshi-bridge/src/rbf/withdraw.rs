@@ -9,7 +9,8 @@ impl Contract {
     ) -> (u128, u128) {
         let withdraw_change_address_script_pubkey =
             self.internal_config().get_change_script_pubkey();
-        let original_tx = original_tx_btc_pending_info.get_transaction();
+        let original_tx =
+            original_tx_btc_pending_info.get_transaction(&self.internal_config().chain);
         let target_address_script_pubkey = original_tx
             .output()
             .iter()

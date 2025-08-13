@@ -29,7 +29,7 @@ impl Contract {
         merkle_proof: Vec<String>,
     ) -> Promise {
         let path = get_deposit_path(&deposit_msg);
-        let transaction = bytes_to_btc_transaction(&tx_bytes);
+        let transaction = bytes_to_btc_transaction(&tx_bytes, &self.internal_config().chain);
         let deposit_amount = transaction.output()[vout].value.to_sat() as u128;
         require!(deposit_amount > 0, "Invalid deposit_amount");
         require!(
@@ -347,7 +347,7 @@ impl Contract {
 
         let need_signature_num = psbt.get_input_num();
         let psbt_hex = psbt.serialize();
-        let btc_pending_id = psbt.get_pending_id();
+        let btc_pending_id = psbt.get_pending_id(&self.internal_config().chain);
         let btc_pending_info = BTCPendingInfo {
             account_id: account_id.clone(),
             btc_pending_id: btc_pending_id.clone(),

@@ -1,3 +1,4 @@
+use crate::network;
 use bitcoin::hashes::Hash;
 use bitcoin::{absolute, ScriptBuf, TxOut, Txid};
 use zcash_primitives::consensus::{BlockHeight, BranchId};
@@ -40,9 +41,13 @@ impl Transaction {
         Ok(buf)
     }
 
-    pub fn decode(data: &[u8]) -> Result<Self, std::io::Error> {
+    pub fn decode(data: &[u8], chain: &network::Chain) -> Result<Self, std::io::Error> {
         let mut cursor = std::io::Cursor::new(data);
-        let tx = ZCashTransaction::read(&mut cursor, BranchId::Nu6)?;
+        let branch_id = match chain {
+            network::Chain::ZcashTestnet => BranchId::Nu6_1,
+            _ => BranchId::Nu6,
+        };
+        let tx = ZCashTransaction::read(&mut cursor, branch_id)?;
         Ok(Self { inner_tx: tx })
     }
 
@@ -79,6 +84,7 @@ impl Transaction {
         input: &Vec<zcash_transparent::bundle::TxOut>,
         expiry_height: u32,
         public_key: &bitcoin::PublicKey,
+        chain: &network::Chain,
     ) -> TransactionData<Unauthorized> {
         let transparent_bundle = Self::get_transparent_builder(vin, vout, input, public_key)
             .build()
@@ -86,9 +92,13 @@ impl Transaction {
 
         let lock_time = 0;
         let expiry_height = BlockHeight::from_u32(expiry_height);
+        let branch_id = match chain {
+            network::Chain::ZcashTestnet => BranchId::Nu6_1,
+            _ => BranchId::Nu6,
+        };
         let inner_tx = TransactionData::from_parts(
             TxVersion::V5,
-            BranchId::Nu6,
+            branch_id,
             lock_time,
             expiry_height,
             Some(transparent_bundle),
