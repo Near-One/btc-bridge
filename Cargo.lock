@@ -3722,10 +3722,9 @@ dependencies = [
  "near-sdk",
  "near-workspaces",
  "tokio",
- "zcash_address 0.9.0",
+ "zcash_address",
  "zcash_primitives",
- "zcash_protocol 0.5.4",
- "zcash_protocol 0.6.0",
+ "zcash_protocol",
  "zcash_transparent",
 ]
 
@@ -5150,20 +5149,6 @@ dependencies = [
 
 [[package]]
 name = "zcash_address"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c020e943fc2df6303d22b2bcbb3c0fd25f9d2419cbec508d13e66dcd77e354a6"
-dependencies = [
- "bech32",
- "bs58 0.5.1",
- "core2",
- "f4jumble",
- "zcash_encoding",
- "zcash_protocol 0.5.4",
-]
-
-[[package]]
-name = "zcash_address"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c984ae01367a4a3d20e9d34ae4e4cc0dca004b22d9a10a51eec43f43934612e"
@@ -5173,7 +5158,7 @@ dependencies = [
  "core2",
  "f4jumble",
  "zcash_encoding",
- "zcash_protocol 0.6.0",
+ "zcash_protocol",
 ]
 
 [[package]]
@@ -5201,9 +5186,9 @@ dependencies = [
 
 [[package]]
 name = "zcash_primitives"
-version = "0.23.1"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0ff99bb0d3aa7558bbaf51a3d4c072733afe364b45df9b3cc31118dcb644a51"
+checksum = "3a0c26140f2e6b760dcf052d22bd01f1a8773cdefb650ff5829430798a21b85b"
 dependencies = [
  "bip32",
  "blake2b_simd",
@@ -5231,10 +5216,10 @@ dependencies = [
  "sha2 0.10.9",
  "subtle",
  "tracing",
- "zcash_address 0.8.0",
+ "zcash_address",
  "zcash_encoding",
  "zcash_note_encryption",
- "zcash_protocol 0.5.4",
+ "zcash_protocol",
  "zcash_spec",
  "zcash_transparent",
  "zip32",
@@ -5242,21 +5227,9 @@ dependencies = [
 
 [[package]]
 name = "zcash_protocol"
-version = "0.5.4"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42344f5735237d6e0eedd3680f1c92f64e9c4144045d7b5c82f4867c2cbc0a02"
-dependencies = [
- "core2",
- "document-features",
- "hex",
- "memuse",
-]
-
-[[package]]
-name = "zcash_protocol"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1cab2d6871bcbe416318513118b41420d07e58cb912b78d6e7041b84d2f6c7ca"
+checksum = "f9cfe9e3fb08e6851efe3d0ced457e4cb2c305daa928f64cb0d70c040f8f8336"
 dependencies = [
  "core2",
  "document-features",
@@ -5275,9 +5248,9 @@ dependencies = [
 
 [[package]]
 name = "zcash_transparent"
-version = "0.3.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b1302cf726e88326c2c6e9bbd2634064bb344df7740e0b6bacf2245abd1eebe"
+checksum = "3a7c162a8aa6f708e842503ed5157032465dadfb1d7f63adf9db2d45213a0b11"
 dependencies = [
  "bip32",
  "blake2b_simd",
@@ -5290,9 +5263,9 @@ dependencies = [
  "secp256k1 0.29.1",
  "sha2 0.10.9",
  "subtle",
- "zcash_address 0.8.0",
+ "zcash_address",
  "zcash_encoding",
- "zcash_protocol 0.5.4",
+ "zcash_protocol",
  "zcash_spec",
  "zip32",
 ]
