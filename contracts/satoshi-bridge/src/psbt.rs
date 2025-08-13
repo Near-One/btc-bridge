@@ -234,7 +234,8 @@ impl Contract {
                 value: Amount::from_sat(v.get_amount()),
                 script_pubkey: self
                     .generate_utxo_chain_address(&v.get_path())
-                    .script_pubkey(),
+                    .script_pubkey()
+                    .expect("Invalid address"),
             })
             .collect();
 

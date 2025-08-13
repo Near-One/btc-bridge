@@ -149,6 +149,7 @@ impl Config {
         Address::parse(address_string, chain)
             .unwrap_or_else(|e| panic!("{address_string}: {e}"))
             .script_pubkey()
+            .expect("Failed to get script pubkey")
     }
 
     pub fn get_utxo_network(&self) -> network::Chain {

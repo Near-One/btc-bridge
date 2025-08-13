@@ -31,5 +31,6 @@ impl Contract {
     pub fn generate_utxo_chain_address(&self, path: &str) -> Address {
         let btc_public_key = self.generate_btc_public_key(path);
         Address::from_pubkey(self.internal_config().chain.clone(), btc_public_key)
+            .expect("Invalid public key")
     }
 }

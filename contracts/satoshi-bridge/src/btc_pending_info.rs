@@ -436,7 +436,7 @@ mod tests {
 
     pub fn generate_utxo_chain_address(path: &str) -> Address {
         let btc_public_key = generate_btc_public_key(path);
-        Address::from_pubkey(Chain::ZcashTestnet, btc_public_key)
+        Address::from_pubkey(Chain::ZcashTestnet, btc_public_key).unwrap()
     }
 
     #[test]
@@ -457,7 +457,7 @@ mod tests {
         let path = get_deposit_path(&deposit_msg);
         println!("{:?}", path);
         let deposit_address = generate_utxo_chain_address(&path);
-        let expected_script_pubkey = deposit_address.script_pubkey();
+        let expected_script_pubkey = deposit_address.script_pubkey().unwrap();
 
         println!("Deposit address: {:?}", deposit_address);
         println!("Deposit address: {:?}", deposit_address.to_string());

@@ -37,7 +37,9 @@ impl Contract {
             "Tx with a non-zero lock_time are not supported."
         );
         let deposit_address = self.generate_utxo_chain_address(&path);
-        let deposit_address_script_pubkey = deposit_address.script_pubkey();
+        let deposit_address_script_pubkey = deposit_address
+            .script_pubkey()
+            .expect("Invalid deposit address");
         require!(
             deposit_address_script_pubkey == transaction.output()[vout].script_pubkey,
             "Invalid deposit tx_bytes"

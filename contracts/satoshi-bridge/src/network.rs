@@ -42,21 +42,23 @@ pub enum Address {
 }
 
 impl zcash_address::TryFromAddress for Address {
-    type Error = &'static str;
+    type Error = String;
     fn try_from_transparent_p2pkh(
         net: zcash_protocol_06::consensus::NetworkType,
         data: [u8; 20],
-    ) -> Result<Self, zcash_address::ConversionError<Self::Error>> {
+    ) -> Result<Self, ConversionError<Self::Error>> {
         let chain = match net {
             zcash_protocol_06::consensus::NetworkType::Main => Chain::ZcashMainnet,
             zcash_protocol_06::consensus::NetworkType::Test => Chain::ZcashTestnet,
             zcash_protocol_06::consensus::NetworkType::Regtest => {
-                return Err("Regtest network not supported".into());
+                return Err("Regtest network not supported".to_string().into());
             }
         };
 
         Ok(Self::P2pkh {
-            hash: PubkeyHash::from_slice(&data[..]).unwrap(),
+            hash: PubkeyHash::from_slice(&data[..]).map_err(|e| {
+                ConversionError::<Self::Error>::from(format!("Invalid pubkey hash: {e}"))
+            })?,
             chain,
         })
     }
@@ -69,7 +71,7 @@ impl zcash_address::TryFromAddress for Address {
             zcash_protocol_06::consensus::NetworkType::Main => Chain::ZcashMainnet,
             zcash_protocol_06::consensus::NetworkType::Test => Chain::ZcashTestnet,
             zcash_protocol_06::consensus::NetworkType::Regtest => {
-                return Err("Regtest network not supported".into());
+                return Err("Regtest network not supported".to_string().into());
             }
         };
 
@@ -93,7 +95,9 @@ impl Address {
                 _ => unreachable!(),
             };
 
-            return Ok(addr.convert_if_network::<Self>(network).unwrap());
+            return Ok(addr
+                .convert_if_network::<Self>(network)
+                .map_err(|e| e.to_string())?);
         }
 
         if let Some(hrp) = get_segwit_hrp(&chain) {
@@ -106,8 +110,9 @@ impl Address {
 
                 let version =
                     WitnessVersion::try_from(witness_version).map_err(|err| format!("{err:?}"))?;
-                let program = WitnessProgram::new(version, &data)
-                    .expect("bech32 guarantees valid program length for witness");
+                let program = WitnessProgram::new(version, &data).map_err(|err| {
+                    format!("bech32 guarantees valid program length for witness: {err:?}")
+                })?;
 
                 return Ok(Address::Segwit { program, chain });
             }
@@ -134,47 +139,57 @@ impl Address {
     }
 
     /// Return the scriptPubKey corresponding to this address
-    pub fn script_pubkey(&self) -> bitcoin::ScriptBuf {
+    pub fn script_pubkey(&self) -> Result<bitcoin::ScriptBuf, String> {
         match self {
-            Address::P2pkh { hash, .. } => bitcoin::ScriptBuf::new_p2pkh(hash),
-            Address::P2sh { hash, .. } => bitcoin::ScriptBuf::new_p2sh(hash),
-            Address::Segwit { program, .. } => bitcoin::ScriptBuf::new_witness_program(program),
+            Address::P2pkh { hash, .. } => Ok(bitcoin::ScriptBuf::new_p2pkh(hash)),
+            Address::P2sh { hash, .. } => Ok(bitcoin::ScriptBuf::new_p2sh(hash)),
+            Address::Segwit { program, .. } => Ok(bitcoin::ScriptBuf::new_witness_program(program)),
             Address::Unified { address, .. } => {
                 let receiver_list = address.items_as_parsed();
                 for receiver in receiver_list {
                     match receiver {
                         Receiver::P2pkh(data) => {
-                            return bitcoin::ScriptBuf::new_p2pkh(
-                                &PubkeyHash::from_slice(&data[..]).unwrap(),
-                            )
+                            return Ok(bitcoin::ScriptBuf::new_p2pkh(
+                                &PubkeyHash::from_slice(&data[..]).map_err(|err| {
+                                    format!("Error on parsing Pubkey Hash: {err:?}").to_string()
+                                })?,
+                            ))
                         }
                         Receiver::P2sh(data) => {
-                            return bitcoin::ScriptBuf::new_p2sh(
-                                &ScriptHash::from_slice(&data[..]).unwrap(),
-                            )
+                            return Ok(bitcoin::ScriptBuf::new_p2sh(
+                                &ScriptHash::from_slice(&data[..]).map_err(|err| {
+                                    format!("Error on parsing Script Hash: {err:?}").to_string()
+                                })?,
+                            ))
                         }
                         _ => continue,
                     };
                 }
 
-                panic!("No receiver found in address")
+                Err("No receiver found in address".to_string())
             }
         }
     }
 
-    pub fn from_pubkey(chain: Chain, pubkey: bitcoin::PublicKey) -> Self {
+    pub fn from_pubkey(chain: Chain, pubkey: bitcoin::PublicKey) -> Result<Self, String> {
         let pubkey_hash = pubkey.pubkey_hash();
 
         if let Some(_hrp) = get_segwit_hrp(&chain) {
             // Chain supports Bech32 SegWit
-            let wp = WitnessProgram::p2wpkh(&pubkey.try_into().unwrap());
-            Address::Segwit { program: wp, chain }
+            let wp = WitnessProgram::p2wpkh(
+                &pubkey
+                    .try_into()
+                    .map_err(|e| format!("Error on converting pubkey to bytes: {e}"))?,
+            );
+            let wp = WitnessProgram::new(WitnessVersion::V0, &wp.program().as_bytes())
+                .map_err(|e| format!("bech32 guarantees valid program length for witness: {e}"))?;
+            Ok(Address::Segwit { program: wp, chain })
         } else {
             // Legacy P2PKH
-            Address::P2pkh {
+            Ok(Address::P2pkh {
                 hash: pubkey_hash,
                 chain,
-            }
+            })
         }
     }
 
@@ -192,9 +207,7 @@ impl Address {
         }
 
         if script.is_witness_program() {
-            let opcode = script
-                .first_opcode()
-                .expect("is_witness_program guarantees len > 4");
+            let opcode = script.first_opcode()?;
 
             let version = WitnessVersion::try_from(opcode).ok()?;
             let program = WitnessProgram::new(version, &script.as_bytes()[2..]).ok()?;
@@ -225,8 +238,8 @@ impl fmt::Display for Address {
                 base58::encode_check_to_fmt(fmt, &prefixed[..])
             }
             Segwit { program, chain } => {
-                let hrp = Hrp::parse(get_segwit_hrp(chain).expect("Unsupported chain"))
-                    .expect("Invalid HRP");
+                let hrp = Hrp::parse(get_segwit_hrp(chain).ok_or(fmt::Error)?)
+                    .map_err(|_| fmt::Error)?;
                 let version = program.version().to_fe();
                 let program = program.program().as_ref();
 
@@ -363,7 +376,7 @@ mod tests {
             ("njyMWWyh1L7tSX6QkWRgetMVCVyVtfoDta", Chain::DogecoinTestnet),
         ] {
             let parse_address = Address::parse(address, chain.clone()).unwrap();
-            let script_pubkey = parse_address.script_pubkey();
+            let script_pubkey = parse_address.script_pubkey().unwrap();
             let address_from_script = Address::from_script(&script_pubkey, chain).unwrap();
             let display_address = address_from_script.to_string();
             assert_eq!(display_address, address);
@@ -383,8 +396,8 @@ mod tests {
             Chain::DogecoinTestnet,
         ] {
             let btc_public_key = generate_btc_public_key("path");
-            let address = Address::from_pubkey(chain.clone(), btc_public_key);
-            let script_pubkey = address.script_pubkey();
+            let address = Address::from_pubkey(chain.clone(), btc_public_key).unwrap();
+            let script_pubkey = address.script_pubkey().unwrap();
             let address_from_script = Address::from_script(&script_pubkey, chain.clone()).unwrap();
             assert_eq!(address, address_from_script);
             let address_from_str = Address::parse(&address_from_script.to_string(), chain).unwrap();
