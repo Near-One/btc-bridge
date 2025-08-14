@@ -129,6 +129,8 @@ impl PsbtWrapper {
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::<u8>::new();
+        let version: u8 = 1;
+        buf.push(version);
         buf.write_all(&self.expiry_height.to_le_bytes()).unwrap();
 
         let len = self.vin.len() as u64;
@@ -161,7 +163,7 @@ impl PsbtWrapper {
     pub fn deserialize(psbt_hex: &String) -> Self {
         let bytes = hex::decode(&psbt_hex).unwrap();
         let mut rdr = Cursor::new(bytes);
-
+        let _version = read_u8(&mut rdr).unwrap();
         let expiry_height = read_u32_le(&mut rdr).unwrap();
 
         let vin_len = read_u64_le(&mut rdr).unwrap() as usize;
@@ -292,6 +294,12 @@ fn read_u32_le<R: Read>(r: &mut R) -> io::Result<u32> {
     let mut b = [0u8; 4];
     r.read_exact(&mut b)?;
     Ok(u32::from_le_bytes(b))
+}
+
+fn read_u8<R: Read>(r: &mut R) -> io::Result<u8> {
+    let mut b = [0u8; 1];
+    r.read_exact(&mut b)?;
+    Ok(b[0])
 }
 
 fn read_u64_le<R: Read>(r: &mut R) -> io::Result<u64> {
