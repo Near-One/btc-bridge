@@ -116,11 +116,11 @@ impl PsbtWrapper {
         }
     }
 
-    pub fn extract_tx_bytes_with_sign(&self) -> Vec<u8> {
+    pub fn extract_tx_bytes_with_sign(&self, _chain: &network::Chain) -> Vec<u8> {
         serialize(&self.psbt.clone().extract_tx().expect("extract_tx failed"))
     }
 
-    pub fn get_pending_id(&self) -> String {
+    pub fn get_pending_id(&self, _chain: &network::Chain) -> String {
         self.psbt
             .clone()
             .extract_tx()
