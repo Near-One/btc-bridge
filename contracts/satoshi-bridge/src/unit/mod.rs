@@ -68,6 +68,7 @@ pub fn init_contract() -> Contract {
         max_btc_tx_pending_sec: 3600 * 24,
         chain_signatures_root_public_key: None,
         change_address: None,
+        unhealthy_utxo_amount: 1000,
     })
 }
 

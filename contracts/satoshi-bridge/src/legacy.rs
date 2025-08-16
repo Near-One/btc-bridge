@@ -177,6 +177,7 @@ impl From<ConfigV0> for Config {
             passive_management_upper_limit,
             rbf_num_limit,
             max_btc_tx_pending_sec,
+            unhealthy_utxo_amount: 1000,
         }
     }
 }
