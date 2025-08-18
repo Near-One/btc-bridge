@@ -12,13 +12,15 @@ use zcash_primitives::transaction::{TransactionData, TxVersion};
 use zcash_protocol::consensus::{BlockHeight, BranchId};
 use zcash_protocol::value::Zatoshis;
 use zcash_transparent::bundle::Authorized;
+use zcash_transparent::bundle::TxIn as ZcashTxIn;
+use zcash_transparent::bundle::TxOut as ZcashTxOut;
 use zcash_transparent::sighash::SighashType;
 
 pub struct PsbtWrapper {
     expiry_height: u32,
-    vin: Vec<zcash_transparent::bundle::TxIn<Authorized>>,
-    vout: Vec<zcash_transparent::bundle::TxOut>,
-    inputs_utxo: Vec<zcash_transparent::bundle::TxOut>,
+    vin: Vec<ZcashTxIn<Authorized>>,
+    vout: Vec<ZcashTxOut>,
+    inputs_utxo: Vec<ZcashTxOut>,
 }
 
 impl PsbtWrapper {
@@ -30,15 +32,15 @@ impl PsbtWrapper {
         let vout = output
             .clone()
             .into_iter()
-            .map(|o| zcash_transparent::bundle::TxOut {
+            .map(|o| ZcashTxOut {
                 value: Zatoshis::from_u64(o.value.to_sat()).unwrap(),
                 script_pubkey: zcash_primitives::legacy::Script(o.script_pubkey.to_bytes()),
             })
             .collect();
 
-        let vin: Vec<zcash_transparent::bundle::TxIn<Authorized>> = input
+        let vin: Vec<ZcashTxIn<Authorized>> = input
             .into_iter()
-            .map(|i| zcash_transparent::bundle::TxIn {
+            .map(|i| ZcashTxIn {
                 prevout: zcash_transparent::bundle::OutPoint::new(*i.txid.as_byte_array(), i.vout),
                 script_sig: zcash_primitives::legacy::Script::default(),
                 sequence: sequence.0,
@@ -46,7 +48,7 @@ impl PsbtWrapper {
             .collect();
 
         let inputs = vec![
-            zcash_transparent::bundle::TxOut {
+            ZcashTxOut {
                 value: Zatoshis::from_u64(0).unwrap(),
                 script_pubkey: zcash_primitives::legacy::Script::default(),
             };
@@ -72,7 +74,7 @@ impl PsbtWrapper {
             output
                 .clone()
                 .into_iter()
-                .map(|o| zcash_transparent::bundle::TxOut {
+                .map(|o| ZcashTxOut {
                     value: Zatoshis::from_u64(o.value.to_sat()).unwrap(),
                     script_pubkey: zcash_primitives::legacy::Script(o.script_pubkey.to_bytes()),
                 })
@@ -89,7 +91,7 @@ impl PsbtWrapper {
 
     pub fn set_input_utxo(&mut self, input_utxo: Vec<TxOut>) {
         input_utxo.iter().enumerate().for_each(|(i, v)| {
-            self.inputs_utxo[i] = zcash_transparent::bundle::TxOut {
+            self.inputs_utxo[i] = ZcashTxOut {
                 value: Zatoshis::from_u64(v.value.to_sat()).unwrap(),
                 script_pubkey: zcash_primitives::legacy::Script(v.script_pubkey.to_bytes()),
             }
@@ -169,19 +171,19 @@ impl PsbtWrapper {
         let vin_len = read_u64_le(&mut rdr).unwrap() as usize;
         let mut vin = Vec::with_capacity(vin_len);
         for _ in 0..vin_len {
-            vin.push(zcash_transparent::bundle::TxIn::<Authorized>::read(&mut rdr).unwrap());
+            vin.push(ZcashTxIn::<Authorized>::read(&mut rdr).unwrap());
         }
 
         let vout_len = read_u64_le(&mut rdr).unwrap() as usize;
         let mut vout = Vec::with_capacity(vout_len);
         for _ in 0..vout_len {
-            vout.push(zcash_transparent::bundle::TxOut::read(&mut rdr).unwrap());
+            vout.push(ZcashTxOut::read(&mut rdr).unwrap());
         }
 
         let inputs_len = read_u64_le(&mut rdr).unwrap() as usize;
         let mut inputs = Vec::with_capacity(inputs_len);
         for _ in 0..inputs_len {
-            inputs.push(zcash_transparent::bundle::TxOut::read(&mut rdr).unwrap());
+            inputs.push(ZcashTxOut::read(&mut rdr).unwrap());
         }
 
         Self {
