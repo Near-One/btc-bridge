@@ -13,9 +13,6 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.7.0
-
       - name: Clone the repository
         uses: actions/checkout@v3
 
