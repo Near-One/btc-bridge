@@ -1,4 +1,7 @@
-use crate::network::Chain::{BitcoinTestnet, ZcashTestnet};
+#[cfg(not(feature = "zcash"))]
+use crate::network::Chain::BitcoinTestnet;
+#[cfg(feature = "zcash")]
+use crate::network::Chain::ZcashTestnet;
 use crate::*;
 use near_sdk::test_utils::VMContextBuilder;
 pub use near_sdk::testing_env;

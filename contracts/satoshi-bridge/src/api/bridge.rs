@@ -29,7 +29,8 @@ impl Contract {
         merkle_proof: Vec<String>,
     ) -> Promise {
         let path = get_deposit_path(&deposit_msg);
-        let transaction = bytes_to_btc_transaction(&tx_bytes, &self.internal_config().chain);
+        let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
+            .expect("Deserialization tx_bytes failed");
         let deposit_amount = transaction.output()[vout].value.to_sat() as u128;
         require!(deposit_amount > 0, "Invalid deposit_amount");
         require!(

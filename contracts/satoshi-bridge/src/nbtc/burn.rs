@@ -74,7 +74,8 @@ impl Contract {
         };
         if is_success {
             let tx_bytes = btc_pending_info.tx_bytes_with_sign.as_ref().unwrap();
-            let transaction = bytes_to_btc_transaction(tx_bytes, &self.internal_config().chain);
+            let transaction = WrappedTransaction::decode(tx_bytes, &self.internal_config().chain)
+                .expect("Deserialization tx_bytes failed");
             let withdraw_change_script_pubkey = config.get_change_script_pubkey();
             let mut utxo_storage_keys = vec![];
             for (index, output) in transaction.output().into_iter().enumerate() {
@@ -151,7 +152,8 @@ impl Contract {
         };
         if is_success {
             let tx_bytes = btc_pending_info.tx_bytes_with_sign.as_ref().unwrap();
-            let transaction = bytes_to_btc_transaction(tx_bytes, &self.internal_config().chain);
+            let transaction = WrappedTransaction::decode(tx_bytes, &self.internal_config().chain)
+                .expect("Deserialization tx_bytes failed");
             let config = self.internal_config();
             let withdraw_change_script_pubkey = config.get_change_script_pubkey();
             let mut utxo_storage_keys = vec![];
