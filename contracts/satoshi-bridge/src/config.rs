@@ -108,6 +108,8 @@ pub struct Config {
     pub unhealthy_utxo_amount: u64,
     #[cfg(feature = "zcash")]
     pub expiry_height_gap: u32,
+    #[cfg(feature = "zcash")]
+    pub nu6_1_block_height: Option<u32>,
 }
 
 impl Config {

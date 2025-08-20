@@ -15,7 +15,7 @@ impl Contract {
         is_cancel: bool,
     ) -> String {
         let rbf_psbt_hex = psbt.serialize();
-        let btc_pending_id = psbt.get_pending_id(&self.internal_config().chain);
+        let btc_pending_id = psbt.get_pending_id();
         btc_pending_info.btc_pending_id.clone_from(&btc_pending_id);
         btc_pending_info.psbt_hex = rbf_psbt_hex;
         require!(

@@ -95,7 +95,7 @@ impl Contract {
         #[callback_unwrap] last_block_height: u32,
     ) -> U128 {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
-        let mut psbt = PsbtWrapper::new(input, output, expiry_height);
+        let mut psbt = PsbtWrapper::new(input, output, expiry_height, &self.internal_config());
         self.create_btc_pending_info(sender_id, amount, target_btc_address, &mut psbt);
 
         U128(0)
@@ -111,7 +111,7 @@ impl Contract {
     ) {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
 
-        let mut psbt = PsbtWrapper::new(input, output, expiry_height);
+        let mut psbt = PsbtWrapper::new(input, output, expiry_height, &self.internal_config());
 
         self.create_active_utxo_management_pending_info(account_id, &mut psbt);
     }
@@ -173,6 +173,11 @@ impl Contract {
         expiry_height: u32,
     ) -> PsbtWrapper {
         let original_psbt = original_tx_btc_pending_info.get_psbt();
-        PsbtWrapper::from_original_psbt(original_psbt, output, expiry_height)
+        PsbtWrapper::from_original_psbt(
+            original_psbt,
+            output,
+            expiry_height,
+            &self.internal_config(),
+        )
     }
 }

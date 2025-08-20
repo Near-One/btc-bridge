@@ -17,6 +17,7 @@ use zcash_transparent::bundle::TxOut as ZcashTxOut;
 use zcash_transparent::sighash::SighashType;
 
 pub struct PsbtWrapper {
+    branch_id: BranchId,
     expiry_height: u32,
     vin: Vec<ZcashTxIn<Authorized>>,
     vout: Vec<ZcashTxOut>,
@@ -24,7 +25,12 @@ pub struct PsbtWrapper {
 }
 
 impl PsbtWrapper {
-    pub fn new(input: Vec<OutPoint>, output: Vec<TxOut>, expiry_height: u32) -> Self {
+    pub fn new(
+        input: Vec<OutPoint>,
+        output: Vec<TxOut>,
+        expiry_height: u32,
+        config: &Config,
+    ) -> Self {
         require!(!input.is_empty(), "empty input");
         require!(!output.is_empty(), "empty output");
 
@@ -56,6 +62,7 @@ impl PsbtWrapper {
         ];
 
         Self {
+            branch_id: get_branch_id(expiry_height, config),
             expiry_height,
             vout,
             vin,
@@ -67,6 +74,7 @@ impl PsbtWrapper {
         original_psbt: PsbtWrapper,
         output: Vec<TxOut>,
         expiry_height: u32,
+        config: &Config,
     ) -> Self {
         let vout = if output.is_empty() {
             original_psbt.vout.clone()
@@ -82,6 +90,7 @@ impl PsbtWrapper {
         };
 
         Self {
+            branch_id: get_branch_id(expiry_height, config),
             expiry_height,
             vin: original_psbt.vin,
             vout,
@@ -131,8 +140,13 @@ impl PsbtWrapper {
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::<u8>::new();
-        let version: u8 = 1;
+        let version: u8 = 2;
         buf.push(version);
+        match self.branch_id {
+            BranchId::Nu6 => buf.write_all(&[7u8; 1]).unwrap(),
+            BranchId::Nu6_1 => buf.write_all(&[8u8; 1]).unwrap(),
+            _ => unreachable!(),
+        }
         buf.write_all(&self.expiry_height.to_le_bytes()).unwrap();
 
         let len = self.vin.len() as u64;
@@ -165,7 +179,18 @@ impl PsbtWrapper {
     pub fn deserialize(psbt_hex: &String) -> Self {
         let bytes = hex::decode(&psbt_hex).unwrap();
         let mut rdr = Cursor::new(bytes);
-        let _version = read_u8(&mut rdr).unwrap();
+        let version = read_u8(&mut rdr).unwrap();
+        let branch_id = if version == 2 {
+            let branch_id_u8 = read_u8(&mut rdr).unwrap();
+            match branch_id_u8 {
+                7 => BranchId::Nu6,
+                8 => BranchId::Nu6_1,
+                _ => unreachable!(),
+            }
+        } else {
+            BranchId::Nu6_1
+        };
+
         let expiry_height = read_u32_le(&mut rdr).unwrap();
 
         let vin_len = read_u64_le(&mut rdr).unwrap() as usize;
@@ -187,6 +212,7 @@ impl PsbtWrapper {
         }
 
         Self {
+            branch_id,
             expiry_height,
             vin,
             vout,
@@ -194,25 +220,20 @@ impl PsbtWrapper {
         }
     }
 
-    pub fn extract_tx_bytes_with_sign(&self, chain: &network::Chain) -> Vec<u8> {
-        self.get_zcash_tx(chain).encode().unwrap()
+    pub fn extract_tx_bytes_with_sign(&self) -> Vec<u8> {
+        self.get_zcash_tx().encode().unwrap()
     }
 
-    pub fn get_zcash_tx(&self, chain: &network::Chain) -> Transaction {
+    pub fn get_zcash_tx(&self) -> Transaction {
         let transparent_bundle = zcash_transparent::bundle::Bundle {
             vin: self.vin.clone(),
             vout: self.vout.clone(),
             authorization: zcash_transparent::bundle::Authorized,
         };
 
-        let branch_id = match chain {
-            network::Chain::ZcashTestnet => BranchId::Nu6_1,
-            _ => BranchId::Nu6,
-        };
-
         let inner_tx = TransactionData::from_parts(
             TxVersion::V5,
-            branch_id,
+            self.branch_id,
             0,
             BlockHeight::from(self.expiry_height),
             Some(transparent_bundle),
@@ -226,24 +247,19 @@ impl PsbtWrapper {
         Transaction { inner_tx }
     }
 
-    pub fn get_pending_id(&self, chain: &network::Chain) -> String {
-        self.get_zcash_tx(chain).compute_txid().to_string()
+    pub fn get_pending_id(&self) -> String {
+        self.get_zcash_tx().compute_txid().to_string()
     }
 
     #[allow(unused_variables)]
-    pub fn get_hash_to_sign(
-        &self,
-        vin: usize,
-        public_key: &bitcoin::PublicKey,
-        chain: &network::Chain,
-    ) -> [u8; 32] {
+    pub fn get_hash_to_sign(&self, vin: usize, public_key: &bitcoin::PublicKey) -> [u8; 32] {
         let tx_data = WrappedTransaction::to_zcash_tx(
             &self.vin,
             &self.vout,
             &self.inputs_utxo,
             self.expiry_height,
             public_key,
-            chain,
+            self.branch_id,
         );
         let txid_parts = tx_data.digest(zcash_primitives::transaction::txid::TxIdDigester);
         let script = &self.inputs_utxo[vin].script_pubkey;
@@ -289,6 +305,22 @@ impl PsbtWrapper {
                 0,
             )
             .unwrap()
+    }
+}
+
+fn get_branch_id(expiry_height: u32, config: &Config) -> BranchId {
+    let current_height = expiry_height - config.expiry_height_gap;
+    let nu6_1_block_height = config.nu6_1_block_height;
+
+    match nu6_1_block_height {
+        Some(nu6_1_block_height) => {
+            if current_height >= nu6_1_block_height {
+                BranchId::Nu6_1
+            } else {
+                BranchId::Nu6
+            }
+        }
+        None => BranchId::Nu6,
     }
 }
 

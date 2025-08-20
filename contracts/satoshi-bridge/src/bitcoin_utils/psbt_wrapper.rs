@@ -116,11 +116,11 @@ impl PsbtWrapper {
         }
     }
 
-    pub fn extract_tx_bytes_with_sign(&self, _chain: &network::Chain) -> Vec<u8> {
+    pub fn extract_tx_bytes_with_sign(&self) -> Vec<u8> {
         serialize(&self.psbt.clone().extract_tx().expect("extract_tx failed"))
     }
 
-    pub fn get_pending_id(&self, _chain: &network::Chain) -> String {
+    pub fn get_pending_id(&self) -> String {
         self.psbt
             .clone()
             .extract_tx()
@@ -130,12 +130,7 @@ impl PsbtWrapper {
     }
 
     #[allow(unused_variables)]
-    pub fn get_hash_to_sign(
-        &self,
-        vin: usize,
-        public_key: &bitcoin::PublicKey,
-        _chain: &network::Chain,
-    ) -> [u8; 32] {
+    pub fn get_hash_to_sign(&self, vin: usize, public_key: &bitcoin::PublicKey) -> [u8; 32] {
         let tx = self.psbt.unsigned_tx.clone();
         let mut cache = SighashCache::new(tx);
         cache

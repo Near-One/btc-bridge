@@ -335,6 +335,12 @@ impl Contract {
         self.internal_mut_config().min_withdraw_amount = min_withdraw_amount.into();
     }
 
+    #[cfg(feature = "zcash")]
+    #[access_control_any(roles(Role::DAO))]
+    pub fn set_nu6_1_block_height(&mut self, nu6_1_block_height: Option<u32>) {
+        self.internal_mut_config().nu6_1_block_height = nu6_1_block_height;
+    }
+
     #[payable]
     #[access_control_any(roles(Role::DAO))]
     pub fn set_change_amount_range(&mut self, min_change_amount: U128, max_change_amount: U128) {

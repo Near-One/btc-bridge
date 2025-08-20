@@ -84,7 +84,7 @@ impl Transaction {
         input: &Vec<zcash_transparent::bundle::TxOut>,
         expiry_height: u32,
         public_key: &bitcoin::PublicKey,
-        chain: &network::Chain,
+        branch_id: BranchId,
     ) -> TransactionData<Unauthorized> {
         let transparent_bundle = Self::get_transparent_builder(vin, vout, input, public_key)
             .build()
@@ -92,10 +92,7 @@ impl Transaction {
 
         let lock_time = 0;
         let expiry_height = BlockHeight::from_u32(expiry_height);
-        let branch_id = match chain {
-            network::Chain::ZcashTestnet => BranchId::Nu6_1,
-            _ => BranchId::Nu6,
-        };
+
         let inner_tx = TransactionData::from_parts(
             TxVersion::V5,
             branch_id,
