@@ -154,7 +154,7 @@ impl Context {
         chain_signatures_contract
             .call("new")
             .args_json(json!({
-                "public_key": "secp256k1:4NfTiv3UsGahebgTaHyD9vF8KYKMBnfd6kh94mK6xv8fGBiJB8TBtFMP5WWXz6B89Ac1fbpzPwAvoyQebemHFwx3", 
+                "public_key": "secp256k1:4NfTiv3UsGahebgTaHyD9vF8KYKMBnfd6kh94mK6xv8fGBiJB8TBtFMP5WWXz6B89Ac1fbpzPwAvoyQebemHFwx3",
             }))
             .transact()
             .await
@@ -164,6 +164,7 @@ impl Context {
         root.call(bridge_contract.id(), "new")
             .args_json(json!({
                 "config": {
+                    "chain": "BitcoinMainnet",
                     "chain_signatures_account_id": chain_signatures_contract.id(),
                     "nbtc_account_id": nbtc_contract.id(),
                     "btc_light_client_account_id": btc_light_client_contract.id(),
@@ -1087,6 +1088,7 @@ impl UpgradeContext {
         root.call(previous_satoshi_bridge_contract.id(), "new")
             .args_json(json!({
                 "config": {
+                    "chain": "BitcoinMainnet",
                     "chain_signatures_account_id": chain_signatures_contract.id(),
                     "nbtc_account_id": previous_nbtc_contract.id(),
                     "btc_light_client_account_id": btc_light_client_contract.id(),

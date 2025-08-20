@@ -401,6 +401,7 @@ pub fn generate_btc_pending_sign_id(payload_preimages: &[Vec<u8>]) -> String {
 }
 
 #[cfg(test)]
+#[cfg(feature = "zcash")]
 mod tests {
     use crate::network::{Address, Chain};
     use crate::{get_deposit_path, network, DepositMsg, WrappedTransaction};
