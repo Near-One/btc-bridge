@@ -112,7 +112,7 @@ pub struct Config {
 
 impl Config {
     pub fn assert_valid(&self) {
-        let confirmations_valid_range = 2..=10;
+        let confirmations_valid_range = 2..=100;
         require!(
             self.confirmations_strategy
                 .values()
