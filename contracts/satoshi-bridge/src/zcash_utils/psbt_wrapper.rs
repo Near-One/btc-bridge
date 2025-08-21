@@ -310,18 +310,7 @@ impl PsbtWrapper {
 
 fn get_branch_id(expiry_height: u32, config: &Config) -> BranchId {
     let current_height = expiry_height - config.expiry_height_gap;
-    let nu6_1_block_height = config.nu6_1_block_height;
-
-    match nu6_1_block_height {
-        Some(nu6_1_block_height) => {
-            if current_height >= nu6_1_block_height {
-                BranchId::Nu6_1
-            } else {
-                BranchId::Nu6
-            }
-        }
-        None => BranchId::Nu6,
-    }
+    return config.chain.get_branch_id(current_height);
 }
 
 fn read_u32_le<R: Read>(r: &mut R) -> io::Result<u32> {

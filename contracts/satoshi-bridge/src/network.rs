@@ -7,6 +7,8 @@ use zcash_address;
 use zcash_address::unified::{Container, Receiver};
 use zcash_address::{ConversionError, ToAddress, ZcashAddress};
 use zcash_protocol;
+#[cfg(feature = "zcash")]
+use zcash_protocol::consensus::BranchId;
 
 #[near(serializers = [borsh, json])]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -19,6 +21,35 @@ pub enum Chain {
     ZcashTestnet,
     DogecoinMainnet,
     DogecoinTestnet,
+}
+#[cfg(feature = "zcash")]
+pub struct BranchIdUpdateBlockHeight {
+    pub bu6_1_update: u32,
+}
+
+#[cfg(feature = "zcash")]
+impl BranchIdUpdateBlockHeight {
+    pub fn new(chain: &Chain) -> Self {
+        match chain {
+            Chain::ZcashMainnet => Self { bu6_1_update: 0 },
+            Chain::ZcashTestnet => Self {
+                bu6_1_update: 3536500,
+            },
+            _ => unreachable!(),
+        }
+    }
+}
+impl Chain {
+    #[cfg(feature = "zcash")]
+    pub fn get_branch_id(&self, block_height: u32) -> BranchId {
+        let block_height_update = BranchIdUpdateBlockHeight::new(self);
+        if block_height_update.bu6_1_update != 0 && block_height >= block_height_update.bu6_1_update
+        {
+            return BranchId::Nu6_1;
+        }
+
+        BranchId::Nu6
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
