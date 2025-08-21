@@ -226,7 +226,7 @@ impl Contract {
 
 impl Contract {
     pub fn generate_vutxos(&mut self, psbt: &mut PsbtWrapper) -> (Vec<String>, Vec<VUTXO>) {
-        let (utxo_storage_keys, vutxos) = self.remove_vutxo_by_psbt(&psbt);
+        let (utxo_storage_keys, vutxos) = self.remove_vutxo_by_psbt(psbt);
 
         let input_utxo = vutxos
             .iter()

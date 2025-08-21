@@ -338,7 +338,7 @@ impl Contract {
 
         let (utxo_storage_keys, vutxos) = self.generate_vutxos(psbt);
         let (actual_received_amount, gas_fee) =
-            self.check_active_management_psbt_valid(&psbt, &vutxos);
+            self.check_active_management_psbt_valid(psbt, &vutxos);
         require!(
             gas_fee <= self.data().cur_available_protocol_fee,
             "Insufficient protocol_fee"

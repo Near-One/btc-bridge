@@ -86,7 +86,7 @@ impl Contract {
         let (actual_received_amount, gas_fee) = self.check_withdraw_psbt_valid(
             &target_address_script_pubkey,
             &withdraw_change_address_script_pubkey,
-            &psbt,
+            psbt,
             &vutxos,
             amount,
             withdraw_fee,

@@ -2,7 +2,7 @@
 
 RFLAGS="-C link-arg=-s"
 
-build: lint satoshi-bridge zcash-bridgenbtc mock-chain-signatures mock-btc-light-client mock-dapp
+build: lint satoshi-bridge zcash-bridge nbtc mock-chain-signatures mock-btc-light-client mock-dapp
 
 lint:
 	@cargo fmt --all

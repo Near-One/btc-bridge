@@ -3,10 +3,8 @@ use bitcoin::hashes::Hash;
 use bitcoin::{base58, bech32, PubkeyHash, ScriptHash, WitnessProgram, WitnessVersion};
 use near_sdk::near;
 use std::fmt;
-use zcash_address;
 use zcash_address::unified::{Container, Receiver};
 use zcash_address::{ConversionError, ToAddress, ZcashAddress};
-use zcash_protocol;
 #[cfg(feature = "zcash")]
 use zcash_protocol::consensus::BranchId;
 
@@ -126,9 +124,9 @@ impl Address {
                 _ => unreachable!(),
             };
 
-            return Ok(addr
+            return addr
                 .convert_if_network::<Self>(network)
-                .map_err(|e| e.to_string())?);
+                .map_err(|e| e.to_string());
         }
 
         if let Some(hrp) = get_segwit_hrp(&chain) {
@@ -212,7 +210,7 @@ impl Address {
                     .try_into()
                     .map_err(|e| format!("Error on converting pubkey to bytes: {e}"))?,
             );
-            let wp = WitnessProgram::new(WitnessVersion::V0, &wp.program().as_bytes())
+            let wp = WitnessProgram::new(WitnessVersion::V0, wp.program().as_bytes())
                 .map_err(|e| format!("bech32 guarantees valid program length for witness: {e}"))?;
             Ok(Address::Segwit { program: wp, chain })
         } else {
