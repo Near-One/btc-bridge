@@ -88,15 +88,15 @@ impl Contract {
     pub fn ft_on_transfer_callback(
         &mut self,
         sender_id: AccountId,
-        amount: u128,
+        amount: U128,
         target_btc_address: String,
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
         #[callback_unwrap] last_block_height: u32,
     ) -> U128 {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
-        let mut psbt = PsbtWrapper::new(input, output, expiry_height, &self.internal_config());
-        self.create_btc_pending_info(sender_id, amount, target_btc_address, &mut psbt);
+        let mut psbt = PsbtWrapper::new(input, output, expiry_height, self.internal_config());
+        self.create_btc_pending_info(sender_id, amount.0, target_btc_address, &mut psbt);
 
         U128(0)
     }
@@ -111,7 +111,7 @@ impl Contract {
     ) {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
 
-        let mut psbt = PsbtWrapper::new(input, output, expiry_height, &self.internal_config());
+        let mut psbt = PsbtWrapper::new(input, output, expiry_height, self.internal_config());
 
         self.create_active_utxo_management_pending_info(account_id, &mut psbt);
     }
@@ -148,7 +148,13 @@ impl Contract {
             self.get_last_block_height_promise().then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_FT_ON_TRANSFER_CALL_BACK)
-                    .ft_on_transfer_callback(sender_id, amount, target_btc_address, input, output),
+                    .ft_on_transfer_callback(
+                        sender_id,
+                        amount.into(),
+                        target_btc_address,
+                        input,
+                        output,
+                    ),
             ),
         )
     }
@@ -177,7 +183,7 @@ impl Contract {
             original_psbt,
             output,
             expiry_height,
-            &self.internal_config(),
+            self.internal_config(),
         )
     }
 }
