@@ -64,6 +64,7 @@ impl From<ContractDataV0> for ContractData {
 #[near(serializers = [borsh])]
 #[derive(Clone)]
 pub struct ConfigV0 {
+    pub chain: network::Chain,
     // The account id of btc light client contract
     pub btc_light_client_account_id: AccountId,
     // The account id of nbtc contract
@@ -118,11 +119,14 @@ pub struct ConfigV0 {
     pub rbf_num_limit: u8,
     // If the transaction exceeds this configuration and has not been verified, the protocol will be allowed to cancel the transaction.
     pub max_btc_tx_pending_sec: u32,
+    #[cfg(feature = "zcash")]
+    pub expiry_height_gap: u32,
 }
 
 impl From<ConfigV0> for Config {
     fn from(c: ConfigV0) -> Self {
         let ConfigV0 {
+            chain,
             btc_light_client_account_id,
             nbtc_account_id,
             chain_signatures_account_id,
@@ -148,10 +152,12 @@ impl From<ConfigV0> for Config {
             passive_management_upper_limit,
             rbf_num_limit,
             max_btc_tx_pending_sec,
+            #[cfg(feature = "zcash")]
+            expiry_height_gap,
         } = c;
 
         Self {
-            chain: crate::network::Chain::BitcoinMainnet,
+            chain,
             btc_light_client_account_id,
             nbtc_account_id,
             chain_signatures_account_id,
@@ -180,7 +186,7 @@ impl From<ConfigV0> for Config {
             max_btc_tx_pending_sec,
             unhealthy_utxo_amount: 1000,
             #[cfg(feature = "zcash")]
-            expiry_height_gap: 1000,
+            expiry_height_gap,
         }
     }
 }
