@@ -92,11 +92,12 @@ impl Contract {
         target_btc_address: String,
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
+        max_gas_fee: Option<U128>,
         #[callback_unwrap] last_block_height: u32,
     ) -> U128 {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
         let mut psbt = PsbtWrapper::new(input, output, expiry_height, self.internal_config());
-        self.create_btc_pending_info(sender_id, amount.0, target_btc_address, &mut psbt);
+        self.create_btc_pending_info(sender_id, amount.0, target_btc_address, &mut psbt, max_gas_fee);
 
         U128(0)
     }
@@ -143,6 +144,7 @@ impl Contract {
         target_btc_address: String,
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
+        max_gas_fee: Option<U128>,
     ) -> PromiseOrValue<U128> {
         PromiseOrValue::Promise(
             self.get_last_block_height_promise().then(
@@ -154,6 +156,7 @@ impl Contract {
                         target_btc_address,
                         input,
                         output,
+                        max_gas_fee,
                     ),
             ),
         )
