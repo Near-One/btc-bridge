@@ -9,6 +9,7 @@ impl Contract {
         vutxos: &[VUTXO],
         amount: u128,
         withdraw_fee: u128,
+        max_gas_fee: Option<U128>,
     ) -> (u128, u128) {
         let config = self.internal_config();
         let utxo_num = self.data().utxos.len() + vutxos.len() as u32;
@@ -20,6 +21,10 @@ impl Contract {
             amount,
             withdraw_fee,
         );
+        
+        if let Some(max_gas_fee) = max_gas_fee {
+            require!(gas_fee <= max_gas_fee.0, format!("Gas fee does not match the provided max fee (gas fee = {}; max gas fee = {})", gas_fee, max_gas_fee.0));
+        }
 
         require!(
             change_num <= config.max_change_number as usize,

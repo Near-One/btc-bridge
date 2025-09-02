@@ -9,6 +9,7 @@ pub enum TokenReceiverMessage {
         target_btc_address: String,
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
+        max_gas_fee: Option<U128>,
     },
 }
 
@@ -47,6 +48,7 @@ impl FungibleTokenReceiver for Contract {
                 target_btc_address,
                 input,
                 output,
+                max_gas_fee,
             } => {
                 let (psbt, utxo_storage_keys, vutxos) =
                     self.generate_psbt_and_vutxos(input, output);
@@ -69,6 +71,7 @@ impl FungibleTokenReceiver for Contract {
                     &vutxos,
                     amount,
                     withdraw_fee,
+                    max_gas_fee
                 );
 
                 let need_signature_num = psbt.unsigned_tx.input.len();
