@@ -42,7 +42,7 @@ impl Contract {
                 .deposit_bridge_fee
                 .get_protocol_and_relayer_fee(deposit_fee);
 
-            let post_actions = self.check_deposit_msg(deposit_msg, mint_amount);
+            let post_actions = self.check_deposit_msg(deposit_msg, mint_amount, pending_utxo_info.tx_id.clone());
             promise.then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_VERIFY_DEPOSIT_CALL_BACK)

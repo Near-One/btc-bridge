@@ -40,8 +40,9 @@ impl Contract {
         &self,
         deposit_msg: DepositMsg,
         actual_mintable_amount: u128,
+        utxo_tx_id: String,
     ) -> Option<Vec<PostAction>> {
-        let post_actions = deposit_msg.post_actions?;
+        let mut post_actions = deposit_msg.post_actions?;
         if post_actions.is_empty() {
             Event::InvalidPostAction {
                 index: None,
@@ -65,7 +66,7 @@ impl Contract {
         }
         let mut total_gas = 0;
         let mut total_amount = 0;
-        for (index, post_action) in post_actions.iter().enumerate() {
+        for (index, post_action) in post_actions.iter_mut().enumerate() {
             total_amount += post_action.amount.0;
             // The receiver_id must be on the whitelist.
             if !self
@@ -88,21 +89,35 @@ impl Contract {
                 .post_action_msg_templates
                 .get(&post_action.receiver_id)
             {
-                let is_match =
+                let updated_post_action: Option<String> =
                     match serde_json::from_str::<Value>(&post_action.msg) {
-                        Ok(msg_value) => msg_templates.iter().any(|template| {
-                            match serde_json::from_str::<Value>(template) {
-                                Ok(template_value) => {
-                                    is_structure_equal(&template_value, &msg_value)
+                        Ok(msg_value) => {
+                            let mut res = None;
+                            for template in msg_templates {
+                                if let Ok(template_value) = serde_json::from_str::<Value>(template) { 
+                                    res = check_template_and_update_msg(&template_value, &msg_value, &utxo_tx_id);
+                                    if res.is_some() {
+                                        break;
+                                    }
                                 }
-                                Err(_) => false,
                             }
-                        }),
-                        Err(_) => msg_templates
-                            .iter()
-                            .any(|template| template == &post_action.msg),
+                            
+                            res.map(|x| x.to_string())
+                        },
+                        Err(_) => {
+                            if msg_templates
+                                .iter()
+                                .any(|template| template == &post_action.msg) {
+                                Some(post_action.msg.clone())
+                        } else {
+                                None
+                            }
+                    },
                     };
-                if !is_match {
+                
+                if let Some(updated_post_action) = updated_post_action {
+                    post_action.msg = updated_post_action;
+                } else {
                     Event::InvalidPostAction {
                         index: Some(index),
                         err_msg: "Unsupported post_action.msg.".to_string(),

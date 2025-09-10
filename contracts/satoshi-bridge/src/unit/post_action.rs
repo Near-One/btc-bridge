@@ -550,55 +550,55 @@ fn test_is_structure_equal() {
         r#"{"Execute":{"actions":[{"IncreaseCollateral":{"token_id":"abc", "amount":"100"}}]}}"#,
     )
     .unwrap();
-    assert!(is_structure_equal(&template_value, &input_value));
+    assert!(check_template_and_update_msg(&template_value, &input_value));
     let input_value: Value = serde_json::from_str(
         r#"{"Execute":{"actions":[{"DecreaseCollateral":{"token_id":"abc", "amount":"100"}}]}}"#,
     )
     .unwrap();
-    assert!(is_structure_equal(&template_value, &input_value));
+    assert!(check_template_and_update_msg(&template_value, &input_value));
     let input_value: Value = serde_json::from_str(
         r#"{"Execute":{"actions":[{"DecreaseCollateral":{"token_id":"abc"}}]}}"#,
     )
     .unwrap();
-    assert!(is_structure_equal(&template_value, &input_value));
+    assert!(check_template_and_update_msg(&template_value, &input_value));
 
     // wrong key
     let input_value: Value = serde_json::from_str(
         r#"{"Execute":{"actions":[{"DecreaseCollateral":{"token_id":"abc", "amount1":"100"}}]}}"#,
     )
     .unwrap();
-    assert!(!is_structure_equal(&template_value, &input_value));
+    assert!(!check_template_and_update_msg(&template_value, &input_value));
     let input_value: Value = serde_json::from_str(
         r#"{"Execute":{"actions1":[{"DecreaseCollateral":{"token_id":"abc", "amount":"100"}}]}}"#,
     )
     .unwrap();
-    assert!(!is_structure_equal(&template_value, &input_value));
+    assert!(!check_template_and_update_msg(&template_value, &input_value));
     // wrong value
     let input_value: Value = serde_json::from_str(
         r#"{"Execute":{"actions":[{"DecreaseCollateral":{"token_id":"abc", "amount":100}}]}}"#,
     )
     .unwrap();
-    assert!(!is_structure_equal(&template_value, &input_value));
+    assert!(!check_template_and_update_msg(&template_value, &input_value));
 
     // Regular array template
     let template_value: Value = serde_json::from_str(r#"{"Execute": {"actions":[""]}}"#).unwrap();
     let input_value: Value =
         serde_json::from_str(r#"{"Execute": {"actions":["1", "2"]}}"#).unwrap();
-    assert!(is_structure_equal(&template_value, &input_value));
+    assert!(check_template_and_update_msg(&template_value, &input_value));
 
     // null template
     let template_value: Value = serde_json::from_str(r#"{"Execute":{"actions":[null]}}"#).unwrap();
     let input_value: Value =
         serde_json::from_str(r#"{"Execute":{"actions":[{"aa":"bb"}]}}"#).unwrap();
-    assert!(is_structure_equal(&template_value, &input_value));
+    assert!(check_template_and_update_msg(&template_value, &input_value));
     let input_value: Value = serde_json::from_str(r#"{"Execute":{"actions":[1, 2]}}"#).unwrap();
-    assert!(is_structure_equal(&template_value, &input_value));
+    assert!(check_template_and_update_msg(&template_value, &input_value));
 
     let template_value: Value = serde_json::from_str(r#"{"Execute":{"actions":null}}"#).unwrap();
     let input_value: Value = serde_json::from_str(r#"{"Execute":{"actions":[]}}"#).unwrap();
-    assert!(is_structure_equal(&template_value, &input_value));
+    assert!(check_template_and_update_msg(&template_value, &input_value));
     let input_value: Value = serde_json::from_str(r#"{"Execute":{"actions":1}}"#).unwrap();
-    assert!(is_structure_equal(&template_value, &input_value));
+    assert!(check_template_and_update_msg(&template_value, &input_value));
     let input_value: Value = serde_json::from_str(r#"{"Execute":{"actions":"aa"}}"#).unwrap();
-    assert!(is_structure_equal(&template_value, &input_value));
+    assert!(check_template_and_update_msg(&template_value, &input_value));
 }
