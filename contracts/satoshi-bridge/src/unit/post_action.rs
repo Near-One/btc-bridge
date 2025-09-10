@@ -616,6 +616,16 @@ fn test_check_template_and_update_msg() {
         None
     );
 
+    let template_value: Value = serde_json::from_str(r#"{"Execute":{"actions":[{"IncreaseCollateral":{"tx_hash_id":"{{UTXO_TX_ID}}", "amount":""}}, {"DecreaseCollateral":{"tx_hash_id":"{{UTXO_TX_ID}}", "amount":""}}]}}"#).unwrap();
+    let input_value: Value = serde_json::from_str(
+        r#"{"Execute":{"actions":[{"IncreaseCollateral":{"tx_hash_id":"{{UTXO_TX_ID}}", "amount":"100"}}]}}"#,
+    ).unwrap();
+    let final_input= r#"{"Execute":{"actions":[{"IncreaseCollateral":{"amount":"100","tx_hash_id":"fake_utxo_tx_id"}}]}}"#;
+    assert_eq!(
+        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id).unwrap().to_string(),
+        final_input.to_string()
+    );
+    
     // Regular array template
     let template_value: Value = serde_json::from_str(r#"{"Execute": {"actions":[""]}}"#).unwrap();
     let input_value: Value =
