@@ -331,6 +331,7 @@ async fn test_base() {
             .expect("Invalid btc address")
             .assume_checked().script_pubkey()
         }],
+        max_gas_fee: None,
     }));
 
     assert_eq!(
@@ -521,6 +522,7 @@ async fn test_fix_bridge_fee_and_relayer() {
             .expect("Invalid btc address")
             .assume_checked().script_pubkey()
         }],
+        max_gas_fee: None,
     }));
     let btc_pending_sign_txs = context
         .get_btc_pending_infos_paged()
@@ -657,6 +659,7 @@ async fn test_ratio_bridge_fee_and_relayer() {
             .expect("Invalid btc address")
             .assume_checked().script_pubkey()
         }],
+        max_gas_fee: None,
     }));
     let btc_pending_sign_txs = context
         .get_btc_pending_infos_paged()
@@ -802,6 +805,7 @@ async fn test_directly_withdraw() {
             .expect("Invalid btc address")
             .assume_checked().script_pubkey()
         }],
+        max_gas_fee: None,
     }));
     let btc_pending_sign_txs = context
         .get_btc_pending_infos_paged()
@@ -1457,6 +1461,7 @@ async fn test_utxo_passive_management() {
                             .script_pubkey()
                     }
                 ],
+                max_gas_fee: None,
             }
         ),
         "require input_num < change_num"
@@ -1499,6 +1504,7 @@ async fn test_utxo_passive_management() {
                             .script_pubkey()
                     }
                 ],
+                max_gas_fee: None,
             }
         ),
         "require input_num > change_num"
@@ -1540,6 +1546,7 @@ async fn test_utxo_passive_management() {
                             .script_pubkey()
                     }
                 ],
+                max_gas_fee: None,
             }
         ),
         "The change amount must be less than all inputs"
@@ -1624,6 +1631,7 @@ async fn test_cancel_withdraw() {
             .expect("Invalid btc address")
             .assume_checked().script_pubkey()
         }],
+        max_gas_fee: None,
     }));
 
     let btc_pending_sign_txs = context
@@ -1851,6 +1859,7 @@ async fn test_cancel_withdraw2() {
             .expect("Invalid btc address")
             .assume_checked().script_pubkey()
         }],
+        max_gas_fee: None,
     }));
 
     let btc_pending_sign_txs = context

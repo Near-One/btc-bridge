@@ -94,27 +94,33 @@ impl Contract {
                         Ok(msg_value) => {
                             let mut res = None;
                             for template in msg_templates {
-                                if let Ok(template_value) = serde_json::from_str::<Value>(template) { 
-                                    res = check_template_and_update_msg(&template_value, &msg_value, &utxo_tx_id);
+                                if let Ok(template_value) = serde_json::from_str::<Value>(template)
+                                {
+                                    res = check_template_and_update_msg(
+                                        &template_value,
+                                        &msg_value,
+                                        &utxo_tx_id,
+                                    );
                                     if res.is_some() {
                                         break;
                                     }
                                 }
                             }
-                            
+
                             res.map(|x| x.to_string())
-                        },
+                        }
                         Err(_) => {
                             if msg_templates
                                 .iter()
-                                .any(|template| template == &post_action.msg) {
+                                .any(|template| template == &post_action.msg)
+                            {
                                 Some(post_action.msg.clone())
-                        } else {
+                            } else {
                                 None
                             }
-                    },
+                        }
                     };
-                
+
                 if let Some(updated_post_action) = updated_post_action {
                     post_action.msg = updated_post_action;
                 } else {

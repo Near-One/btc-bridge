@@ -231,6 +231,8 @@ mod remove_post_action_msg_templates {
 
 #[test]
 fn test_check_deposit_msg() {
+    let fake_utxo_tx_id = "fake_utxo_tx_id".to_string();
+
     let mut unit_env = init_unit_env();
     assert!(unit_env
         .contract
@@ -240,7 +242,8 @@ fn test_check_deposit_msg() {
                 post_actions: None,
                 extra_msg: None,
             },
-            100
+            100,
+            fake_utxo_tx_id.clone()
         )
         .is_none());
 
@@ -252,7 +255,8 @@ fn test_check_deposit_msg() {
                 post_actions: Some(vec![]),
                 extra_msg: None,
             },
-            100
+            100,
+            fake_utxo_tx_id.clone()
         )
         .is_none());
     assert!(unit_env
@@ -285,7 +289,8 @@ fn test_check_deposit_msg() {
                 ]),
                 extra_msg: None,
             },
-            100
+            100,
+            fake_utxo_tx_id.clone()
         )
         .is_none());
     assert!(unit_env
@@ -311,7 +316,8 @@ fn test_check_deposit_msg() {
                 ]),
                 extra_msg: None,
             },
-            100
+            100,
+            fake_utxo_tx_id.clone()
         )
         .is_none());
 
@@ -337,7 +343,8 @@ fn test_check_deposit_msg() {
                 },]),
                 extra_msg: None,
             },
-            100
+            100,
+            fake_utxo_tx_id.clone()
         )
         .is_none());
     assert!(unit_env
@@ -363,7 +370,8 @@ fn test_check_deposit_msg() {
                 ]),
                 extra_msg: None,
             },
-            100
+            100,
+            fake_utxo_tx_id.clone()
         )
         .is_none());
     assert!(unit_env
@@ -389,7 +397,8 @@ fn test_check_deposit_msg() {
                 ]),
                 extra_msg: None,
             },
-            100
+            100,
+            fake_utxo_tx_id.clone()
         )
         .is_none());
     assert!(unit_env
@@ -415,7 +424,8 @@ fn test_check_deposit_msg() {
                 ]),
                 extra_msg: None,
             },
-            100
+            100,
+            fake_utxo_tx_id.clone()
         )
         .is_none());
     testing_env!(unit_env
@@ -440,7 +450,8 @@ fn test_check_deposit_msg() {
                 },]),
                 extra_msg: None,
             },
-            100
+            100,
+            fake_utxo_tx_id.clone()
         )
         .is_none());
     assert!(unit_env
@@ -457,7 +468,8 @@ fn test_check_deposit_msg() {
                 },]),
                 extra_msg: None,
             },
-            100
+            100,
+            fake_utxo_tx_id.clone()
         )
         .is_some());
     unit_env.contract.extend_post_action_msg_templates(
@@ -480,7 +492,8 @@ fn test_check_deposit_msg() {
                 ]),
                 extra_msg: None,
             },
-            100
+            100,
+            fake_utxo_tx_id.clone()
         )
         .is_some());
     assert!(unit_env
@@ -499,7 +512,8 @@ fn test_check_deposit_msg() {
                 ]),
                 extra_msg: None,
             },
-            100
+            100,
+            fake_utxo_tx_id.clone()
         )
         .is_some());
     assert!(unit_env
@@ -518,7 +532,8 @@ fn test_check_deposit_msg() {
                 ]),
                 extra_msg: None,
             },
-            100
+            100,
+            fake_utxo_tx_id.clone()
         )
         .is_some());
     assert!(unit_env
@@ -537,68 +552,107 @@ fn test_check_deposit_msg() {
                 ]),
                 extra_msg: None,
             },
-            100
+            100,
+            fake_utxo_tx_id.clone()
         )
         .is_some());
 }
 
 #[test]
-fn test_is_structure_equal() {
+fn test_check_template_and_update_msg() {
+    let fake_utxo_tx_id = "fake_utxo_tx_id".to_string();
+
     // Enum array template
     let template_value: Value = serde_json::from_str(r#"{"Execute":{"actions":[{"IncreaseCollateral":{"token_id":"", "amount":""}}, {"DecreaseCollateral":{"token_id":"", "amount":""}}]}}"#).unwrap();
     let input_value: Value = serde_json::from_str(
         r#"{"Execute":{"actions":[{"IncreaseCollateral":{"token_id":"abc", "amount":"100"}}]}}"#,
     )
     .unwrap();
-    assert!(check_template_and_update_msg(&template_value, &input_value));
+    assert_eq!(
+        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
+        Some(input_value)
+    );
     let input_value: Value = serde_json::from_str(
         r#"{"Execute":{"actions":[{"DecreaseCollateral":{"token_id":"abc", "amount":"100"}}]}}"#,
     )
     .unwrap();
-    assert!(check_template_and_update_msg(&template_value, &input_value));
+    assert_eq!(
+        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
+        Some(input_value)
+    );
     let input_value: Value = serde_json::from_str(
         r#"{"Execute":{"actions":[{"DecreaseCollateral":{"token_id":"abc"}}]}}"#,
     )
     .unwrap();
-    assert!(check_template_and_update_msg(&template_value, &input_value));
+    assert_eq!(
+        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
+        Some(input_value)
+    );
 
     // wrong key
     let input_value: Value = serde_json::from_str(
         r#"{"Execute":{"actions":[{"DecreaseCollateral":{"token_id":"abc", "amount1":"100"}}]}}"#,
     )
     .unwrap();
-    assert!(!check_template_and_update_msg(&template_value, &input_value));
+    assert_eq!(
+        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
+        None
+    );
     let input_value: Value = serde_json::from_str(
         r#"{"Execute":{"actions1":[{"DecreaseCollateral":{"token_id":"abc", "amount":"100"}}]}}"#,
     )
     .unwrap();
-    assert!(!check_template_and_update_msg(&template_value, &input_value));
+    assert_eq!(
+        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
+        None
+    );
     // wrong value
     let input_value: Value = serde_json::from_str(
         r#"{"Execute":{"actions":[{"DecreaseCollateral":{"token_id":"abc", "amount":100}}]}}"#,
     )
     .unwrap();
-    assert!(!check_template_and_update_msg(&template_value, &input_value));
+    assert_eq!(
+        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
+        None
+    );
 
     // Regular array template
     let template_value: Value = serde_json::from_str(r#"{"Execute": {"actions":[""]}}"#).unwrap();
     let input_value: Value =
         serde_json::from_str(r#"{"Execute": {"actions":["1", "2"]}}"#).unwrap();
-    assert!(check_template_and_update_msg(&template_value, &input_value));
+    assert_eq!(
+        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
+        Some(input_value)
+    );
 
     // null template
     let template_value: Value = serde_json::from_str(r#"{"Execute":{"actions":[null]}}"#).unwrap();
     let input_value: Value =
         serde_json::from_str(r#"{"Execute":{"actions":[{"aa":"bb"}]}}"#).unwrap();
-    assert!(check_template_and_update_msg(&template_value, &input_value));
+    assert_eq!(
+        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
+        Some(input_value)
+    );
     let input_value: Value = serde_json::from_str(r#"{"Execute":{"actions":[1, 2]}}"#).unwrap();
-    assert!(check_template_and_update_msg(&template_value, &input_value));
+    assert_eq!(
+        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
+        Some(input_value)
+    );
 
     let template_value: Value = serde_json::from_str(r#"{"Execute":{"actions":null}}"#).unwrap();
     let input_value: Value = serde_json::from_str(r#"{"Execute":{"actions":[]}}"#).unwrap();
-    assert!(check_template_and_update_msg(&template_value, &input_value));
+    assert_eq!(
+        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
+        Some(input_value)
+    );
     let input_value: Value = serde_json::from_str(r#"{"Execute":{"actions":1}}"#).unwrap();
-    assert!(check_template_and_update_msg(&template_value, &input_value));
+    assert_eq!(
+        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
+        Some(input_value)
+    );
     let input_value: Value = serde_json::from_str(r#"{"Execute":{"actions":"aa"}}"#).unwrap();
-    assert!(check_template_and_update_msg(&template_value, &input_value));
+    assert_eq!(
+        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
+        Some(input_value)
+    );
 }
