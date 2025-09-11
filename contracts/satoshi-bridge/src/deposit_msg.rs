@@ -5,6 +5,8 @@ const MAX_TOTAL_POST_ACTIONS_GAS: Gas = Gas::from_tgas(130);
 const MAX_PER_POST_ACTIONS_GAS: Gas = Gas::from_tgas(100);
 const MIN_PER_POST_ACTIONS_GAS: Gas = Gas::from_tgas(30);
 
+const ADD_UTXO_STORAGE_KEY_TEMPLATE: &str = "ADD_UTXO_STORAGE_KEY";
+
 #[near(serializers = [json])]
 #[derive(Clone)]
 pub struct DepositMsg {
@@ -89,41 +91,33 @@ impl Contract {
                 .post_action_msg_templates
                 .get(&post_action.receiver_id)
             {
-                let updated_post_action: Option<String> =
+            
+                let mut tmp_count = msg_templates.len();
+                if msg_templates.contains(ADD_UTXO_STORAGE_KEY_TEMPLATE) {
+                    tmp_count -= 1;
+                    post_action.msg = post_action.msg.replace("{{UTXO_TX_ID}}", &utxo_storage_key);
+                }
+                
+                let mut is_match =
                     match serde_json::from_str::<Value>(&post_action.msg) {
-                        Ok(msg_value) => {
-                            let mut res = None;
-                            for template in msg_templates {
-                                if let Ok(template_value) = serde_json::from_str::<Value>(template)
-                                {
-                                    res = check_template_and_update_msg(
-                                        &template_value,
-                                        &msg_value,
-                                        &utxo_storage_key,
-                                    );
-                                    if res.is_some() {
-                                        break;
-                                    }
+                        Ok(msg_value) => msg_templates.iter().any(|template| {
+                            match serde_json::from_str::<Value>(template) {
+                                Ok(template_value) => {
+                                    is_structure_equal(&template_value, &msg_value)
                                 }
+                                Err(_) => false,
                             }
-
-                            res.map(|x| x.to_string())
-                        }
-                        Err(_) => {
-                            if msg_templates
-                                .iter()
-                                .any(|template| template == &post_action.msg)
-                            {
-                                Some(post_action.msg.clone())
-                            } else {
-                                None
-                            }
-                        }
+                        }),
+                        Err(_) => msg_templates
+                            .iter()
+                            .any(|template| template == &post_action.msg),
                     };
-
-                if let Some(updated_post_action) = updated_post_action {
-                    post_action.msg = updated_post_action;
-                } else {
+                    
+                if tmp_count == 0 {
+                    is_match = true;
+                }
+                
+                if !is_match {
                     Event::InvalidPostAction {
                         index: Some(index),
                         err_msg: "Unsupported post_action.msg.".to_string(),

@@ -428,6 +428,59 @@ fn test_check_deposit_msg() {
             fake_utxo_tx_id.clone()
         )
         .is_none());
+
+    assert_eq!(unit_env
+        .contract
+        .check_deposit_msg(
+            DepositMsg {
+                recipient_id: recipient_id(),
+                post_actions: Some(vec![
+                    PostAction {
+                        receiver_id: burrowland_id(),
+                        amount: U128(10),
+                        memo: None,
+                        msg: "{\"Execute\":{\"actions\":[{\"IncreaseCollateral\":{\"tx_id\":\"{{UTXO_TX_ID}}\",\"amount\":\"10\",\"max_amount\":\"10\"}}]}}".to_string(),
+                        gas: Some(Gas::from_tgas(50))
+                    },
+                ]),
+                extra_msg: None,
+            },
+            100,
+            fake_utxo_tx_id.clone()
+        )
+        .unwrap()[0].msg, "{\"Execute\":{\"actions\":[{\"IncreaseCollateral\":{\"tx_id\":\"{{UTXO_TX_ID}}\",\"amount\":\"10\",\"max_amount\":\"10\"}}]}}".to_string());
+
+    testing_env!(unit_env
+        .context
+        .predecessor_account_id(owner_id())
+        .attached_deposit(NearToken::from_yoctonear(1))
+        .build());
+    unit_env.contract.extend_post_action_msg_templates(
+        burrowland_id(),
+        HashSet::from([r#"ADD_UTXO_STORAGE_KEY"#.to_string()]),
+    );
+
+    assert_eq!(unit_env
+        .contract
+        .check_deposit_msg(
+            DepositMsg {
+                recipient_id: recipient_id(),
+                post_actions: Some(vec![
+                    PostAction {
+                        receiver_id: burrowland_id(),
+                        amount: U128(10),
+                        memo: None,
+                        msg: "{\"Execute\":{\"actions\":[{\"IncreaseCollateral\":{\"tx_id\":\"{{UTXO_TX_ID}}\",\"amount\":\"10\",\"max_amount\":\"10\"}}]}}".to_string(),
+                        gas: Some(Gas::from_tgas(50))
+                    },
+                ]),
+                extra_msg: None,
+            },
+            100,
+            fake_utxo_tx_id.clone()
+        )
+        .unwrap()[0].msg, "{\"Execute\":{\"actions\":[{\"IncreaseCollateral\":{\"tx_id\":\"fake_utxo_tx_id\",\"amount\":\"10\",\"max_amount\":\"10\"}}]}}".to_string());
+
     testing_env!(unit_env
         .context
         .predecessor_account_id(owner_id())
@@ -472,6 +525,7 @@ fn test_check_deposit_msg() {
             fake_utxo_tx_id.clone()
         )
         .is_some());
+
     unit_env.contract.extend_post_action_msg_templates(
         burrowland_id(),
         HashSet::from([r#"{"Execute":{"actions":[{"IncreaseCollateral":{"token_id":"", "amount":"", "max_amount":""}}]}}"#.to_string()]),
@@ -559,112 +613,62 @@ fn test_check_deposit_msg() {
 }
 
 #[test]
-fn test_check_template_and_update_msg() {
-    let fake_utxo_tx_id = "fake_utxo_tx_id".to_string();
-
+fn test_is_structure_equal() {
     // Enum array template
     let template_value: Value = serde_json::from_str(r#"{"Execute":{"actions":[{"IncreaseCollateral":{"token_id":"", "amount":""}}, {"DecreaseCollateral":{"token_id":"", "amount":""}}]}}"#).unwrap();
     let input_value: Value = serde_json::from_str(
         r#"{"Execute":{"actions":[{"IncreaseCollateral":{"token_id":"abc", "amount":"100"}}]}}"#,
     )
     .unwrap();
-    assert_eq!(
-        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
-        Some(input_value)
-    );
+    assert!(is_structure_equal(&template_value, &input_value));
     let input_value: Value = serde_json::from_str(
         r#"{"Execute":{"actions":[{"DecreaseCollateral":{"token_id":"abc", "amount":"100"}}]}}"#,
     )
     .unwrap();
-    assert_eq!(
-        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
-        Some(input_value)
-    );
+    assert!(is_structure_equal(&template_value, &input_value));
     let input_value: Value = serde_json::from_str(
         r#"{"Execute":{"actions":[{"DecreaseCollateral":{"token_id":"abc"}}]}}"#,
     )
     .unwrap();
-    assert_eq!(
-        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
-        Some(input_value)
-    );
+    assert!(is_structure_equal(&template_value, &input_value));
 
     // wrong key
     let input_value: Value = serde_json::from_str(
         r#"{"Execute":{"actions":[{"DecreaseCollateral":{"token_id":"abc", "amount1":"100"}}]}}"#,
     )
     .unwrap();
-    assert_eq!(
-        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
-        None
-    );
+    assert!(!is_structure_equal(&template_value, &input_value));
     let input_value: Value = serde_json::from_str(
         r#"{"Execute":{"actions1":[{"DecreaseCollateral":{"token_id":"abc", "amount":"100"}}]}}"#,
     )
     .unwrap();
-    assert_eq!(
-        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
-        None
-    );
+    assert!(!is_structure_equal(&template_value, &input_value));
     // wrong value
     let input_value: Value = serde_json::from_str(
         r#"{"Execute":{"actions":[{"DecreaseCollateral":{"token_id":"abc", "amount":100}}]}}"#,
     )
     .unwrap();
-    assert_eq!(
-        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
-        None
-    );
-
-    let template_value: Value = serde_json::from_str(r#"{"Execute":{"actions":[{"IncreaseCollateral":{"tx_hash_id":"{{UTXO_TX_ID}}", "amount":""}}, {"DecreaseCollateral":{"tx_hash_id":"{{UTXO_TX_ID}}", "amount":""}}]}}"#).unwrap();
-    let input_value: Value = serde_json::from_str(
-        r#"{"Execute":{"actions":[{"IncreaseCollateral":{"tx_hash_id":"{{UTXO_TX_ID}}", "amount":"100"}}]}}"#,
-    ).unwrap();
-    let final_input = r#"{"Execute":{"actions":[{"IncreaseCollateral":{"amount":"100","tx_hash_id":"fake_utxo_tx_id"}}]}}"#;
-    assert_eq!(
-        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id)
-            .unwrap()
-            .to_string(),
-        final_input.to_string()
-    );
+    assert!(!is_structure_equal(&template_value, &input_value));
 
     // Regular array template
     let template_value: Value = serde_json::from_str(r#"{"Execute": {"actions":[""]}}"#).unwrap();
     let input_value: Value =
         serde_json::from_str(r#"{"Execute": {"actions":["1", "2"]}}"#).unwrap();
-    assert_eq!(
-        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
-        Some(input_value)
-    );
+    assert!(is_structure_equal(&template_value, &input_value));
 
     // null template
     let template_value: Value = serde_json::from_str(r#"{"Execute":{"actions":[null]}}"#).unwrap();
     let input_value: Value =
         serde_json::from_str(r#"{"Execute":{"actions":[{"aa":"bb"}]}}"#).unwrap();
-    assert_eq!(
-        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
-        Some(input_value)
-    );
+    assert!(is_structure_equal(&template_value, &input_value));
     let input_value: Value = serde_json::from_str(r#"{"Execute":{"actions":[1, 2]}}"#).unwrap();
-    assert_eq!(
-        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
-        Some(input_value)
-    );
+    assert!(is_structure_equal(&template_value, &input_value));
 
     let template_value: Value = serde_json::from_str(r#"{"Execute":{"actions":null}}"#).unwrap();
     let input_value: Value = serde_json::from_str(r#"{"Execute":{"actions":[]}}"#).unwrap();
-    assert_eq!(
-        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
-        Some(input_value)
-    );
+    assert!(is_structure_equal(&template_value, &input_value));
     let input_value: Value = serde_json::from_str(r#"{"Execute":{"actions":1}}"#).unwrap();
-    assert_eq!(
-        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
-        Some(input_value)
-    );
+    assert!(is_structure_equal(&template_value, &input_value));
     let input_value: Value = serde_json::from_str(r#"{"Execute":{"actions":"aa"}}"#).unwrap();
-    assert_eq!(
-        check_template_and_update_msg(&template_value, &input_value, &fake_utxo_tx_id),
-        Some(input_value)
-    );
+    assert!(is_structure_equal(&template_value, &input_value));
 }
