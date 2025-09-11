@@ -16,19 +16,21 @@ const INSERT_UTXO_TX_ID_TEMPLATE: &str = "{{UTXO_TX_ID}}";
 pub fn check_template_and_update_msg(
     template: &Value,
     input: &Value,
-    utxo_tx_id: &str,
+    utxo_storage_key: &str,
 ) -> Option<Value> {
     let mut res = input.clone();
     match (template, input) {
         (Value::Object(t_obj), Value::Object(i_obj)) => {
             for (key, t_val) in t_obj {
                 match i_obj.get(key) {
-                    Some(i_val) => match check_template_and_update_msg(t_val, i_val, utxo_tx_id) {
-                        Some(val) => {
-                            res.as_object_mut().unwrap().insert(key.clone(), val);
+                    Some(i_val) => {
+                        match check_template_and_update_msg(t_val, i_val, utxo_storage_key) {
+                            Some(val) => {
+                                res.as_object_mut().unwrap().insert(key.clone(), val);
+                            }
+                            None => return None,
                         }
-                        None => return None,
-                    },
+                    }
                     None => {
                         // Input is allowed to omit fields defined in the template; these are treated as optional fields.
                         continue;
@@ -55,7 +57,8 @@ pub fn check_template_and_update_msg(
             for i_item in i_arr {
                 let mut matched = false;
                 for t_item in t_arr {
-                    if let Some(sub_res) = check_template_and_update_msg(t_item, i_item, utxo_tx_id)
+                    if let Some(sub_res) =
+                        check_template_and_update_msg(t_item, i_item, utxo_storage_key)
                     {
                         res.as_array_mut().unwrap().push(sub_res);
 
@@ -71,7 +74,7 @@ pub fn check_template_and_update_msg(
         }
         (Value::String(temp_str), Value::String(real_str)) => {
             if temp_str == INSERT_UTXO_TX_ID_TEMPLATE && real_str == INSERT_UTXO_TX_ID_TEMPLATE {
-                res = Value::String(utxo_tx_id.to_string());
+                res = Value::String(utxo_storage_key.to_string());
             }
             Some(res)
         }

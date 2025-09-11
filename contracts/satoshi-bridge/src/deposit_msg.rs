@@ -40,7 +40,7 @@ impl Contract {
         &self,
         deposit_msg: DepositMsg,
         actual_mintable_amount: u128,
-        utxo_tx_id: String,
+        utxo_storage_key: String,
     ) -> Option<Vec<PostAction>> {
         let mut post_actions = deposit_msg.post_actions?;
         if post_actions.is_empty() {
@@ -99,7 +99,7 @@ impl Contract {
                                     res = check_template_and_update_msg(
                                         &template_value,
                                         &msg_value,
-                                        &utxo_tx_id,
+                                        &utxo_storage_key,
                                     );
                                     if res.is_some() {
                                         break;
