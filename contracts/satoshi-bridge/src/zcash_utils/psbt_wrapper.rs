@@ -6,11 +6,12 @@ use crate::zcash_utils::transaction::Transaction;
 use bitcoin::hashes::Hash;
 use bitcoin::{OutPoint, TxOut};
 use near_sdk::require;
+use zcash_primitives::transaction::components::orchard::read_v5_bundle;
 use zcash_primitives::transaction::fees::transparent::{InputSize, OutputView};
 use zcash_primitives::transaction::fees::FeeRule;
 use zcash_primitives::transaction::{TransactionData, TxVersion};
 use zcash_protocol::consensus::{BlockHeight, BranchId};
-use zcash_protocol::value::Zatoshis;
+use zcash_protocol::value::{ZatBalance, Zatoshis};
 use zcash_transparent::bundle::Authorized;
 use zcash_transparent::bundle::TxIn as ZcashTxIn;
 use zcash_transparent::bundle::TxOut as ZcashTxOut;
@@ -22,12 +23,14 @@ pub struct PsbtWrapper {
     vin: Vec<ZcashTxIn<Authorized>>,
     vout: Vec<ZcashTxOut>,
     inputs_utxo: Vec<ZcashTxOut>,
+    orchard_bundle: Option<orchard::Bundle<orchard::bundle::Authorized, ZatBalance>>,
 }
 
 impl PsbtWrapper {
     pub fn new(
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
+        orchard_bundle_bytes: Option<Vec<u8>>,
         expiry_height: u32,
         config: &Config,
     ) -> Self {
@@ -61,12 +64,21 @@ impl PsbtWrapper {
             vin.len()
         ];
 
+        // todo:: verify orchard bundle value
+        let orchard_bundle = if let Some(orchard_bundle_bytes) = orchard_bundle_bytes {
+            let mut reader = Cursor::new(orchard_bundle_bytes);
+            read_v5_bundle(&mut reader).unwrap()
+        } else {
+            None
+        };
+
         Self {
             branch_id: get_branch_id(expiry_height, config),
             expiry_height,
             vout,
             vin,
             inputs_utxo: inputs,
+            orchard_bundle,
         }
     }
 
@@ -95,6 +107,7 @@ impl PsbtWrapper {
             vin: original_psbt.vin,
             vout,
             inputs_utxo: original_psbt.inputs_utxo,
+            orchard_bundle: original_psbt.orchard_bundle,
         }
     }
 
@@ -140,7 +153,7 @@ impl PsbtWrapper {
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::<u8>::new();
-        let version: u8 = 2;
+        let version: u8 = 3;
         buf.push(version);
         match self.branch_id {
             BranchId::Nu6 => buf.write_all(&[7u8; 1]).unwrap(),
@@ -211,12 +224,19 @@ impl PsbtWrapper {
             inputs.push(ZcashTxOut::read(&mut rdr).unwrap());
         }
 
+        let orchard_bundle = if version >= 3 {
+            read_v5_bundle(&mut rdr).unwrap()
+        } else {
+            None
+        };
+
         Self {
             branch_id,
             expiry_height,
             vin,
             vout,
             inputs_utxo: inputs,
+            orchard_bundle,
         }
     }
 
@@ -239,7 +259,7 @@ impl PsbtWrapper {
             Some(transparent_bundle),
             None,
             None,
-            None,
+            self.orchard_bundle.clone(),
         )
         .freeze()
         .unwrap();

@@ -3728,6 +3728,7 @@ dependencies = [
  "near-plugins",
  "near-sdk",
  "near-workspaces",
+ "orchard",
  "tokio",
  "zcash_address",
  "zcash_primitives",

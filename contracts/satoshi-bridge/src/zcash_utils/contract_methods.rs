@@ -93,11 +93,24 @@ impl Contract {
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
+        orchard_bundle: Option<Vec<u8>>,
         #[callback_unwrap] last_block_height: u32,
     ) -> U128 {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
-        let mut psbt = PsbtWrapper::new(input, output, expiry_height, self.internal_config());
-        self.create_btc_pending_info(sender_id, amount.0, target_btc_address, &mut psbt, max_gas_fee);
+        let mut psbt = PsbtWrapper::new(
+            input,
+            output,
+            orchard_bundle,
+            expiry_height,
+            self.internal_config(),
+        );
+        self.create_btc_pending_info(
+            sender_id,
+            amount.0,
+            target_btc_address,
+            &mut psbt,
+            max_gas_fee,
+        );
 
         U128(0)
     }
@@ -108,11 +121,18 @@ impl Contract {
         account_id: AccountId,
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
+        orchard_bundle: Option<Vec<u8>>,
         #[callback_unwrap] last_block_height: u32,
     ) {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
 
-        let mut psbt = PsbtWrapper::new(input, output, expiry_height, self.internal_config());
+        let mut psbt = PsbtWrapper::new(
+            input,
+            output,
+            orchard_bundle,
+            expiry_height,
+            self.internal_config(),
+        );
 
         self.create_active_utxo_management_pending_info(account_id, &mut psbt);
     }
@@ -145,6 +165,7 @@ impl Contract {
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
+        orchard_bundle: Option<Vec<u8>>,
     ) -> PromiseOrValue<U128> {
         PromiseOrValue::Promise(
             self.get_last_block_height_promise().then(
@@ -157,6 +178,7 @@ impl Contract {
                         input,
                         output,
                         max_gas_fee,
+                        orchard_bundle,
                     ),
             ),
         )
@@ -167,11 +189,12 @@ impl Contract {
         account_id: AccountId,
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
+        orchard_bundle: Option<Vec<u8>>,
     ) {
         self.get_last_block_height_promise().then(
             Self::ext(env::current_account_id())
                 .with_static_gas(GAS_FOR_ACTIVE_UTXO_MANAGMENT_CALLBACK)
-                .active_utxo_management_callback(account_id, input, output),
+                .active_utxo_management_callback(account_id, input, output, orchard_bundle),
         );
     }
 

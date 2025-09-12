@@ -13,6 +13,7 @@ pub enum TokenReceiverMessage {
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
+        orchard_bundle_bytes: Option<String>,
     },
 }
 
@@ -51,14 +52,16 @@ impl FungibleTokenReceiver for Contract {
                 target_btc_address,
                 input,
                 output,
-                max_gas_fee
+                max_gas_fee,
+                orchard_bundle_bytes,
             } => self.ft_on_transfer_withdraw_chain_specific(
                 sender_id,
                 amount,
                 target_btc_address,
                 input,
                 output,
-                max_gas_fee
+                max_gas_fee,
+                orchard_bundle_bytes.map(|b| hex::decode(b).unwrap()),
             ),
         }
     }
@@ -94,7 +97,7 @@ impl Contract {
             &vutxos,
             amount,
             withdraw_fee,
-            max_gas_fee
+            max_gas_fee,
         );
 
         let need_signature_num = psbt.get_input_num();

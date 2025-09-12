@@ -207,10 +207,15 @@ impl Contract {
     #[payable]
     #[access_control_any(roles(Role::DAO, Role::Operator))]
     #[pause(except(roles(Role::DAO)))]
-    pub fn active_utxo_management(&mut self, input: Vec<OutPoint>, output: Vec<TxOut>) {
+    pub fn active_utxo_management(
+        &mut self,
+        input: Vec<OutPoint>,
+        output: Vec<TxOut>,
+        orchard_bundle: Option<Vec<u8>>,
+    ) {
         assert_one_yocto();
         let account_id = env::predecessor_account_id();
-        self.active_utxo_management_chain_specific(account_id, input, output);
+        self.active_utxo_management_chain_specific(account_id, input, output, orchard_bundle);
     }
 
     /// The initiator of active UTXO management accelerates the transaction by increasing the gas fee.
