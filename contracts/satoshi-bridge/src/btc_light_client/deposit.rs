@@ -231,7 +231,7 @@ impl Contract {
             ext_nbtc::ext(self.internal_config().nbtc_account_id.clone())
                 .with_static_gas(GAS_FOR_BURN_CALL)
                 .burn(
-                    recipient_id.clone(),
+                    env::current_account_id(),
                     mint_amount,
                     relayer_account_id,
                     U128(0),
