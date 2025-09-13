@@ -1,6 +1,6 @@
 use crate::*;
 
-pub const GAS_FOR_BURN_CALL: Gas = Gas::from_tgas(10);
+pub const GAS_FOR_BURN_CALL: Gas = Gas::from_tgas(5);
 pub const GAS_FOR_WITHDRAW_BURN_CALL_BACK: Gas = Gas::from_tgas(20);
 pub const GAS_FOR_ACTIVE_UTXO_MANAGEMENT_BURN_CALL_BACK: Gas = Gas::from_tgas(20);
 

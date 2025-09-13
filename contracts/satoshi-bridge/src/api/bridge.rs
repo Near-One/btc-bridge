@@ -64,6 +64,79 @@ impl Contract {
         )
     }
 
+    /// Safe version of verify_deposit, only supports minting nBTC without post_actions and revert the deposit on failed XCC calls.
+    /// It doesn't charge deposit fee, and doesn't pay the token storage for the user
+    ///
+    /// # Arguments
+    ///
+    /// * `deposit_msg` - Information used to generate the deposit address path.
+    /// * `tx_bytes` - Successfully confirmed BTC transaction bytes
+    /// * `vout` - The index of the output where the user sent BTC to the deposit address
+    /// * `tx_block_blockhash` - The block hash where the transaction is located.
+    /// * `tx_index` - The index of the transaction in the block.
+    /// * `merkle_proof` - Merkle proof of the transaction.
+    ///
+    /// # Returns
+    ///
+    /// bool - Whether nBTC minting was successful.
+    #[payable]
+    #[pause(except(roles(Role::DAO)))]
+    pub fn safe_verify_deposit(
+        &mut self,
+        deposit_msg: DepositMsg,
+        tx_bytes: Vec<u8>,
+        vout: usize,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Promise {
+        require!(
+            deposit_msg.post_actions.is_none(),
+            "post_actions not supported in safe_verify_deposit"
+        );
+        require!(
+            env::attached_deposit() >= self.required_balance_for_safe_deposit(),
+            "Insufficient deposit for storage"
+        );
+
+        let path = get_deposit_path(&deposit_msg);
+        let transaction = bytes_to_btc_transaction(&tx_bytes);
+        let deposit_amount = transaction.output[vout].value.to_sat() as u128;
+        require!(deposit_amount > 0, "Invalid deposit_amount");
+        require!(
+            transaction.lock_time == LockTime::ZERO,
+            "Tx with a non-zero lock_time are not supported."
+        );
+        let deposit_address = self.generate_btc_p2wpkh_address(&path);
+        let deposit_address_script_pubkey = deposit_address.script_pubkey();
+        require!(
+            deposit_address_script_pubkey == transaction.output[vout].script_pubkey,
+            "Invalid deposit tx_bytes"
+        );
+
+        let utxo = UTXO {
+            path,
+            tx_bytes,
+            vout,
+            balance: transaction.output[vout].value.to_sat(),
+        };
+        let tx_id = transaction.compute_txid().to_string();
+        let utxo_storage_key = generate_utxo_storage_key(tx_id.clone(), vout as u32);
+
+        self.internal_safe_verify_deposit(
+            deposit_amount,
+            tx_block_blockhash,
+            tx_index,
+            merkle_proof,
+            PendingUTXOInfo {
+                tx_id,
+                utxo_storage_key,
+                utxo,
+            },
+            deposit_msg,
+        )
+    }
+
     /// Verify that the user’s withdrawal has been successful, and then burn the corresponding amount of tokens.
     ///
     /// # Arguments

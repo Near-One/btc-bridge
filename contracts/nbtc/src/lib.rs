@@ -81,6 +81,36 @@ impl Contract {
         self.controller = controller;
     }
 
+    #[payable]
+    pub fn safe_mint(
+        &mut self,
+        account_id: AccountId,
+        amount: U128,
+        msg: Option<String>,
+    ) -> PromiseOrValue<U128> {
+        self.assert_bridge();
+
+        if self.token.accounts.get(&account_id).is_none() {
+            return PromiseOrValue::Value(U128(0));
+        }
+
+        if let Some(msg) = msg {
+            self.token.internal_deposit(&self.bridge_id, amount.into());
+
+            self.ft_transfer_call(account_id, amount, None, msg)
+        } else {
+            self.token.internal_deposit(&account_id, amount.into());
+            PromiseOrValue::Value(amount)
+        }
+    }
+
+    pub fn safe_burn(&mut self, amount: U128) {
+        self.assert_controller();
+
+        self.token
+            .internal_withdraw(&env::predecessor_account_id(), amount.into());
+    }
+
     pub fn mint(
         &mut self,
         mint_account_id: AccountId,

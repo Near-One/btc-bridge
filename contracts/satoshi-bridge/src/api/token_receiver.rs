@@ -71,7 +71,7 @@ impl FungibleTokenReceiver for Contract {
                     &vutxos,
                     amount,
                     withdraw_fee,
-                    max_gas_fee
+                    max_gas_fee,
                 );
 
                 let need_signature_num = psbt.unsigned_tx.input.len();
