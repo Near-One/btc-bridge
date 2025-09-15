@@ -64,7 +64,14 @@ impl PsbtWrapper {
             vin.len()
         ];
 
-        // todo:: verify orchard bundle value
+        // TODO: pass the recipient address and amount to verify the orchard output
+        // let recipient_address = "<SOME ZCASH ADDRESS>";
+        // let value = "<Amount of the output>";
+
+        // TODO: verify orchard bundle
+        // How to verify orchard bundle value and recipient?
+        // Should we call orchard_bundle.unwrap().verify_proof(vk) here? what is the vk?
+        // We have to take into account the gas cost and limits
         let orchard_bundle = if let Some(orchard_bundle_bytes) = orchard_bundle_bytes {
             let mut reader = Cursor::new(orchard_bundle_bytes);
             read_v5_bundle(&mut reader).unwrap()
@@ -251,6 +258,7 @@ impl PsbtWrapper {
             authorization: zcash_transparent::bundle::Authorized,
         };
 
+        // Here we encode the Zcash transaction with orchard bundle so it can be submited to the network
         let inner_tx = TransactionData::from_parts(
             TxVersion::V5,
             self.branch_id,
@@ -280,6 +288,7 @@ impl PsbtWrapper {
             self.expiry_height,
             public_key,
             self.branch_id,
+            &self.orchard_bundle,
         );
         let txid_parts = tx_data.digest(zcash_primitives::transaction::txid::TxIdDigester);
         let script = &self.inputs_utxo[vin].script_pubkey;

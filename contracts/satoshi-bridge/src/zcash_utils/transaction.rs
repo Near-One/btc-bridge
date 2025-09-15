@@ -5,6 +5,7 @@ use zcash_primitives::consensus::{BlockHeight, BranchId};
 use zcash_primitives::transaction::{
     Transaction as ZCashTransaction, TransactionData, TxVersion, Unauthorized,
 };
+use zcash_protocol::value::ZatBalance;
 use zcash_transparent::builder::TransparentBuilder;
 use zcash_transparent::bundle::Authorized;
 
@@ -85,6 +86,7 @@ impl Transaction {
         expiry_height: u32,
         public_key: &bitcoin::PublicKey,
         branch_id: BranchId,
+        orchard_bundle: &Option<orchard::Bundle<orchard::bundle::Authorized, ZatBalance>>,
     ) -> TransactionData<Unauthorized> {
         let transparent_bundle = Self::get_transparent_builder(vin, vout, input, public_key)
             .build()
@@ -93,6 +95,9 @@ impl Transaction {
         let lock_time = 0;
         let expiry_height = BlockHeight::from_u32(expiry_height);
 
+        // TODO: pass the orchard_bundle properly
+        // How to convert orchard_bundle from Authorized to Unauthorized?
+        // NOTE: the `TransactionData` is needed just to call `zcash_primitives::transaction::sighash::signature_hash`
         let inner_tx = TransactionData::from_parts(
             TxVersion::V5,
             branch_id,
@@ -101,7 +106,7 @@ impl Transaction {
             Some(transparent_bundle),
             None,
             None,
-            None,
+            None, // orchard_bundle
         );
 
         inner_tx
