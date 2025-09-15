@@ -8,6 +8,7 @@ pub const GAS_FOR_FT_ON_TRANSFER_CALL_BACK: Gas = Gas::from_tgas(100);
 #[near(serializers = [json])]
 pub enum TokenReceiverMessage {
     DepositProtocolFee,
+    // Here is the withdraw message structure that will be sent from user or dApp to the btc/zcash connector
     Withdraw {
         target_btc_address: String,
         input: Vec<OutPoint>,
