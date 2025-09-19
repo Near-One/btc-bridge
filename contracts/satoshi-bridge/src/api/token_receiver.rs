@@ -1,6 +1,9 @@
+use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_plugins::pause;
+
+pub const GAS_FOR_FT_ON_TRANSFER_CALL_BACK: Gas = Gas::from_tgas(100);
 
 #[near(serializers = [json])]
 pub enum TokenReceiverMessage {
@@ -48,73 +51,90 @@ impl FungibleTokenReceiver for Contract {
                 target_btc_address,
                 input,
                 output,
-                max_gas_fee,
-            } => {
-                let (psbt, utxo_storage_keys, vutxos) =
-                    self.generate_psbt_and_vutxos(input, output);
-                require!(
-                    self.internal_unwrap_or_create_mut_account(&sender_id)
-                        .btc_pending_sign_id
-                        .is_none(),
-                    "Previous btc tx has not been signed"
-                );
-                let target_address_script_pubkey =
-                    string_to_btc_address(&target_btc_address).script_pubkey();
-
-                let withdraw_change_address_script_pubkey =
-                    self.internal_config().get_change_address().script_pubkey();
-                let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount);
-                let (actual_received_amount, gas_fee) = self.check_withdraw_psbt_valid(
-                    &target_address_script_pubkey,
-                    &withdraw_change_address_script_pubkey,
-                    &psbt,
-                    &vutxos,
-                    amount,
-                    withdraw_fee,
-                    max_gas_fee
-                );
-
-                let need_signature_num = psbt.unsigned_tx.input.len();
-                let psbt_hex = psbt.serialize_hex();
-                let btc_pending_id = psbt.extract_tx().unwrap().compute_txid().to_string();
-                let btc_pending_info = BTCPendingInfo {
-                    account_id: sender_id.clone(),
-                    btc_pending_id: btc_pending_id.clone(),
-                    transfer_amount: amount,
-                    actual_received_amount,
-                    withdraw_fee,
-                    gas_fee,
-                    burn_amount: actual_received_amount + gas_fee,
-                    psbt_hex,
-                    vutxos,
-                    signatures: vec![None; need_signature_num],
-                    tx_bytes_with_sign: None,
-                    create_time_sec: nano_to_sec(env::block_timestamp()),
-                    last_sign_time_sec: 0,
-                    state: PendingInfoState::WithdrawOriginal(OriginalState {
-                        stage: PendingInfoStage::PendingSign,
-                        max_gas_fee: gas_fee,
-                        last_rbf_time_sec: None,
-                        cancel_rbf_reserved: None,
-                    }),
-                };
-                require!(
-                    self.data_mut()
-                        .btc_pending_infos
-                        .insert(btc_pending_id.clone(), btc_pending_info.into())
-                        .is_none(),
-                    "pending info already exist"
-                );
-                self.internal_unwrap_mut_account(&sender_id)
-                    .btc_pending_sign_id = Some(btc_pending_id.clone());
-                Event::UtxoRemoved { utxo_storage_keys }.emit();
-                Event::GenerateBtcPendingInfo {
-                    account_id: &sender_id,
-                    btc_pending_id: &btc_pending_id,
-                }
-                .emit();
-                PromiseOrValue::Value(U128(0))
-            }
+                max_gas_fee
+            } => self.ft_on_transfer_withdraw_chain_specific(
+                sender_id,
+                amount,
+                target_btc_address,
+                input,
+                output,
+                max_gas_fee
+            ),
         }
+    }
+}
+
+impl Contract {
+    pub(crate) fn create_btc_pending_info(
+        &mut self,
+        sender_id: AccountId,
+        amount: u128,
+        target_btc_address: String,
+        psbt: &mut PsbtWrapper,
+        max_gas_fee: Option<U128>,
+    ) {
+        let (utxo_storage_keys, vutxos) = self.generate_vutxos(psbt);
+        require!(
+            self.internal_unwrap_or_create_mut_account(&sender_id)
+                .btc_pending_sign_id
+                .is_none(),
+            "Previous btc tx has not been signed"
+        );
+        let target_address_script_pubkey = self
+            .internal_config()
+            .string_to_script_pubkey(&target_btc_address);
+
+        let withdraw_change_address_script_pubkey =
+            self.internal_config().get_change_script_pubkey();
+        let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount);
+        let (actual_received_amount, gas_fee) = self.check_withdraw_psbt_valid(
+            &target_address_script_pubkey,
+            &withdraw_change_address_script_pubkey,
+            psbt,
+            &vutxos,
+            amount,
+            withdraw_fee,
+            max_gas_fee
+        );
+
+        let need_signature_num = psbt.get_input_num();
+        let psbt_hex = psbt.serialize();
+        let btc_pending_id = psbt.get_pending_id();
+        let btc_pending_info = BTCPendingInfo {
+            account_id: sender_id.clone(),
+            btc_pending_id: btc_pending_id.clone(),
+            transfer_amount: amount,
+            actual_received_amount,
+            withdraw_fee,
+            gas_fee,
+            burn_amount: actual_received_amount + gas_fee,
+            psbt_hex,
+            vutxos,
+            signatures: vec![None; need_signature_num],
+            tx_bytes_with_sign: None,
+            create_time_sec: nano_to_sec(env::block_timestamp()),
+            last_sign_time_sec: 0,
+            state: PendingInfoState::WithdrawOriginal(OriginalState {
+                stage: PendingInfoStage::PendingSign,
+                max_gas_fee: gas_fee,
+                last_rbf_time_sec: None,
+                cancel_rbf_reserved: None,
+            }),
+        };
+        require!(
+            self.data_mut()
+                .btc_pending_infos
+                .insert(btc_pending_id.clone(), btc_pending_info.into())
+                .is_none(),
+            "pending info already exist"
+        );
+        self.internal_unwrap_mut_account(&sender_id)
+            .btc_pending_sign_id = Some(btc_pending_id.clone());
+        Event::UtxoRemoved { utxo_storage_keys }.emit();
+        Event::GenerateBtcPendingInfo {
+            account_id: &sender_id,
+            btc_pending_id: &btc_pending_id,
+        }
+        .emit();
     }
 }

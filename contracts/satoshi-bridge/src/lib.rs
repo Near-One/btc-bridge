@@ -13,16 +13,15 @@ use near_sdk::{
 };
 use std::collections::{HashMap, HashSet};
 
-use bitcoin::{
-    absolute::LockTime,
-    consensus::{deserialize, serialize},
-    transaction::Version,
-    Address, Amount, Network, OutPoint, Psbt, PublicKey as BtcPublicKey, ScriptBuf,
-    Transaction as BtcTransaction, TxIn, TxOut,
-};
+use bitcoin::{absolute::LockTime, Amount, OutPoint, PublicKey as BtcPublicKey, ScriptBuf, TxOut};
 
 pub mod account;
 pub mod api;
+#[cfg(not(feature = "zcash"))]
+pub mod bitcoin_utils;
+#[cfg(feature = "zcash")]
+pub mod zcash_utils;
+
 pub mod btc_light_client;
 pub mod btc_pending_info;
 pub mod chain_signature;
@@ -33,6 +32,7 @@ pub mod json_utils;
 pub mod kdf;
 pub mod legacy;
 pub mod nbtc;
+mod network;
 pub mod psbt;
 pub mod rbf;
 pub mod token_transfer;
@@ -50,13 +50,25 @@ pub use crate::config::*;
 pub use crate::deposit_msg::*;
 pub use crate::event::*;
 pub use crate::json_utils::*;
-pub use crate::kdf::*;
 pub use crate::legacy::*;
 pub use crate::nbtc::*;
 pub use crate::rbf::*;
 pub use crate::token_transfer::*;
 pub use crate::utils::*;
 pub use crate::utxo::*;
+
+#[cfg(not(feature = "zcash"))]
+pub use crate::bitcoin_utils::psbt_wrapper;
+#[cfg(not(feature = "zcash"))]
+pub use crate::bitcoin_utils::transaction::Transaction as WrappedTransaction;
+
+#[cfg(feature = "zcash")]
+pub use crate::zcash_utils::contract_methods::*;
+#[cfg(feature = "zcash")]
+pub use crate::zcash_utils::psbt_wrapper;
+#[cfg(feature = "zcash")]
+pub use crate::zcash_utils::transaction::Transaction as WrappedTransaction;
+
 #[cfg(test)]
 pub use unit::*;
 

@@ -1,11 +1,12 @@
+use crate::network::Address;
+use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
-
 impl Contract {
     pub fn check_withdraw_psbt_valid(
         &self,
         target_address_script_pubkey: &ScriptBuf,
         withdraw_change_address_script_pubkey: &ScriptBuf,
-        withdraw_psbt: &Psbt,
+        withdraw_psbt: &PsbtWrapper,
         vutxos: &[VUTXO],
         amount: u128,
         withdraw_fee: u128,
@@ -56,14 +57,14 @@ impl Contract {
 
     pub fn check_active_management_psbt_valid(
         &self,
-        psbt: &Psbt,
+        psbt: &PsbtWrapper,
         vutxos: &[VUTXO],
     ) -> (u128, u128) {
         let config = self.internal_config();
         let utxo_num = self.data().utxos.len() + vutxos.len() as u32;
-        let input_num = psbt.unsigned_tx.input.len();
-        let output_num = psbt.unsigned_tx.output.len();
 
+        let input_num = psbt.get_input_num();
+        let output_num = psbt.get_output_num();
         if !is_merge_unhealthy_utxos(output_num, vutxos, config.unhealthy_utxo_amount) {
             if utxo_num < config.active_management_lower_limit {
                 require!(input_num < output_num, "require input_num < output_num");
@@ -95,20 +96,19 @@ impl Contract {
 
     pub fn check_psbt_output_all_change_address(
         &self,
-        psbt: &Psbt,
+        psbt: &PsbtWrapper,
         vutxos: &[VUTXO],
         force_healthy_output: bool,
         is_cancel: bool,
     ) -> (u128, u128) {
         let config = self.internal_config();
-        let withdraw_change_address_script_pubkey = config.get_change_address().script_pubkey();
+        let withdraw_change_address_script_pubkey = config.get_change_script_pubkey();
         let input_amount = vutxos
             .iter()
             .map(|vutxo| vutxo.get_amount() as u128)
             .sum::<u128>();
         let output_amount = psbt
-            .unsigned_tx
-            .output
+            .get_output()
             .iter()
             .map(|v| {
                 if force_healthy_output {
@@ -146,7 +146,7 @@ impl Contract {
 
     pub fn check_withdraw_psbt(
         &self,
-        psbt: &Psbt,
+        psbt: &PsbtWrapper,
         target_address_script_pubkey: &ScriptBuf,
         withdraw_change_address_script_pubkey: &ScriptBuf,
         vutxos: &[VUTXO],
@@ -160,7 +160,7 @@ impl Contract {
         let mut total_output_amount = 0;
         let mut actual_received_amounts = vec![];
         let mut change_amounts = vec![];
-        psbt.unsigned_tx.output.iter().for_each(|output| {
+        psbt.get_output().iter().for_each(|output| {
             let output_value = output.value.to_sat() as u128;
             total_output_amount += output_value;
             if &output.script_pubkey == target_address_script_pubkey {
@@ -176,8 +176,9 @@ impl Contract {
                 );
                 change_amounts.push(output_value);
             } else {
-                let output_address = Address::from_script(&output.script_pubkey, btc_network())
-                    .expect("Unsupported btc address type");
+                let output_address =
+                    Address::from_script(&output.script_pubkey, config.chain.clone())
+                        .expect("Unsupported btc address type");
                 env::panic_str(
                     format!("Invalid transaction output address: {}", output_address).as_str(),
                 );
@@ -188,7 +189,7 @@ impl Contract {
             "only one user output is allowed."
         );
         let actual_received_amount = actual_received_amounts[0];
-        let input_num = psbt.unsigned_tx.input.len();
+        let input_num = psbt.get_input_num();
         let change_num = change_amounts.len();
         if input_num > change_num {
             require!(
@@ -222,70 +223,30 @@ impl Contract {
                 gas_fee, config.min_btc_gas_fee, config.max_btc_gas_fee
             )
         );
+
+        self.check_psbt_chain_specific(psbt, gas_fee);
         (input_num, change_num, actual_received_amount, gas_fee)
     }
 }
 
 impl Contract {
-    pub fn generate_psbt_and_vutxos(
-        &mut self,
-        input: Vec<OutPoint>,
-        output: Vec<TxOut>,
-    ) -> (Psbt, Vec<String>, Vec<VUTXO>) {
-        require!(!input.is_empty(), "empty input");
-        require!(!output.is_empty(), "empty output");
-        let transaction = BtcTransaction {
-            version: Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: input
-                .into_iter()
-                .map(|previous_output| TxIn {
-                    previous_output,
-                    sequence: bitcoin::Sequence::ENABLE_RBF_NO_LOCKTIME,
-                    ..Default::default()
-                })
-                .collect(),
-            output,
-        };
-        let mut psbt = Psbt::from_unsigned_tx(transaction).expect("Failed to generate PSBT");
-        let (utxo_storage_keys, vutxos) = self.remove_vutxo_by_psbt(&psbt);
-        vutxos.iter().enumerate().for_each(|(i, v)| {
-            psbt.inputs[i].witness_utxo = Some(TxOut {
+    pub fn generate_vutxos(&mut self, psbt: &mut PsbtWrapper) -> (Vec<String>, Vec<VUTXO>) {
+        let (utxo_storage_keys, vutxos) = self.remove_vutxo_by_psbt(psbt);
+
+        let input_utxo = vutxos
+            .iter()
+            .map(|v| TxOut {
                 value: Amount::from_sat(v.get_amount()),
                 script_pubkey: self
-                    .generate_btc_p2wpkh_address(&v.get_path())
-                    .script_pubkey(),
+                    .generate_utxo_chain_address(&v.get_path())
+                    .script_pubkey()
+                    .expect("Invalid address"),
             })
-        });
-        (psbt, utxo_storage_keys, vutxos)
-    }
+            .collect();
 
-    pub fn generate_psbt_from_original_psbt_and_new_output(
-        &self,
-        original_tx_btc_pending_info: &BTCPendingInfo,
-        output: Vec<TxOut>,
-    ) -> Psbt {
-        let original_psbt = original_tx_btc_pending_info.get_psbt();
-        let transaction = BtcTransaction {
-            version: Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: original_psbt
-                .unsigned_tx
-                .input
-                .into_iter()
-                .map(|original_psbt_input| TxIn {
-                    previous_output: original_psbt_input.previous_output,
-                    sequence: bitcoin::Sequence::ENABLE_RBF_NO_LOCKTIME,
-                    ..Default::default()
-                })
-                .collect(),
-            output,
-        };
-        let mut psbt = Psbt::from_unsigned_tx(transaction).expect("Failed to generate PSBT");
-        original_psbt.inputs.iter().enumerate().for_each(|(i, v)| {
-            psbt.inputs[i].witness_utxo.clone_from(&v.witness_utxo);
-        });
-        psbt
+        psbt.set_input_utxo(input_utxo);
+
+        (utxo_storage_keys, vutxos)
     }
 }
 

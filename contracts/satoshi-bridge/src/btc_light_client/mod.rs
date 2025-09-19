@@ -11,9 +11,14 @@ pub mod deposit;
 pub mod withdraw;
 
 pub const GAS_FOR_VERIFY_TRANSACTION_INCLUSION: Gas = Gas::from_tgas(10);
-
+pub const GAS_FOR_GET_LAST_BLOCK_HEIGHT: Gas = Gas::from_tgas(3);
 #[near(serializers = [borsh])]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct H256(pub [u8; 32]);
+
+#[near(serializers = [borsh, json])]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct U256(u128, u128);
 
 impl FromStr for H256 {
     type Err = hex::FromHexError;
@@ -106,6 +111,7 @@ impl Serialize for H256 {
 #[ext_contract(ext_btc_light_client)]
 pub trait BtcLightClient {
     fn verify_transaction_inclusion(&self, #[serializer(borsh)] args: ProofArgs) -> bool;
+    fn get_last_block_height(&self) -> u32;
 }
 
 impl Contract {
@@ -127,5 +133,12 @@ impl Contract {
                 merkle_proof,
                 confirmations,
             ))
+    }
+
+    pub fn get_last_block_height_promise(&self) -> Promise {
+        let config = self.internal_config();
+        ext_btc_light_client::ext(config.btc_light_client_account_id.clone())
+            .with_static_gas(GAS_FOR_GET_LAST_BLOCK_HEIGHT)
+            .get_last_block_height()
     }
 }

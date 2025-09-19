@@ -1,10 +1,11 @@
+use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 
 impl Contract {
     pub fn check_cancel_active_utxo_management_rbf_psbt_valid(
         &self,
         original_tx_btc_pending_info: &BTCPendingInfo,
-        cancel_active_utxo_management_rbf_psbt: &Psbt,
+        cancel_active_utxo_management_rbf_psbt: &PsbtWrapper,
     ) -> (u128, u128) {
         let (actual_received_amount, gas_fee) = self.check_psbt_output_all_change_address(
             cancel_active_utxo_management_rbf_psbt,
@@ -17,8 +18,9 @@ impl Contract {
 
     pub fn internal_cancel_active_utxo_management(
         &mut self,
+        _account_id: &AccountId,
         original_btc_pending_verify_id: String,
-        output: Vec<TxOut>,
+        cancel_active_utxo_management_rbf_psbt: PsbtWrapper,
     ) -> String {
         let original_tx_btc_pending_info =
             self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
@@ -29,8 +31,6 @@ impl Contract {
         );
         original_tx_btc_pending_info.assert_not_canceled();
         original_tx_btc_pending_info.assert_active_utxo_management_original_pending_verify_tx();
-        let cancel_active_utxo_management_rbf_psbt = self
-            .generate_psbt_from_original_psbt_and_new_output(original_tx_btc_pending_info, output);
 
         let mut btc_pending_info = init_rbf_btc_pending_info(
             original_tx_btc_pending_info,
