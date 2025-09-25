@@ -195,6 +195,7 @@ impl Contract {
             "Already deposit utxo"
         );
 
+        let msg = msg.map(|m| m.replace("{{UTXO_TX_ID}}", &pending_utxo_info.utxo_storage_key));
         ext_nbtc::ext(self.internal_config().nbtc_account_id.clone())
             .with_static_gas(GAS_FOR_MINT_CALL)
             .with_attached_deposit(NearToken::from_yoctonear(1))
