@@ -104,13 +104,6 @@ impl Contract {
         }
     }
 
-    pub fn safe_burn(&mut self, amount: U128) {
-        self.assert_controller();
-
-        self.token
-            .internal_withdraw(&env::predecessor_account_id(), amount.into());
-    }
-
     pub fn mint(
         &mut self,
         mint_account_id: AccountId,
