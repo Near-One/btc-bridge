@@ -1,8 +1,5 @@
-use bitcoin::Witness;
-use bitcoin::{ecdsa::Signature, hashes::Hash, sighash::SighashCache};
-
 use crate::*;
-
+use bitcoin::ecdsa::Signature;
 pub const GAS_FOR_SIGN_CALL: Gas = Gas::from_tgas(50);
 pub const GAS_FOR_SIGN_BTC_TRANSACTION_CALL_BACK: Gas = Gas::from_tgas(30);
 
@@ -78,12 +75,21 @@ impl Contract {
         sign_index: usize,
         key_version: u32,
     ) -> Promise {
+        let public_key = self.generate_btc_public_key(
+            &self
+                .internal_unwrap_btc_pending_info(&btc_pending_sign_id)
+                .vutxos[sign_index]
+                .get_path(),
+        );
+
         let btc_pending_info = self.internal_unwrap_btc_pending_info(&btc_pending_sign_id);
         require!(
             btc_pending_info.signatures[sign_index].is_none(),
             "Already signed"
         );
-        let payload = get_hash_to_sign(&btc_pending_info.get_psbt(), sign_index);
+        let payload = btc_pending_info
+            .get_psbt()
+            .get_hash_to_sign(sign_index, &public_key);
         let path = btc_pending_info.vutxos[sign_index].get_path();
         self.sign_promise(SignRequest {
             payload,
@@ -111,7 +117,7 @@ impl Contract {
                 serde_json::from_slice::<PublicKey>(&result_bytes).expect("Invalid PublicKey");
             self.internal_mut_config().chain_signatures_root_public_key = Some(root_public_key);
             let change_address = self
-                .generate_btc_p2wpkh_address(env::current_account_id().as_str())
+                .generate_utxo_chain_address(env::current_account_id().as_str())
                 .to_string();
             self.internal_mut_config().change_address = Some(change_address);
             true
@@ -153,12 +159,11 @@ impl Contract {
             }
             .emit();
             let mut psbt = btc_pending_info.get_psbt();
-            psbt.inputs[sign_index].final_script_witness =
-                Some(Witness::p2wpkh(&signature.to_btc_signature(), &public_key));
-            btc_pending_info.psbt_hex = psbt.serialize_hex();
+            psbt.save_signature(sign_index, signature, public_key);
+
+            btc_pending_info.psbt_hex = psbt.serialize();
             if btc_pending_info.is_all_signed() {
-                let transaction = psbt.extract_tx().expect("extract_tx failed");
-                let tx_bytes_with_sign = serialize(&transaction);
+                let tx_bytes_with_sign = psbt.extract_tx_bytes_with_sign();
                 Event::SignedBtcTransaction {
                     account_id: &account_id,
                     tx_id: btc_pending_sign_id.clone(),
@@ -184,25 +189,4 @@ impl Contract {
             false
         }
     }
-}
-
-pub fn get_hash_to_sign(psbt: &Psbt, vin: usize) -> [u8; 32] {
-    let tx = psbt.unsigned_tx.clone();
-    let mut cache = SighashCache::new(tx);
-    cache
-        .p2wpkh_signature_hash(
-            vin,
-            &psbt.inputs[vin]
-                .witness_utxo
-                .as_ref()
-                .unwrap()
-                .script_pubkey,
-            psbt.inputs[vin].witness_utxo.as_ref().unwrap().value,
-            bitcoin::EcdsaSighashType::All,
-        )
-        .unwrap()
-        .to_raw_hash()
-        .to_byte_array()
-    // let payload = psbt.sighash_ecdsa(vin, &mut cache).unwrap();
-    // *payload.0.as_ref()
 }

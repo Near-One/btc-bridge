@@ -1,3 +1,4 @@
+use crate::network::Address;
 use crate::*;
 
 pub const MAX_RATIO: u32 = 10000;
@@ -39,6 +40,8 @@ impl BridgeFee {
 #[derive(Clone)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 pub struct Config {
+    // The chain id: BitconMainnet/BitcoinTestnet/ZcashMainnet/ZcashTestnet etc
+    pub chain: network::Chain,
     // The account id of btc light client contract
     pub btc_light_client_account_id: AccountId,
     // The account id of nbtc contract
@@ -103,11 +106,13 @@ pub struct Config {
     pub max_btc_tx_pending_sec: u32,
     // UTXOs less than or equal to this amount are allowed to be merged through active management.
     pub unhealthy_utxo_amount: u64,
+    #[cfg(feature = "zcash")]
+    pub expiry_height_gap: u32,
 }
 
 impl Config {
     pub fn assert_valid(&self) {
-        let confirmations_valid_range = 2..=10;
+        let confirmations_valid_range = 2..=100;
         require!(
             self.confirmations_strategy
                 .values()
@@ -134,8 +139,21 @@ impl Config {
         );
     }
 
-    pub fn get_change_address(&self) -> Address {
-        string_to_btc_address(self.change_address.as_ref().unwrap())
+    pub fn get_change_script_pubkey(&self) -> ScriptBuf {
+        self.string_to_script_pubkey(self.change_address.as_ref().unwrap())
+    }
+
+    pub fn string_to_script_pubkey(&self, address_string: &str) -> ScriptBuf {
+        let chain = self.get_utxo_network();
+
+        Address::parse(address_string, chain)
+            .unwrap_or_else(|e| panic!("{address_string}: {e}"))
+            .script_pubkey()
+            .expect("Failed to get script pubkey")
+    }
+
+    pub fn get_utxo_network(&self) -> network::Chain {
+        self.chain.clone()
     }
 
     pub fn get_confirmations(&self, satoshi_amount: u128) -> u64 {

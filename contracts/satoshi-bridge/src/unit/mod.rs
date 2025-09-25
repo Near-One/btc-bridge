@@ -1,3 +1,7 @@
+#[cfg(not(feature = "zcash"))]
+use crate::network::Chain::BitcoinTestnet;
+#[cfg(feature = "zcash")]
+use crate::network::Chain::ZcashTestnet;
 use crate::*;
 use near_sdk::test_utils::VMContextBuilder;
 pub use near_sdk::testing_env;
@@ -35,6 +39,10 @@ pub fn btc_light_client_id() -> AccountId {
 
 pub fn init_contract() -> Contract {
     Contract::new(Config {
+        #[cfg(not(feature = "zcash"))]
+        chain: BitcoinTestnet,
+        #[cfg(feature = "zcash")]
+        chain: ZcashTestnet,
         chain_signatures_account_id: chain_signatures_id(),
         nbtc_account_id: nbtc_id(),
         btc_light_client_account_id: btc_light_client_id(),
@@ -70,6 +78,8 @@ pub fn init_contract() -> Contract {
         chain_signatures_root_public_key: None,
         change_address: None,
         unhealthy_utxo_amount: 1000,
+        #[cfg(feature = "zcash")]
+        expiry_height_gap: 1000,
     })
 }
 
