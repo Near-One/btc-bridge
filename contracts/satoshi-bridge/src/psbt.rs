@@ -185,7 +185,7 @@ impl Contract {
             }
         });
         require!(
-            actual_received_amounts.len() == 1,
+            actual_received_amounts.len() <= 1,
             "only one user output is allowed."
         );
         let actual_received_amount = actual_received_amounts[0];
