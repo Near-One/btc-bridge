@@ -1,13 +1,14 @@
 PROPOSAL_ID=
 EXPECTED_NBTC_BS58_HASH=HgZnctwS7JdgbnXH6sbanQ9XoZCdf7iSz9vCdvMtRrGC
 DAO_ACCOUNT_ID=rainbowbridge.sputnik-dao.near
+NEAR_NETWORK = mainnet
 
 mkdir -p tmp
 
 PROP_JSON=./tmp/actual_proposal.json
 WASM_PATH=./tmp/decoded_args.wasm
 
-near view "$DAO_ACCOUNT_ID" get_proposal "{\"id\": $PROPOSAL_ID}" > $PROP_JSON
+near contract call-function as-read-only "$DAO_ACCOUNT_ID"  get_proposal json-args "{\"id\": $PROPOSAL_ID}" network-config $NEAR_NETWORK now  > $PROP_JSON
 
 if ! jq -e '.kind.FunctionCall.actions[0].args' "$PROP_JSON" >/dev/null 2>&1; then
   echo "❌ kind.FunctionCall.actions[0].args not found"
