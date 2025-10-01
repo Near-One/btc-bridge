@@ -4,6 +4,8 @@ DAO_ACCOUNT_ID=rainbowbridge.sputnik-dao.near
 SIGNER_ACCOUNT_ID=bridge-ops.near
 NEAR_NETWORK=mainnet
 
+mkdir -p tmp
+
 cd ../contracts/nbtc
 cargo near build reproducible-wasm
 cd ../../migrate
@@ -39,7 +41,7 @@ WASM_B64=$(base64 -w 0 $NBTC_WASM_PATH 2>/dev/null || base64 $NBTC_WASM_PATH | t
       }
     }
   }'
-} > proposal.json
+} > ./tmp/proposal.json
 
 
-near contract call-function as-transaction $DAO_ACCOUNT_ID add_proposal file-args ./proposal.json prepaid-gas '100.0 Tgas' attached-deposit '1 NEAR' sign-as $SIGNER_ACCOUNT_ID network-config $NEAR_NETWORK sign-with-keychain send
+near contract call-function as-transaction $DAO_ACCOUNT_ID add_proposal file-args ./tmp/proposal.json prepaid-gas '100.0 Tgas' attached-deposit '1 NEAR' sign-as $SIGNER_ACCOUNT_ID network-config $NEAR_NETWORK sign-with-keychain send

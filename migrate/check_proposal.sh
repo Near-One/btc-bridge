@@ -2,8 +2,10 @@ PROPOSAL_ID=
 EXPECTED_NBTC_BS58_HASH=HgZnctwS7JdgbnXH6sbanQ9XoZCdf7iSz9vCdvMtRrGC
 DAO_ACCOUNT_ID=rainbowbridge.sputnik-dao.near
 
-PROP_JSON=actual_proposal.json
-WASM_PATH=decoded_args.wasm
+mkdir -p tmp
+
+PROP_JSON=./tmp/actual_proposal.json
+WASM_PATH=./tmp/decoded_args.wasm
 
 near view "$DAO_ACCOUNT_ID" get_proposal "{\"id\": $PROPOSAL_ID}" > $PROP_JSON
 
