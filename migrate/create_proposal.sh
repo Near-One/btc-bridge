@@ -11,7 +11,7 @@ cd ../../migrate
 NBTC_WASM_PATH=../target/near/nbtc/nbtc.wasm
 ACTUAL_NBTC_BS58_HASH=$(sha256sum $NBTC_WASM_PATH | awk '{print $1}' | xxd -r -p | base58)
 
-if [[ "ACTUAL_NBTC_BS58_HASH" != "EXPECTED_NBTC_BS58_HASH" ]]; then
+if [[ "$ACTUAL_NBTC_BS58_HASH" != "$EXPECTED_NBTC_BS58_HASH" ]]; then
   echo "❌ Incorrect nBTC wasm hash"
   echo "Expected: $EXPECTED_NBTC_BS58_HASH"
   echo "Actual: $ACTUAL_NBTC_BS58_HASH"
