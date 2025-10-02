@@ -14,6 +14,10 @@ pub enum TokenReceiverMessage {
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
     },
+    Rbf {
+        pending_tx_id: String,
+        output: Vec<TxOut>,
+    },
 }
 
 #[near]
@@ -60,6 +64,10 @@ impl FungibleTokenReceiver for Contract {
                 output,
                 max_gas_fee
             ),
+            TokenReceiverMessage::Rbf {
+                pending_tx_id, 
+                output
+            } => self.rbf_subsidize_chain_specific(amount, sender_id, pending_tx_id, output)
         }
     }
 }
