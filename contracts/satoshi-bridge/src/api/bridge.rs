@@ -104,17 +104,20 @@ impl Contract {
         );
 
         let path = get_deposit_path(&deposit_msg);
-        let transaction = bytes_to_btc_transaction(&tx_bytes);
-        let deposit_amount = transaction.output[vout].value.to_sat() as u128;
+        let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
+            .expect("Deserialization tx_bytes failed");
+        let deposit_amount = transaction.output()[vout].value.to_sat().into();
         require!(deposit_amount > 0, "Invalid deposit_amount");
         require!(
-            transaction.lock_time == LockTime::ZERO,
+            transaction.lock_time() == LockTime::ZERO,
             "Tx with a non-zero lock_time are not supported."
         );
-        let deposit_address = self.generate_btc_p2wpkh_address(&path);
-        let deposit_address_script_pubkey = deposit_address.script_pubkey();
+        let deposit_address = self.generate_utxo_chain_address(&path);
+        let deposit_address_script_pubkey = deposit_address
+            .script_pubkey()
+            .expect("Invalid deposit address");
         require!(
-            deposit_address_script_pubkey == transaction.output[vout].script_pubkey,
+            deposit_address_script_pubkey == transaction.output()[vout].script_pubkey,
             "Invalid deposit tx_bytes"
         );
 
@@ -122,10 +125,10 @@ impl Contract {
             path,
             tx_bytes,
             vout,
-            balance: transaction.output[vout].value.to_sat(),
+            balance: transaction.output()[vout].value.to_sat(),
         };
         let tx_id = transaction.compute_txid().to_string();
-        let utxo_storage_key = generate_utxo_storage_key(tx_id.clone(), vout as u32);
+        let utxo_storage_key = generate_utxo_storage_key(tx_id.clone(), vout.try_into().unwrap());
 
         self.internal_safe_verify_deposit(
             deposit_amount,
