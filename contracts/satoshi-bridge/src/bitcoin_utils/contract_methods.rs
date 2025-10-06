@@ -48,7 +48,10 @@ impl Contract {
         // Ensure that the RBF transaction pays more gas than the previous transaction.
         let max_gas_fee = original_tx_btc_pending_info.get_max_gas_fee();
         let additional_gas_amount = gas_fee.saturating_sub(max_gas_fee);
-        require!(additional_gas_amount > 0, "No gas increase.");
+        require!(
+            additional_gas_amount > 0,
+            format!("No gas increase. Old gas fee = {max_gas_fee}, new gas fee = {gas_fee}")
+        );
     }
 
     pub(crate) fn ft_on_transfer_withdraw_chain_specific(
@@ -124,7 +127,8 @@ impl Contract {
         let new_psbt = self
             .generate_psbt_from_original_psbt_and_new_output(original_tx_btc_pending_info, output);
 
-        let btc_pending_id = self.internal_rbf_subsidize(&user_account_id, pending_tx_id, new_psbt, amount);
+        let btc_pending_id =
+            self.internal_rbf_subsidize(&user_account_id, pending_tx_id, new_psbt, amount);
 
         self.internal_unwrap_mut_account(&user_account_id)
             .btc_pending_sign_id = Some(btc_pending_id.clone());
@@ -134,13 +138,14 @@ impl Contract {
             btc_pending_id: &btc_pending_id,
         }
         .emit();
-        
-        Event::SubsidizeRBF {
+
+        Event::SubsidizeRbf {
             btc_pending_id: &btc_pending_id,
             subsidy_amount: U128(amount),
             subsidizer: &sender_id,
             beneficiary: &user_account_id,
-        }.emit();
+        }
+        .emit();
 
         PromiseOrValue::Value(U128(0))
     }
@@ -169,21 +174,27 @@ impl Contract {
             }),
         );
         btc_pending_info.transfer_amount += subsidy_amount;
-         
-        let (actual_received_amount, gas_fee) =
-            self.check_withdraw_rbf_psbt_valid(original_tx_btc_pending_info, &withdraw_rbf_psbt, subsidy_amount);
-        
-        require!(actual_received_amount == original_tx_btc_pending_info.actual_received_amount, "Actual received amount has been changed.");
+
+        let (actual_received_amount, gas_fee) = self.check_withdraw_rbf_psbt_valid(
+            original_tx_btc_pending_info,
+            &withdraw_rbf_psbt,
+            subsidy_amount,
+        );
+
+        require!(
+            actual_received_amount == original_tx_btc_pending_info.actual_received_amount,
+            "Actual received amount has been changed."
+        );
         let gas_fee_diff = gas_fee.saturating_sub(original_tx_btc_pending_info.gas_fee);
         require!(gas_fee_diff == subsidy_amount, "Gas fee diff is not equal to subsidy amount.");
-      
+
         btc_pending_info.gas_fee = gas_fee;
         btc_pending_info.burn_amount = actual_received_amount + gas_fee;
         Self::check_withdraw_chain_specific(original_tx_btc_pending_info, gas_fee);
 
         self.internal_unwrap_mut_btc_pending_info(&original_btc_pending_verify_id)
             .update_max_gas_fee(gas_fee);
-        
+
         self.set_rbf_pending_info(
             &original_btc_pending_verify_id,
             btc_pending_info,
