@@ -16,6 +16,17 @@ pub struct DepositMsg {
     // Used to support other dApps extending based on verify_deposit.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extra_msg: Option<String>,
+    // Replacment for the legacy post_actions to support safer cross-contract calls.
+    // If this field is present, the legacy post_actions field must be None
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub safe_deposit: Option<SafeDepositMsg>,
+}
+
+#[near(serializers = [json])]
+#[derive(Clone)]
+pub struct SafeDepositMsg {
+    pub msg: String,
+    // TODO: add relayer fee support in the future.
 }
 
 #[near(serializers = [json])]

@@ -28,6 +28,10 @@ impl Contract {
         tx_index: u64,
         merkle_proof: Vec<String>,
     ) -> Promise {
+        require!(
+            deposit_msg.safe_deposit.is_none(),
+            "safe_deposit not supported in verify_deposit"
+        );
         let path = get_deposit_path(&deposit_msg);
         let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
             .expect("Deserialization tx_bytes failed");
@@ -97,6 +101,10 @@ impl Contract {
         require!(
             deposit_msg.post_actions.is_none(),
             "post_actions not supported in safe_verify_deposit"
+        );
+        require!(
+            deposit_msg.safe_deposit.is_some(),
+            "safe_deposit is required in safe_verify_deposit"
         );
         require!(
             env::attached_deposit() >= self.required_balance_for_safe_deposit(),
