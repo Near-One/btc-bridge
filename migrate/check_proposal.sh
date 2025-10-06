@@ -1,7 +1,7 @@
 PROPOSAL_ID=
 EXPECTED_NBTC_BS58_HASH=HgZnctwS7JdgbnXH6sbanQ9XoZCdf7iSz9vCdvMtRrGC
 DAO_ACCOUNT_ID=rainbowbridge.sputnik-dao.near
-NEAR_NETWORK = mainnet
+NEAR_NETWORK=mainnet
 
 mkdir -p tmp
 
