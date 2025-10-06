@@ -20,44 +20,28 @@ if [[ "$ACTUAL_NBTC_BS58_HASH" != "$EXPECTED_NBTC_BS58_HASH" ]]; then
   exit 1
 fi
 
-MIGRATE_METHOD="${MIGRATE_METHOD:-upgrade_and_migrate}"
-MIGRATE_ARGS_JSON="${MIGRATE_ARGS_JSON:-{}}"
-MIGRATE_ARGS_B64=$(printf '%s' "$MIGRATE_ARGS_JSON" | tr -d '\n' | base64 | tr -d '\n')
+WASM_B64=$(base64 -w 0 $NBTC_WASM_PATH 2>/dev/null || base64 $NBTC_WASM_PATH | tr -d '\n')
 
-near contract call-function as-transaction \
-  "$DAO_ACCOUNT_ID" \
-  store_blob \
-  file-args "$NBTC_WASM_PATH" \
-  prepaid-gas '50.0 Tgas' \
-  attached-deposit '3 NEAR' \
-  sign-as "$SIGNER_ACCOUNT_ID" \
-  network-config "$NEAR_NETWORK" \
-  sign-with-keychain send
-
-cat > ./tmp/proposal.json <<JSON
 {
-   "proposal": {
-   "description": "Upgrade + migrate nBTC via UpgradeRemote",
-    "kind": {
-      "UpgradeRemote": {
-        "receiver_id": "$NBTC_ACCOUNT_ID",
-        "method_name": "$MIGRATE_METHOD",
-        "hash": "$ACTUAL_NBTC_BS58_HASH",
-        "args": "$MIGRATE_ARGS_B64"
+  echo '{
+    "proposal": {
+      "description": "Upgrade + migrate nBTC",
+      "kind": {
+        "FunctionCall": {
+          "receiver_id": "'$NBTC_ACCOUNT_ID'",
+          "actions": [
+            {
+              "method_name": "upgrade_and_migrate",
+              "args": "'$WASM_B64'",
+              "deposit": "0",
+              "gas": "180000000000000"
+            }
+          ]
+        }
       }
     }
-  }
-}
-JSON
+  }'
+} > ./tmp/proposal.json
 
-near contract call-function as-transaction \
-  "$DAO_ACCOUNT_ID" \
-  add_proposal \
-  file-args ./tmp/proposal.json \
-  prepaid-gas '100.0 Tgas' \
-  attached-deposit '1 NEAR' \
-  sign-as "$SIGNER_ACCOUNT_ID" \
-  network-config "$NEAR_NETWORK" \
-  sign-with-keychain send
 
-echo "✅ Proposal submitted: UpgradeRemote -> $NBTC_ACCOUNT_ID (hash=$ACTUAL_NBTC_BS58_HASH, method=$MIGRATE_METHOD)"
+near contract call-function as-transaction $DAO_ACCOUNT_ID add_proposal file-args ./tmp/proposal.json prepaid-gas '100.0 Tgas' attached-deposit '1 NEAR' sign-as $SIGNER_ACCOUNT_ID network-config $NEAR_NETWORK sign-with-keychain send
