@@ -60,7 +60,7 @@ impl Contract {
         decimals: u8,
     ) -> Self {
         require!(!env::state_exists(), "Already initialized");
-        Self {
+        let mut contract = Self {
             controller,
             bridge_id,
             token: FungibleToken::new(StorageKey::FungibleToken),
@@ -76,7 +76,13 @@ impl Contract {
                     decimals,
                 }),
             ),
-        }
+        };
+
+        contract
+            .token
+            .internal_register_account(&contract.bridge_id);
+
+        contract
     }
 
     #[payable]
