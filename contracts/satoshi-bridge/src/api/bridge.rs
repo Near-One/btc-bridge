@@ -72,7 +72,7 @@ impl Contract {
         )
     }
 
-    /// Safe version of verify_deposit, only supports minting nBTC without post_actions and revert the deposit on failed XCC calls.
+    /// Safe version of verify_deposit, only supports minting nBTC with safe_deposit message and revert the deposit on failed XCC calls.
     /// It doesn't charge deposit fee, and doesn't pay the token storage for the user
     ///
     /// # Arguments
@@ -99,19 +99,15 @@ impl Contract {
         merkle_proof: Vec<String>,
     ) -> Promise {
         require!(
-            deposit_msg.post_actions.is_none(),
-            "post_actions not supported in safe_verify_deposit"
-        );
-        require!(
-            deposit_msg.safe_deposit.is_some(),
-            "safe_deposit is required in safe_verify_deposit"
-        );
-        require!(
             env::attached_deposit() >= self.required_balance_for_safe_deposit(),
             "Insufficient deposit for storage"
         );
 
         let path = get_deposit_path(&deposit_msg);
+        let safe_deposit_msg = deposit_msg
+            .safe_deposit
+            .unwrap_or_else(|| env::panic_str("safe_deposit is required in safe_verify_deposit"));
+
         let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
             .expect("Deserialization tx_bytes failed");
         let deposit_amount = transaction.output()[vout].value.to_sat().into();
@@ -148,7 +144,8 @@ impl Contract {
                 utxo_storage_key,
                 utxo,
             },
-            deposit_msg,
+            deposit_msg.recipient_id,
+            safe_deposit_msg,
         )
     }
 

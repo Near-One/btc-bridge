@@ -71,15 +71,11 @@ impl Contract {
         tx_index: u64,
         merkle_proof: Vec<String>,
         pending_utxo_info: PendingUTXOInfo,
-        deposit_msg: DepositMsg,
+        recipient_id: AccountId,
+        deposit_msg: SafeDepositMsg,
     ) -> Promise {
         let config = self.internal_config();
-        let recipient_id = deposit_msg.recipient_id.clone();
-        let confirmations = if deposit_msg.extra_msg.is_none() {
-            self.get_confirmations(config, deposit_amount)
-        } else {
-            self.get_extra_msg_confirmations(config, deposit_amount)
-        };
+        let confirmations = self.get_confirmations(config, deposit_amount);
         let promise = self.verify_transaction_inclusion_promise(
             config.btc_light_client_account_id.clone(),
             pending_utxo_info.tx_id.clone(),
@@ -102,7 +98,7 @@ impl Contract {
                     .verify_safe_deposit_callback(
                         recipient_id,
                         deposit_amount.into(),
-                        deposit_msg.extra_msg,
+                        deposit_msg.msg,
                         pending_utxo_info,
                     ),
             )
@@ -180,7 +176,7 @@ impl Contract {
         &mut self,
         recipient_id: AccountId,
         mint_amount: U128,
-        msg: Option<String>,
+        msg: String,
         pending_utxo_info: PendingUTXOInfo,
     ) -> PromiseOrValue<bool> {
         let result_bytes =
@@ -195,7 +191,8 @@ impl Contract {
             "Already deposit utxo"
         );
 
-        let msg = msg.map(|m| m.replace("{{UTXO_TX_ID}}", &pending_utxo_info.utxo_storage_key));
+        let msg = (!msg.is_empty())
+            .then(|| msg.replace("{{UTXO_TX_ID}}", &pending_utxo_info.utxo_storage_key));
         ext_nbtc::ext(self.internal_config().nbtc_account_id.clone())
             .with_static_gas(GAS_FOR_MINT_CALL)
             .with_attached_deposit(NearToken::from_yoctonear(1))
