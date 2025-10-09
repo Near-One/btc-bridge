@@ -239,6 +239,7 @@ fn test_check_deposit_msg() {
                 recipient_id: recipient_id(),
                 post_actions: None,
                 extra_msg: None,
+                safe_deposit: None
             },
             100
         )
@@ -251,6 +252,7 @@ fn test_check_deposit_msg() {
                 recipient_id: recipient_id(),
                 post_actions: Some(vec![]),
                 extra_msg: None,
+                safe_deposit: None
             },
             100
         )
@@ -284,6 +286,7 @@ fn test_check_deposit_msg() {
                     },
                 ]),
                 extra_msg: None,
+                safe_deposit: None
             },
             100
         )
@@ -310,6 +313,7 @@ fn test_check_deposit_msg() {
                     },
                 ]),
                 extra_msg: None,
+                safe_deposit: None
             },
             100
         )
@@ -336,6 +340,7 @@ fn test_check_deposit_msg() {
                     gas: Some(Gas::from_tgas(200))
                 },]),
                 extra_msg: None,
+                safe_deposit: None
             },
             100
         )
@@ -362,6 +367,7 @@ fn test_check_deposit_msg() {
                     },
                 ]),
                 extra_msg: None,
+                safe_deposit: None
             },
             100
         )
@@ -388,6 +394,7 @@ fn test_check_deposit_msg() {
                     },
                 ]),
                 extra_msg: None,
+                safe_deposit: None
             },
             100
         )
@@ -414,6 +421,7 @@ fn test_check_deposit_msg() {
                     },
                 ]),
                 extra_msg: None,
+                safe_deposit: None
             },
             100
         )
@@ -439,6 +447,7 @@ fn test_check_deposit_msg() {
                     gas: Some(Gas::from_tgas(50))
                 },]),
                 extra_msg: None,
+                safe_deposit: None
             },
             100
         )
@@ -456,6 +465,7 @@ fn test_check_deposit_msg() {
                     gas: Some(Gas::from_tgas(50))
                 },]),
                 extra_msg: None,
+                safe_deposit: None
             },
             100
         )
@@ -479,6 +489,7 @@ fn test_check_deposit_msg() {
                     },
                 ]),
                 extra_msg: None,
+                safe_deposit: None
             },
             100
         )
@@ -498,6 +509,7 @@ fn test_check_deposit_msg() {
                     },
                 ]),
                 extra_msg: None,
+                safe_deposit: None
             },
             100
         )
@@ -517,6 +529,7 @@ fn test_check_deposit_msg() {
                     },
                 ]),
                 extra_msg: None,
+                safe_deposit: None
             },
             100
         )
@@ -536,6 +549,7 @@ fn test_check_deposit_msg() {
                     },
                 ]),
                 extra_msg: None,
+                safe_deposit: None
             },
             100
         )

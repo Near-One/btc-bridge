@@ -64,6 +64,7 @@ impl Contract {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn internal_safe_verify_deposit(
         &mut self,
         deposit_amount: u128,

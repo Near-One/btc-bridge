@@ -10,6 +10,7 @@ impl Contract {
             recipient_id: env::current_account_id(),
             post_actions: None,
             extra_msg: None,
+            safe_deposit: None,
         });
         let utxo_storage_key = generate_utxo_storage_key(txid, vout);
         let tx_bytes = vec![0u8; 300]; // TODO: optimise storage usage

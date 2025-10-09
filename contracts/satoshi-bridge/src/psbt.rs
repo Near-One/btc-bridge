@@ -2,6 +2,7 @@ use crate::network::Address;
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 impl Contract {
+    #[allow(clippy::too_many_arguments)]
     pub fn check_withdraw_psbt_valid(
         &self,
         target_address_script_pubkey: &ScriptBuf,
