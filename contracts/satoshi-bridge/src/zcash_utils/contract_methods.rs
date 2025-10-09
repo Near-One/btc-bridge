@@ -97,7 +97,13 @@ impl Contract {
     ) -> U128 {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
         let mut psbt = PsbtWrapper::new(input, output, expiry_height, self.internal_config());
-        self.create_btc_pending_info(sender_id, amount.0, target_btc_address, &mut psbt, max_gas_fee);
+        self.create_btc_pending_info(
+            sender_id,
+            amount.0,
+            target_btc_address,
+            &mut psbt,
+            max_gas_fee,
+        );
 
         U128(0)
     }

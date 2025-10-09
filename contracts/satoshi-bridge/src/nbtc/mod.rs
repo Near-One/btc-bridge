@@ -21,4 +21,5 @@ pub trait NBtc {
         relayer_account_id: AccountId,
         relayer_fee: U128,
     );
+    fn safe_mint(&mut self, account_id: AccountId, amount: U128, msg: Option<String>);
 }

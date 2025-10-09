@@ -51,14 +51,14 @@ impl FungibleTokenReceiver for Contract {
                 target_btc_address,
                 input,
                 output,
-                max_gas_fee
+                max_gas_fee,
             } => self.ft_on_transfer_withdraw_chain_specific(
                 sender_id,
                 amount,
                 target_btc_address,
                 input,
                 output,
-                max_gas_fee
+                max_gas_fee,
             ),
         }
     }
@@ -94,7 +94,7 @@ impl Contract {
             &vutxos,
             amount,
             withdraw_fee,
-            max_gas_fee
+            max_gas_fee,
         );
 
         let need_signature_num = psbt.get_input_num();

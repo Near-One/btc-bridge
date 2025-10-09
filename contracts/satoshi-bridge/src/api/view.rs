@@ -1,5 +1,7 @@
 use crate::*;
 
+const REQUIRED_BALANCE_FOR_DEPOSIT: NearToken = NearToken::from_yoctonear(1200000000000000000000);
+
 #[near(serializers = [json])]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 pub struct Metadata {
@@ -262,5 +264,9 @@ impl Contract {
             .take(take_n)
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
+    }
+
+    pub fn required_balance_for_safe_deposit(&self) -> NearToken {
+        REQUIRED_BALANCE_FOR_DEPOSIT
     }
 }
