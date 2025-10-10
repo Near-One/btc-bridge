@@ -124,6 +124,7 @@ pub struct ContractData {
 pub enum VersionedContractData {
     V0(ContractDataV0),
     V1(ContractDataV1),
+    V2(ContractDataV2),
     Current(ContractData),
 }
 
