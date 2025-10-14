@@ -12,6 +12,8 @@ pub struct OriginalState {
     pub max_gas_fee: u128,
     pub last_rbf_time_sec: Option<u32>,
     pub cancel_rbf_reserved: Option<U128>,
+    #[serde(with = "u128_dec_format")]
+    pub subsidize_amount: u128,
 }
 
 impl OriginalState {
@@ -291,14 +293,116 @@ impl BTCPendingInfo {
     }
 }
 
+#[near(serializers = [borsh, json])]
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub struct OriginalStateV0 {
+    pub stage: PendingInfoStage,
+    #[serde(with = "u128_dec_format")]
+    pub max_gas_fee: u128,
+    pub last_rbf_time_sec: Option<u32>,
+    pub cancel_rbf_reserved: Option<U128>,
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub enum PendingInfoStateV0 {
+    WithdrawOriginal(OriginalStateV0),
+    WithdrawUserRbf(RbfState),
+    WithdrawCancelRbf(RbfState),
+    ActiveUtxoManagementOriginal(OriginalStateV0),
+    ActiveUtxoManagementRbf(RbfState),
+    ActiveUtxoManagementCancelRbf(RbfState),
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub struct BTCPendingInfoV0 {
+    pub account_id: AccountId,
+    pub btc_pending_id: String,
+    #[serde(with = "u128_dec_format")]
+    pub transfer_amount: u128,
+    #[serde(with = "u128_dec_format")]
+    pub actual_received_amount: u128,
+    #[serde(with = "u128_dec_format")]
+    pub withdraw_fee: u128,
+    #[serde(with = "u128_dec_format")]
+    pub gas_fee: u128,
+    #[serde(with = "u128_dec_format")]
+    pub burn_amount: u128,
+    pub psbt_hex: String,
+    pub vutxos: Vec<VUTXO>,
+    pub signatures: Vec<Option<SignatureResponse>>,
+    pub tx_bytes_with_sign: Option<Vec<u8>>,
+    pub create_time_sec: u32,
+    pub last_sign_time_sec: u32,
+    pub state: PendingInfoStateV0,
+}
+
+impl From<OriginalStateV0> for OriginalState {
+    fn from(c: OriginalStateV0) -> Self {
+        Self {
+            stage: c.stage,
+            max_gas_fee: c.max_gas_fee,
+            last_rbf_time_sec: c.last_rbf_time_sec,
+            cancel_rbf_reserved: c.cancel_rbf_reserved,
+            subsidize_amount: 0,
+        }
+    }
+}
+
+impl From<PendingInfoStateV0> for PendingInfoState {
+    fn from(c: PendingInfoStateV0) -> Self {
+        match c {
+            PendingInfoStateV0::WithdrawOriginal(x) => PendingInfoState::WithdrawOriginal(x.into()),
+            PendingInfoStateV0::WithdrawUserRbf(x) => PendingInfoState::WithdrawUserRbf(x),
+            PendingInfoStateV0::WithdrawCancelRbf(x) => PendingInfoState::WithdrawCancelRbf(x),
+            PendingInfoStateV0::ActiveUtxoManagementOriginal(x) => {
+                PendingInfoState::ActiveUtxoManagementOriginal(x.into())
+            }
+            PendingInfoStateV0::ActiveUtxoManagementRbf(x) => {
+                PendingInfoState::ActiveUtxoManagementRbf(x)
+            }
+            PendingInfoStateV0::ActiveUtxoManagementCancelRbf(x) => {
+                PendingInfoState::ActiveUtxoManagementCancelRbf(x)
+            }
+        }
+    }
+}
+
+impl From<BTCPendingInfoV0> for BTCPendingInfo {
+    fn from(c: BTCPendingInfoV0) -> Self {
+        Self {
+            account_id: c.account_id,
+            btc_pending_id: c.btc_pending_id,
+            transfer_amount: c.transfer_amount,
+            actual_received_amount: c.actual_received_amount,
+            withdraw_fee: c.withdraw_fee,
+            gas_fee: c.gas_fee,
+            burn_amount: c.burn_amount,
+            psbt_hex: c.psbt_hex,
+            vutxos: c.vutxos,
+            signatures: c.signatures,
+            tx_bytes_with_sign: c.tx_bytes_with_sign,
+            create_time_sec: c.create_time_sec,
+            last_sign_time_sec: c.last_sign_time_sec,
+            state: c.state.into(),
+        }
+    }
+}
+
 #[near(serializers = [borsh])]
 pub enum VBTCPendingInfo {
+    V0(BTCPendingInfoV0),
     Current(BTCPendingInfo),
 }
 
 impl From<VBTCPendingInfo> for BTCPendingInfo {
     fn from(v: VBTCPendingInfo) -> Self {
         match v {
+            VBTCPendingInfo::V0(c) => c.into(),
             VBTCPendingInfo::Current(c) => c,
         }
     }
@@ -307,6 +411,7 @@ impl From<VBTCPendingInfo> for BTCPendingInfo {
 impl From<&VBTCPendingInfo> for BTCPendingInfo {
     fn from(v: &VBTCPendingInfo) -> Self {
         match v {
+            VBTCPendingInfo::V0(c) => c.clone().into(),
             VBTCPendingInfo::Current(c) => c.clone(),
         }
     }
@@ -315,6 +420,7 @@ impl From<&VBTCPendingInfo> for BTCPendingInfo {
 impl<'a> From<&'a VBTCPendingInfo> for &'a BTCPendingInfo {
     fn from(v: &'a VBTCPendingInfo) -> Self {
         match v {
+            VBTCPendingInfo::V0(_) => unreachable!(),
             VBTCPendingInfo::Current(c) => c,
         }
     }
@@ -323,6 +429,7 @@ impl<'a> From<&'a VBTCPendingInfo> for &'a BTCPendingInfo {
 impl<'a> From<&'a mut VBTCPendingInfo> for &'a mut BTCPendingInfo {
     fn from(v: &'a mut VBTCPendingInfo) -> Self {
         match v {
+            VBTCPendingInfo::V0(_) => unreachable!(),
             VBTCPendingInfo::Current(c) => c,
         }
     }
@@ -361,11 +468,18 @@ impl Contract {
         &mut self,
         btc_pending_id: &String,
     ) -> &mut BTCPendingInfo {
-        self.data_mut()
+        let btc_pending_info = self
+            .data_mut()
             .btc_pending_infos
             .get_mut(btc_pending_id)
-            .map(|o| o.into())
-            .expect("BTC pending info not exist")
+            .expect("BTC pending info not exist");
+
+        if let VBTCPendingInfo::V0(old) = &btc_pending_info {
+            let new_current = BTCPendingInfo::from(old.clone());
+            *btc_pending_info = VBTCPendingInfo::Current(new_current);
+        }
+
+        btc_pending_info.into()
     }
 
     pub fn internal_remove_btc_pending_info(&mut self, btc_pending_id: &String) -> BTCPendingInfo {
