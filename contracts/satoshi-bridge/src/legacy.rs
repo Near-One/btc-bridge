@@ -150,8 +150,14 @@ impl From<ConfigV0> for Config {
             max_btc_tx_pending_sec,
         } = c;
 
+        let chain = if env::current_account_id().as_str().ends_with(".testnet") {
+            crate::network::Chain::BitcoinTestnet
+        } else {
+            crate::network::Chain::BitcoinMainnet
+        };
+
         Self {
-            chain: crate::network::Chain::BitcoinMainnet,
+            chain,
             btc_light_client_account_id,
             nbtc_account_id,
             chain_signatures_account_id,
@@ -284,8 +290,14 @@ impl From<ConfigV1> for Config {
             expiry_height_gap,
         } = c;
 
+        let chain = if env::current_account_id().as_str().ends_with(".testnet") {
+            crate::network::Chain::BitcoinTestnet
+        } else {
+            crate::network::Chain::BitcoinMainnet
+        };
+
         Self {
-            chain: crate::network::Chain::BitcoinMainnet,
+            chain,
             btc_light_client_account_id,
             nbtc_account_id,
             chain_signatures_account_id,
