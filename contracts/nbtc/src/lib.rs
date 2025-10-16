@@ -171,7 +171,7 @@ impl Contract {
 impl FungibleTokenCore for Contract {
     #[payable]
     fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>) {
-        self.token.ft_transfer(receiver_id, amount, memo)
+        self.token.ft_transfer(receiver_id, amount, memo);
     }
 
     #[payable]
