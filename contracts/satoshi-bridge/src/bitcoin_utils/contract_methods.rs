@@ -173,12 +173,13 @@ impl Contract {
                 original_tx_id: original_btc_pending_verify_id.clone(),
             }),
         );
-        btc_pending_info.transfer_amount += subsidy_amount;
+        let full_subsidy_amount = self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id).get_subsidize_amount() + subsidy_amount;
+        btc_pending_info.transfer_amount += full_subsidy_amount;
 
         let (actual_received_amount, gas_fee) = self.check_withdraw_rbf_psbt_valid(
             original_tx_btc_pending_info,
             &withdraw_rbf_psbt,
-            subsidy_amount,
+            full_subsidy_amount,
         );
 
         require!(
@@ -186,7 +187,7 @@ impl Contract {
             "Actual received amount has been changed."
         );
         let gas_fee_diff = gas_fee.saturating_sub(original_tx_btc_pending_info.gas_fee);
-        require!(gas_fee_diff == subsidy_amount, "Gas fee diff is not equal to subsidy amount.");
+        require!(gas_fee_diff == full_subsidy_amount, "Gas fee diff is not equal to subsidy amount.");
 
         btc_pending_info.gas_fee = gas_fee;
         btc_pending_info.burn_amount = actual_received_amount + gas_fee;
@@ -194,6 +195,9 @@ impl Contract {
 
         self.internal_unwrap_mut_btc_pending_info(&original_btc_pending_verify_id)
             .update_max_gas_fee(gas_fee);
+        
+        self.internal_unwrap_mut_btc_pending_info(&original_btc_pending_verify_id)
+            .update_subsidize_amount(full_subsidy_amount);
 
         self.set_rbf_pending_info(
             &original_btc_pending_verify_id,

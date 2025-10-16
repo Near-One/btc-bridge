@@ -201,6 +201,28 @@ impl BTCPendingInfo {
             _ => env::panic_str("Not original tx"),
         }
     }
+    
+    pub fn get_subsidize_amount(&self) -> u128 {
+        match self.state.borrow() {
+            PendingInfoState::WithdrawOriginal(state) => state.subsidize_amount,
+            PendingInfoState::ActiveUtxoManagementOriginal(state) => state.subsidize_amount,
+            _ => env::panic_str("Not original tx"),
+        }
+    }
+    
+    pub fn update_subsidize_amount(&mut self, subsidize_amount: u128) {
+        match self.state.borrow_mut() {
+            PendingInfoState::WithdrawOriginal(state) => {
+                state.subsidize_amount = subsidize_amount;
+                state.last_rbf_time_sec = Some(nano_to_sec(env::block_timestamp()));
+            }
+            PendingInfoState::ActiveUtxoManagementOriginal(state) => {
+                state.subsidize_amount = subsidize_amount;
+                state.last_rbf_time_sec = Some(nano_to_sec(env::block_timestamp()));
+            }
+            _ => env::panic_str("Not original tx"),
+        }
+    }
 
     pub fn to_pending_verify_stage(&mut self) {
         match self.state.borrow_mut() {
