@@ -467,3 +467,177 @@ impl From<ContractDataV2> for ContractData {
         }
     }
 }
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub struct OriginalStateV0 {
+    pub stage: PendingInfoStage,
+    #[serde(with = "u128_dec_format")]
+    pub max_gas_fee: u128,
+    pub last_rbf_time_sec: Option<u32>,
+    pub cancel_rbf_reserved: Option<U128>,
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub enum PendingInfoStateV0 {
+    WithdrawOriginal(OriginalStateV0),
+    WithdrawUserRbf(RbfState),
+    WithdrawCancelRbf(RbfState),
+    ActiveUtxoManagementOriginal(OriginalStateV0),
+    ActiveUtxoManagementRbf(RbfState),
+    ActiveUtxoManagementCancelRbf(RbfState),
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub struct BTCPendingInfoV0 {
+    pub account_id: AccountId,
+    pub btc_pending_id: String,
+    #[serde(with = "u128_dec_format")]
+    pub transfer_amount: u128,
+    #[serde(with = "u128_dec_format")]
+    pub actual_received_amount: u128,
+    #[serde(with = "u128_dec_format")]
+    pub withdraw_fee: u128,
+    #[serde(with = "u128_dec_format")]
+    pub gas_fee: u128,
+    #[serde(with = "u128_dec_format")]
+    pub burn_amount: u128,
+    pub psbt_hex: String,
+    pub vutxos: Vec<VUTXO>,
+    pub signatures: Vec<Option<SignatureResponse>>,
+    pub tx_bytes_with_sign: Option<Vec<u8>>,
+    pub create_time_sec: u32,
+    pub last_sign_time_sec: u32,
+    pub state: PendingInfoStateV0,
+}
+
+impl From<OriginalStateV0> for OriginalState {
+    fn from(c: OriginalStateV0) -> Self {
+        Self {
+            stage: c.stage,
+            max_gas_fee: c.max_gas_fee,
+            last_rbf_time_sec: c.last_rbf_time_sec,
+            cancel_rbf_reserved: c.cancel_rbf_reserved,
+            subsidize_amount: 0,
+        }
+    }
+}
+
+impl From<PendingInfoStateV0> for PendingInfoState {
+    fn from(c: PendingInfoStateV0) -> Self {
+        match c {
+            PendingInfoStateV0::WithdrawOriginal(x) => PendingInfoState::WithdrawOriginal(x.into()),
+            PendingInfoStateV0::WithdrawUserRbf(x) => PendingInfoState::WithdrawUserRbf(x),
+            PendingInfoStateV0::WithdrawCancelRbf(x) => PendingInfoState::WithdrawCancelRbf(x),
+            PendingInfoStateV0::ActiveUtxoManagementOriginal(x) => {
+                PendingInfoState::ActiveUtxoManagementOriginal(x.into())
+            }
+            PendingInfoStateV0::ActiveUtxoManagementRbf(x) => {
+                PendingInfoState::ActiveUtxoManagementRbf(x)
+            }
+            PendingInfoStateV0::ActiveUtxoManagementCancelRbf(x) => {
+                PendingInfoState::ActiveUtxoManagementCancelRbf(x)
+            }
+        }
+    }
+}
+
+impl From<BTCPendingInfoV0> for BTCPendingInfo {
+    fn from(c: BTCPendingInfoV0) -> Self {
+        Self {
+            account_id: c.account_id,
+            btc_pending_id: c.btc_pending_id,
+            transfer_amount: c.transfer_amount,
+            actual_received_amount: c.actual_received_amount,
+            withdraw_fee: c.withdraw_fee,
+            gas_fee: c.gas_fee,
+            burn_amount: c.burn_amount,
+            psbt_hex: c.psbt_hex,
+            vutxos: c.vutxos,
+            signatures: c.signatures,
+            tx_bytes_with_sign: c.tx_bytes_with_sign,
+            create_time_sec: c.create_time_sec,
+            last_sign_time_sec: c.last_sign_time_sec,
+            state: c.state.into(),
+        }
+    }
+}
+
+#[near(serializers = [borsh])]
+pub struct ContractDataV3 {
+    pub config: LazyOption<Config>,
+    pub accounts: IterableMap<AccountId, VAccount>,
+    pub utxos: IterableMap<String, VUTXO>,
+    pub unavailable_utxos: IterableMap<String, VUTXO>,
+    pub verified_deposit_utxo: LookupSet<String>,
+    pub btc_pending_infos: IterableMap<String, VBTCPendingInfo>,
+    pub rbf_txs: IterableMap<String, HashSet<String>>,
+    pub relayer_white_list: IterableSet<AccountId>,
+    pub extra_msg_relayer_white_list: IterableSet<AccountId>,
+    pub post_action_receiver_id_white_list: IterableSet<AccountId>,
+    pub post_action_msg_templates: IterableMap<AccountId, HashSet<String>>,
+    pub lost_found: IterableMap<AccountId, u128>,
+    pub acc_collected_protocol_fee: u128,
+    pub cur_available_protocol_fee: u128,
+    pub acc_claimed_protocol_fee: u128,
+    pub cur_reserved_protocol_fee: u128,
+    pub acc_protocol_fee_for_gas: u128,
+}
+
+impl From<ContractDataV3> for ContractData {
+    fn from(c: ContractDataV3) -> Self {
+        let ContractDataV3 {
+            config,
+            accounts,
+            utxos,
+            unavailable_utxos,
+            verified_deposit_utxo,
+            mut btc_pending_infos,
+            rbf_txs,
+            relayer_white_list,
+            extra_msg_relayer_white_list,
+            post_action_receiver_id_white_list,
+            post_action_msg_templates,
+            lost_found,
+            acc_collected_protocol_fee,
+            cur_available_protocol_fee,
+            acc_claimed_protocol_fee,
+            cur_reserved_protocol_fee,
+            acc_protocol_fee_for_gas,
+        } = c;
+
+        let keys: Vec<String> = btc_pending_infos.keys().map(|k| k.clone()).collect();
+
+        for key in keys {
+            if let Some(value) = btc_pending_infos.get(&key) {
+                let current: BTCPendingInfo = value.into();
+                btc_pending_infos.insert(key, VBTCPendingInfo::Current(current));
+            }
+        }
+
+        Self {
+            config,
+            accounts,
+            utxos,
+            unavailable_utxos,
+            verified_deposit_utxo,
+            btc_pending_infos,
+            rbf_txs,
+            relayer_white_list,
+            extra_msg_relayer_white_list,
+            post_action_receiver_id_white_list,
+            post_action_msg_templates,
+            lost_found,
+            acc_collected_protocol_fee,
+            cur_available_protocol_fee,
+            acc_claimed_protocol_fee,
+            cur_reserved_protocol_fee,
+            acc_protocol_fee_for_gas,
+        }
+    }
+}
