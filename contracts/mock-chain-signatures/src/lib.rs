@@ -42,7 +42,7 @@ impl Contract {
         Self { public_key }
     }
 
-    #[allow(unused_variables, clippy::missing_panics_doc)]
+    #[allow(unused_variables)]
     pub fn sign(&mut self, request: SignRequest) -> Promise {
         assert!(
             env::prepaid_gas() >= GAS_FOR_SIGN_CALL,

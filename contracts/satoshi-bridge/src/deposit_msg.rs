@@ -130,7 +130,7 @@ impl Contract {
                     Event::InvalidPostAction {
                         index: Some(index),
                         err_msg: format!(
-                            "The amount({gas}) of gas exceeds the limit of {MIN_PER_POST_ACTIONS_GAS}."
+                            "The amount({gas}) of gas exceeds the limit of {MAX_PER_POST_ACTIONS_GAS}."
                         ),
                     }
                     .emit();
