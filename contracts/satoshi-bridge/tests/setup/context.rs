@@ -145,6 +145,7 @@ impl Context {
                 "name": "Near WTC".to_string(),
                 "symbol": "NBTC".to_string(),
                 "icon": Some(DATA_IMAGE_SVG_NEAR_ICON.to_string()),
+                "decimals": 8,
             }))
             .transact()
             .await
