@@ -30,10 +30,6 @@ impl FungibleTokenReceiver for Contract {
         msg: String,
     ) -> PromiseOrValue<U128> {
         let amount = amount.into();
-        require!(
-            amount >= self.internal_config().min_withdraw_amount,
-            "Invalid amount"
-        );
         let message = serde_json::from_str::<TokenReceiverMessage>(&msg).expect("INVALID MSG");
         let token_id = env::predecessor_account_id();
         require!(
@@ -56,18 +52,24 @@ impl FungibleTokenReceiver for Contract {
                 input,
                 output,
                 max_gas_fee,
-            } => self.ft_on_transfer_withdraw_chain_specific(
-                sender_id,
-                amount,
-                target_btc_address,
-                input,
-                output,
-                max_gas_fee,
-            ),
+            } => {
+                require!(
+                    amount >= self.internal_config().min_withdraw_amount,
+                    "Invalid amount"
+                );
+                self.ft_on_transfer_withdraw_chain_specific(
+                    sender_id,
+                    amount,
+                    target_btc_address,
+                    input,
+                    output,
+                    max_gas_fee,
+                )
+            }
             TokenReceiverMessage::Rbf {
-                pending_tx_id, 
-                output
-            } => self.rbf_subsidize_chain_specific(amount, sender_id, pending_tx_id, output)
+                pending_tx_id,
+                output,
+            } => self.rbf_subsidize_chain_specific(amount, sender_id, pending_tx_id, output),
         }
     }
 }
