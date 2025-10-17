@@ -1,5 +1,9 @@
-use crate::psbt_wrapper::PsbtWrapper;
-use crate::*;
+use crate::{
+    assert_one_yocto, env, generate_utxo_storage_key, get_deposit_path, nano_to_sec, near,
+    psbt_wrapper::PsbtWrapper, require, AccessControllable, AccountId, BTCPendingInfo, Contract,
+    ContractExt, DepositMsg, Event, LockTime, OriginalState, OutPoint, Pausable, PendingInfoStage,
+    PendingInfoState, PendingUTXOInfo, Promise, Role, TxOut, WrappedTransaction, UTXO,
+};
 use near_plugins::{access_control_any, pause};
 
 #[near]
@@ -35,7 +39,7 @@ impl Contract {
         let path = get_deposit_path(&deposit_msg);
         let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
             .expect("Deserialization tx_bytes failed");
-        let deposit_amount = transaction.output()[vout].value.to_sat() as u128;
+        let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
         require!(deposit_amount > 0, "Invalid deposit_amount");
         require!(
             transaction.lock_time() == LockTime::ZERO,
@@ -57,7 +61,10 @@ impl Contract {
             balance: transaction.output()[vout].value.to_sat(),
         };
         let tx_id = transaction.compute_txid().to_string();
-        let utxo_storage_key = generate_utxo_storage_key(tx_id.clone(), vout as u32);
+        let utxo_storage_key = generate_utxo_storage_key(
+            tx_id.clone(),
+            u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
+        );
         self.internal_verify_deposit(
             deposit_amount,
             tx_block_blockhash,

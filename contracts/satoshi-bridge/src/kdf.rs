@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{env, BtcPublicKey, Contract};
 
 use crate::network::Address;
 use k256::elliptic_curve::sec1::ToEncodedPoint;

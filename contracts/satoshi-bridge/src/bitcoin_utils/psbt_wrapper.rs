@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{generate_utxo_storage_key, SignatureResponse};
 
 use bitcoin::absolute::LockTime;
 use bitcoin::consensus::serialize;

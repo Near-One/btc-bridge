@@ -1,4 +1,7 @@
-use crate::*;
+use crate::{
+    env, ext_nbtc, is_promise_success, near, Account, AccountId, Contract, ContractExt, Event, Gas,
+    PendingUTXOInfo, PostAction, Promise, U128,
+};
 
 pub const GAS_FOR_MINT_CALL: Gas = Gas::from_tgas(150);
 pub const GAS_FOR_MINT_CALL_BACK: Gas = Gas::from_tgas(10);
@@ -49,11 +52,7 @@ impl Contract {
         pending_utxo_info: PendingUTXOInfo,
     ) -> bool {
         let is_success = is_promise_success();
-        if !is_success {
-            self.data_mut()
-                .verified_deposit_utxo
-                .remove(&pending_utxo_info.utxo_storage_key);
-        } else {
+        if is_success {
             if !self.check_account_exists(&recipient_id) {
                 self.internal_set_account(&recipient_id, Account::new(&recipient_id));
             }
@@ -66,6 +65,10 @@ impl Contract {
             }
             .emit();
             self.internal_set_utxo(&pending_utxo_info.utxo_storage_key, pending_utxo_info.utxo);
+        } else {
+            self.data_mut()
+                .verified_deposit_utxo
+                .remove(&pending_utxo_info.utxo_storage_key);
         }
         Event::VerifyDepositDetails {
             recipient_id: &recipient_id,

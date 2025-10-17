@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{env, near, Contract, ContractExt, VersionedContractData};
 
 #[near]
 impl Contract {

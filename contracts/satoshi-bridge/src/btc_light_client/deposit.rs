@@ -2,8 +2,11 @@ use near_sdk::PromiseResult;
 
 use crate::{
     burn::GAS_FOR_BURN_CALL,
+    env, ext_nbtc,
     mint::{GAS_FOR_MINT_CALL, GAS_FOR_MINT_CALL_BACK},
-    *,
+    near, promise_result_as_success, require, serde_json, AccountId, Contract, ContractExt,
+    DepositMsg, Event, Gas, NearToken, PendingUTXOInfo, PostAction, Promise, PromiseOrValue,
+    SafeDepositMsg, U128,
 };
 
 pub const GAS_FOR_VERIFY_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(190);
@@ -126,7 +129,7 @@ impl Contract {
                 .insert(pending_utxo_info.utxo_storage_key.clone()),
             "Already deposit utxo"
         );
-        let deposit_amount = pending_utxo_info.utxo.balance as u128;
+        let deposit_amount = u128::from(pending_utxo_info.utxo.balance);
         self.internal_set_unavailable_utxo(
             &pending_utxo_info.utxo_storage_key,
             pending_utxo_info.utxo,

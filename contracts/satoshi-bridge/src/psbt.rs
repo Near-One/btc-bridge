@@ -1,6 +1,8 @@
-use crate::network::Address;
-use crate::psbt_wrapper::PsbtWrapper;
-use crate::*;
+use crate::{
+    env, network::Address, psbt_wrapper::PsbtWrapper, require, Amount, Contract, Event, ScriptBuf,
+    TxOut, U128, VUTXO,
+};
+
 impl Contract {
     #[allow(clippy::too_many_arguments)]
     pub fn check_withdraw_psbt_valid(
@@ -14,7 +16,10 @@ impl Contract {
         max_gas_fee: Option<U128>,
     ) -> (u128, u128) {
         let config = self.internal_config();
-        let utxo_num = self.data().utxos.len() + vutxos.len() as u32;
+        let vutxos_len = u32::try_from(vutxos.len()).unwrap_or_else(|_| {
+            env::panic_str("vutxos len overflow");
+        });
+        let utxo_num = self.data().utxos.len() + vutxos_len;
         let (input_num, change_num, actual_received_amount, gas_fee) = self.check_withdraw_psbt(
             withdraw_psbt,
             target_address_script_pubkey,
@@ -35,11 +40,11 @@ impl Contract {
         }
 
         require!(
-            change_num <= config.max_change_number as usize,
+            change_num <= usize::from(config.max_change_number),
             format!("change_num must not exceed {}", config.max_change_number)
         );
         require!(
-            input_num <= config.max_withdrawal_input_number as usize,
+            input_num <= usize::from(config.max_withdrawal_input_number),
             format!(
                 "input must not exceed {}",
                 config.max_withdrawal_input_number
@@ -68,7 +73,10 @@ impl Contract {
         vutxos: &[VUTXO],
     ) -> (u128, u128) {
         let config = self.internal_config();
-        let utxo_num = self.data().utxos.len() + vutxos.len() as u32;
+        let vutxos_len = u32::try_from(vutxos.len()).unwrap_or_else(|_| {
+            env::panic_str("vutxos len overflow");
+        });
+        let utxo_num = self.data().utxos.len() + vutxos_len;
 
         let input_num = psbt.get_input_num();
         let output_num = psbt.get_output_num();
@@ -76,7 +84,7 @@ impl Contract {
             if utxo_num < config.active_management_lower_limit {
                 require!(input_num < output_num, "require input_num < output_num");
                 require!(
-                    output_num <= config.max_active_utxo_management_output_number as usize,
+                    output_num <= usize::from(config.max_active_utxo_management_output_number),
                     format!(
                         "require output_num <= {}",
                         config.max_active_utxo_management_output_number
@@ -85,7 +93,7 @@ impl Contract {
             } else if utxo_num > config.active_management_upper_limit {
                 require!(input_num > output_num, "require input_num > output_num");
                 require!(
-                    input_num <= config.max_active_utxo_management_input_number as usize,
+                    input_num <= usize::from(config.max_active_utxo_management_input_number),
                     format!(
                         "require input_num <= {}",
                         config.max_active_utxo_management_input_number
@@ -112,7 +120,7 @@ impl Contract {
         let withdraw_change_address_script_pubkey = config.get_change_script_pubkey();
         let input_amount = vutxos
             .iter()
-            .map(|vutxo| vutxo.get_amount() as u128)
+            .map(|vutxo| u128::from(vutxo.get_amount()))
             .sum::<u128>();
         let output_amount = psbt
             .get_output()
@@ -121,13 +129,13 @@ impl Contract {
                 if force_healthy_output {
                     require!(
                         v.value.to_sat() > config.unhealthy_utxo_amount
-                            && v.value.to_sat() as u128 <= config.max_change_amount,
+                            && u128::from(v.value.to_sat()) <= config.max_change_amount,
                         "The output amount is not in the valid range"
                     );
                 } else {
                     require!(
-                        v.value.to_sat() as u128 >= config.min_change_amount
-                            && v.value.to_sat() as u128 <= config.max_change_amount,
+                        u128::from(v.value.to_sat()) >= config.min_change_amount
+                            && u128::from(v.value.to_sat()) <= config.max_change_amount,
                         "The output amount is not in the valid range"
                     );
                 }
@@ -135,7 +143,7 @@ impl Contract {
                     v.script_pubkey == withdraw_change_address_script_pubkey,
                     "Invalid output script_pubkey"
                 );
-                v.value.to_sat() as u128
+                u128::from(v.value.to_sat())
             })
             .sum::<u128>();
         let gas_fee = input_amount - output_amount;
@@ -161,14 +169,14 @@ impl Contract {
         withdraw_fee: u128,
     ) -> (usize, usize, u128, u128) {
         let config = self.internal_config();
-        let input_amounts = vutxos.iter().map(|vutxo| vutxo.get_amount() as u128);
+        let input_amounts = vutxos.iter().map(|vutxo| u128::from(vutxo.get_amount()));
         let min_input_amount = input_amounts.clone().min().unwrap();
         let total_input_amount = input_amounts.sum::<u128>();
         let mut total_output_amount = 0;
         let mut actual_received_amounts = vec![];
         let mut change_amounts = vec![];
         psbt.get_output().iter().for_each(|output| {
-            let output_value = output.value.to_sat() as u128;
+            let output_value = u128::from(output.value.to_sat());
             total_output_amount += output_value;
             if &output.script_pubkey == target_address_script_pubkey {
                 actual_received_amounts.push(output_value);
@@ -187,7 +195,7 @@ impl Contract {
                     Address::from_script(&output.script_pubkey, config.chain.clone())
                         .expect("Unsupported btc address type");
                 env::panic_str(
-                    format!("Invalid transaction output address: {}", output_address).as_str(),
+                    format!("Invalid transaction output address: {output_address}").as_str(),
                 );
             }
         });

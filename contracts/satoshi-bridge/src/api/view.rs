@@ -1,6 +1,10 @@
-use crate::*;
+use crate::{
+    env, near, u128_dec_format, AccessControllable, Account, AccountId, BTCPendingInfo, Config,
+    Contract, ContractExt, HashMap, HashSet, NearToken, Pausable, Role, U128, UTXO,
+};
 
-const REQUIRED_BALANCE_FOR_DEPOSIT: NearToken = NearToken::from_yoctonear(1200000000000000000000);
+const REQUIRED_BALANCE_FOR_DEPOSIT: NearToken =
+    NearToken::from_yoctonear(1_200_000_000_000_000_000_000);
 
 #[near(serializers = [json])]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
@@ -33,10 +37,18 @@ impl Contract {
     pub fn get_metadata(&self) -> Metadata {
         let root_state = self.data();
         Metadata {
-            super_admins: self.acl_get_super_admins(0, usize::MAX as u64),
-            daos: self.acl_get_grantees(Role::DAO.into(), 0, usize::MAX as u64),
-            operators: self.acl_get_grantees(Role::Operator.into(), 0, usize::MAX as u64),
-            pause_managers: self.acl_get_grantees(Role::PauseManager.into(), 0, usize::MAX as u64),
+            super_admins: self.acl_get_super_admins(0, u64::try_from(usize::MAX).unwrap()),
+            daos: self.acl_get_grantees(Role::DAO.into(), 0, u64::try_from(usize::MAX).unwrap()),
+            operators: self.acl_get_grantees(
+                Role::Operator.into(),
+                0,
+                u64::try_from(usize::MAX).unwrap(),
+            ),
+            pause_managers: self.acl_get_grantees(
+                Role::PauseManager.into(),
+                0,
+                u64::try_from(usize::MAX).unwrap(),
+            ),
             pa_all_paused: self.pa_all_paused(),
             relayer_white_list: root_state.relayer_white_list.iter().cloned().collect(),
             extra_msg_relayer_white_list: root_state
@@ -83,7 +95,8 @@ impl Contract {
         from_index: Option<usize>,
         limit: Option<usize>,
     ) -> HashMap<AccountId, Account> {
-        let len = self.data().accounts.len() as usize;
+        let len = usize::try_from(self.data().accounts.len())
+            .unwrap_or_else(|_| env::panic_str("Too many accounts"));
         let skip_n = from_index.unwrap_or(0);
         let take_n = limit.unwrap_or(len - skip_n);
         self.data()
@@ -100,7 +113,8 @@ impl Contract {
         from_index: Option<usize>,
         limit: Option<usize>,
     ) -> HashMap<AccountId, U128> {
-        let len = self.data().lost_found.len() as usize;
+        let len = usize::try_from(self.data().lost_found.len())
+            .unwrap_or_else(|_| env::panic_str("Too many lost_found accounts"));
         let skip_n = from_index.unwrap_or(0);
         let take_n = limit.unwrap_or(len - skip_n);
         self.data()
@@ -129,7 +143,8 @@ impl Contract {
         from_index: Option<usize>,
         limit: Option<usize>,
     ) -> HashMap<String, UTXO> {
-        let len = self.data().utxos.len() as usize;
+        let len = usize::try_from(self.data().utxos.len())
+            .unwrap_or_else(|_| env::panic_str("Too many utxos"));
         let skip_n = from_index.unwrap_or(0);
         let take_n = limit.unwrap_or(len - skip_n);
         self.data()
@@ -144,7 +159,7 @@ impl Contract {
     pub fn list_utxos(&self, utxo_storage_keys: Vec<String>) -> HashMap<String, Option<UTXO>> {
         utxo_storage_keys
             .into_iter()
-            .map(|key| (key.clone(), self.data().utxos.get(&key).map(|v| v.into())))
+            .map(|key| (key.clone(), self.data().utxos.get(&key).map(Into::into)))
             .collect()
     }
 
@@ -153,7 +168,8 @@ impl Contract {
         from_index: Option<usize>,
         limit: Option<usize>,
     ) -> HashMap<String, UTXO> {
-        let len = self.data().unavailable_utxos.len() as usize;
+        let len = usize::try_from(self.data().unavailable_utxos.len())
+            .unwrap_or_else(|_| env::panic_str("Too many unavailable_utxos"));
         let skip_n = from_index.unwrap_or(0);
         let take_n = limit.unwrap_or(len - skip_n);
         self.data()
@@ -174,7 +190,7 @@ impl Contract {
             .map(|key| {
                 (
                     key.clone(),
-                    self.data().unavailable_utxos.get(&key).map(|v| v.into()),
+                    self.data().unavailable_utxos.get(&key).map(Into::into),
                 )
             })
             .collect()
@@ -185,7 +201,8 @@ impl Contract {
         from_index: Option<usize>,
         limit: Option<usize>,
     ) -> HashMap<String, BTCPendingInfo> {
-        let len = self.data().btc_pending_infos.len() as usize;
+        let len = usize::try_from(self.data().btc_pending_infos.len())
+            .unwrap_or_else(|_| env::panic_str("Too many btc_pending_infos"));
         let skip_n = from_index.unwrap_or(0);
         let take_n = limit.unwrap_or(len - skip_n);
         self.data()
@@ -222,7 +239,8 @@ impl Contract {
         from_index: Option<usize>,
         limit: Option<usize>,
     ) -> HashMap<String, HashSet<String>> {
-        let len = self.data().rbf_txs.len() as usize;
+        let len = usize::try_from(self.data().rbf_txs.len())
+            .unwrap_or_else(|_| env::panic_str("Too many rbf_txs"));
         let skip_n = from_index.unwrap_or(0);
         let take_n = limit.unwrap_or(len - skip_n);
         self.data()
@@ -254,7 +272,8 @@ impl Contract {
         from_index: Option<usize>,
         limit: Option<usize>,
     ) -> HashMap<AccountId, HashSet<String>> {
-        let len = self.data().post_action_msg_templates.len() as usize;
+        let len = usize::try_from(self.data().post_action_msg_templates.len())
+            .unwrap_or_else(|_| env::panic_str("Too many post_action_msg_templates"));
         let skip_n = from_index.unwrap_or(0);
         let take_n = limit.unwrap_or(len - skip_n);
         self.data()

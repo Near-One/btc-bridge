@@ -5,7 +5,7 @@ use near_sdk::serde::{
 };
 use std::{fmt, str::FromStr};
 
-use crate::*;
+use crate::{ext_contract, near, AccountId, Contract, Gas, Promise};
 pub mod active_utxo_management;
 pub mod deposit;
 pub mod withdraw;
@@ -58,7 +58,7 @@ impl ProofArgs {
                 .into_iter()
                 .map(|v| {
                     v.parse()
-                        .unwrap_or_else(|_| panic!("Invalid merkle_proof: {:?}", v))
+                        .unwrap_or_else(|_| panic!("Invalid merkle_proof: {v:?}"))
                 })
                 .collect(),
             confirmations,

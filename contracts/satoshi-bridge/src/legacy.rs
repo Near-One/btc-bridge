@@ -1,4 +1,7 @@
-use crate::*;
+use crate::{
+    env, near, AccountId, BridgeFee, Config, ContractData, HashMap, HashSet, IterableMap,
+    IterableSet, LazyOption, LookupSet, PublicKey, StorageKey, VAccount, VBTCPendingInfo, VUTXO,
+};
 
 #[near(serializers = [borsh])]
 pub struct ContractDataV0 {
