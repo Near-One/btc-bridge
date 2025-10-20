@@ -42,7 +42,7 @@ impl PsbtWrapper {
         original_psbt: crate::psbt_wrapper::PsbtWrapper,
         output: Vec<TxOut>,
     ) -> Self {
-        let sequence = bitcoin::Sequence::MAX;
+        let sequence = bitcoin::Sequence::ENABLE_RBF_NO_LOCKTIME;
 
         let transaction = BtcTransaction {
             version: Version::TWO,
