@@ -45,8 +45,9 @@ pub enum Event<'a> {
         btc_pending_id: &'a String,
     },
     SubsidizeRbf {
-        btc_pending_id: &'a String,
+        origin_btc_pending_id: &'a String,
         subsidy_amount: U128,
+        full_subsidy_amount: U128,
         subsidizer: &'a AccountId,
         beneficiary: &'a AccountId,
     },
