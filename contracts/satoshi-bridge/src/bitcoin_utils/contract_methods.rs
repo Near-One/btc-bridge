@@ -1,8 +1,5 @@
 use crate::psbt_wrapper::PsbtWrapper;
-use crate::{
-    init_rbf_btc_pending_info, BTCPendingInfo, Contract, Event, PendingInfoStage, PendingInfoState,
-    RbfState,
-};
+use crate::{BTCPendingInfo, Contract, Event};
 use bitcoin::{OutPoint, TxOut};
 use near_sdk::json_types::U128;
 use near_sdk::{require, AccountId, PromiseOrValue};
@@ -14,7 +11,7 @@ macro_rules! define_rbf_method {
             account_id: AccountId,
             original_btc_pending_verify_id: String,
             output: Vec<TxOut>,
-        ) {
+        ) -> String {
             let original_tx_btc_pending_info =
                 self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
 
@@ -34,6 +31,8 @@ macro_rules! define_rbf_method {
                 btc_pending_id: &btc_pending_id,
             }
             .emit();
+
+            btc_pending_id
         }
     };
 }
@@ -84,10 +83,6 @@ impl Contract {
         active_utxo_management_rbf_chain_specific,
         internal_active_utxo_management_rbf
     );
-    define_rbf_method!(
-        rbf_subsidize_chain_specific_inner,
-        internal_rbf_subsidize
-    );
 
     pub(crate) fn active_utxo_management_chain_specific(
         &mut self,
@@ -115,10 +110,8 @@ impl Contract {
         pending_tx_id: String,
         output: Vec<TxOut>,
     ) -> PromiseOrValue<U128> {
-        let user_account_id = self
-            .internal_unwrap_btc_pending_info(&pending_tx_id)
-            .account_id
-            .clone();
+        let origin_tx_btc_pending_info = self.internal_unwrap_btc_pending_info(&pending_tx_id);
+        let user_account_id = origin_tx_btc_pending_info.account_id.clone();
         require!(
             self.internal_unwrap_account(&user_account_id)
                 .btc_pending_sign_id
@@ -131,8 +124,28 @@ impl Contract {
             + amount;
         self.internal_unwrap_mut_btc_pending_info(&pending_tx_id)
             .update_subsidize_amount(full_subsidy_amount);
-        
-        self.rbf_subsidize_chain_specific_inner(user_account_id.clone(), pending_tx_id.clone(), output);
+
+        let new_pending_info_id = self.withdraw_rbf_chain_specific(
+            user_account_id.clone(),
+            pending_tx_id.clone(),
+            output,
+        );
+
+        let origin_tx_btc_pending_info = self.internal_unwrap_btc_pending_info(&pending_tx_id);
+        let new_tx_btc_pending_info = self.internal_unwrap_btc_pending_info(&new_pending_info_id);
+
+        require!(
+            new_tx_btc_pending_info.actual_received_amount
+                == origin_tx_btc_pending_info.actual_received_amount,
+            "Actual received amount has been changed."
+        );
+        let gas_fee_diff = new_tx_btc_pending_info
+            .gas_fee
+            .saturating_sub(origin_tx_btc_pending_info.gas_fee);
+        require!(
+            gas_fee_diff == full_subsidy_amount,
+            "Gas fee diff is not equal to subsidy amount."
+        );
 
         Event::SubsidizeRbf {
             origin_btc_pending_id: &pending_tx_id,
@@ -144,66 +157,5 @@ impl Contract {
         .emit();
 
         PromiseOrValue::Value(U128(0))
-    }
-
-    pub fn internal_rbf_subsidize(
-        &mut self,
-        account_id: &AccountId,
-        original_btc_pending_verify_id: String,
-        withdraw_rbf_psbt: PsbtWrapper,
-    ) -> String {
-        let original_tx_btc_pending_info =
-            self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
-        require!(
-            &original_tx_btc_pending_info.account_id == account_id,
-            "Not allow"
-        );
-        original_tx_btc_pending_info.assert_not_canceled();
-        original_tx_btc_pending_info.assert_withdraw_original_pending_verify_tx();
-
-        let mut btc_pending_info = init_rbf_btc_pending_info(
-            original_tx_btc_pending_info,
-            PendingInfoState::WithdrawUserRbf(RbfState {
-                stage: PendingInfoStage::PendingSign,
-                original_tx_id: original_btc_pending_verify_id.clone(),
-            }),
-        );
-        let full_subsidy_amount = self
-            .internal_unwrap_btc_pending_info(&original_btc_pending_verify_id)
-            .get_subsidize_amount();
-        btc_pending_info.transfer_amount += full_subsidy_amount;
-
-        let (actual_received_amount, gas_fee) = self.check_withdraw_rbf_psbt_valid(
-            original_tx_btc_pending_info,
-            &withdraw_rbf_psbt,
-            full_subsidy_amount,
-        );
-
-        require!(
-            actual_received_amount == original_tx_btc_pending_info.actual_received_amount,
-            "Actual received amount has been changed."
-        );
-        let gas_fee_diff = gas_fee.saturating_sub(original_tx_btc_pending_info.gas_fee);
-        require!(
-            gas_fee_diff == full_subsidy_amount,
-            "Gas fee diff is not equal to subsidy amount."
-        );
-
-        btc_pending_info.gas_fee = gas_fee;
-        btc_pending_info.burn_amount = actual_received_amount + gas_fee;
-        Self::check_withdraw_chain_specific(original_tx_btc_pending_info, gas_fee);
-
-        self.internal_unwrap_mut_btc_pending_info(&original_btc_pending_verify_id)
-            .update_max_gas_fee(gas_fee);
-
-        self.internal_unwrap_mut_btc_pending_info(&original_btc_pending_verify_id)
-            .update_subsidize_amount(full_subsidy_amount);
-
-        self.set_rbf_pending_info(
-            &original_btc_pending_verify_id,
-            btc_pending_info,
-            withdraw_rbf_psbt,
-            false,
-        )
     }
 }
