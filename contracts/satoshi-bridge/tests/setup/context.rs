@@ -142,7 +142,7 @@ impl Context {
             .args_json(json!({
                 "controller": root.id(),
                 "bridge_id": bridge_contract.id(),
-                "name": "Near WTC".to_string(),
+                "name": "Near BTC".to_string(),
                 "symbol": "NBTC".to_string(),
                 "icon": Some(DATA_IMAGE_SVG_NEAR_ICON.to_string()),
                 "decimals": 8,
