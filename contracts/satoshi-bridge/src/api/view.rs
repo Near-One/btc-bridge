@@ -37,17 +37,13 @@ impl Contract {
     pub fn get_metadata(&self) -> Metadata {
         let root_state = self.data();
         Metadata {
-            super_admins: self.acl_get_super_admins(0, u64::try_from(usize::MAX).unwrap()),
-            daos: self.acl_get_grantees(Role::DAO.into(), 0, u64::try_from(usize::MAX).unwrap()),
-            operators: self.acl_get_grantees(
-                Role::Operator.into(),
-                0,
-                u64::try_from(usize::MAX).unwrap(),
-            ),
+            super_admins: self.acl_get_super_admins(0, u64::from(u32::MAX)),
+            daos: self.acl_get_grantees(Role::DAO.into(), 0, u64::from(u32::MAX)),
+            operators: self.acl_get_grantees(Role::Operator.into(), 0, u64::from(u32::MAX)),
             pause_managers: self.acl_get_grantees(
                 Role::PauseManager.into(),
                 0,
-                u64::try_from(usize::MAX).unwrap(),
+                u64::from(u32::MAX),
             ),
             pa_all_paused: self.pa_all_paused(),
             relayer_white_list: root_state.relayer_white_list.iter().cloned().collect(),

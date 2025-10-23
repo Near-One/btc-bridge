@@ -5,7 +5,7 @@ use near_sdk::serde::{
 };
 use std::{fmt, str::FromStr};
 
-use crate::{ext_contract, near, AccountId, Contract, Gas, Promise};
+use crate::{env, ext_contract, near, AccountId, Contract, Gas, Promise};
 pub mod active_utxo_management;
 pub mod deposit;
 pub mod withdraw;
