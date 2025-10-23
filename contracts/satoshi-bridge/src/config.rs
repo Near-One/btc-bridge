@@ -1,5 +1,7 @@
-use crate::network::Address;
-use crate::*;
+use crate::{
+    env, near, network, network::Address, require, u128_dec_format, AccountId, Contract, HashMap,
+    PublicKey, ScriptBuf,
+};
 
 pub const MAX_RATIO: u32 = 10000;
 
@@ -170,18 +172,16 @@ impl Config {
         keys.sort_unstable();
         for key in &keys {
             if *key > satoshi_amount {
-                return self
-                    .confirmations_strategy
-                    .get(&key.to_string())
-                    .cloned()
-                    .unwrap() as u64;
+                return u64::from(*self.confirmations_strategy.get(&key.to_string()).unwrap());
             }
         }
         let max_key = keys.last().unwrap();
-        self.confirmations_strategy
-            .get(&max_key.to_string())
-            .cloned()
-            .unwrap() as u64
+        u64::from(
+            *self
+                .confirmations_strategy
+                .get(&max_key.to_string())
+                .unwrap(),
+        )
     }
 }
 
@@ -203,7 +203,7 @@ impl Contract {
         {
             config.get_confirmations(satoshi_amount)
         } else {
-            config.get_confirmations(satoshi_amount) + config.confirmations_delta as u64
+            config.get_confirmations(satoshi_amount) + u64::from(config.confirmations_delta)
         }
     }
 
@@ -215,7 +215,8 @@ impl Contract {
         {
             config.get_confirmations(satoshi_amount)
         } else {
-            config.get_confirmations(satoshi_amount) + config.extra_msg_confirmations_delta as u64
+            config.get_confirmations(satoshi_amount)
+                + u64::from(config.extra_msg_confirmations_delta)
         }
     }
 }

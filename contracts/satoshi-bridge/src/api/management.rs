@@ -1,4 +1,8 @@
-use crate::*;
+use crate::{
+    assert_one_yocto, env, near, require, AccessControllable, Account, AccountId, BridgeFee,
+    Contract, ContractExt, HashSet, Promise, Role, U128, U64,
+};
+
 use near_plugins::access_control_any;
 
 #[near]
@@ -17,7 +21,7 @@ impl Contract {
     pub fn withdraw_protocol_fee(&mut self, amount: Option<U128>) -> Promise {
         assert_one_yocto();
         let total_protocol_fee = self.data().cur_available_protocol_fee;
-        let amount = amount.map(|v| v.0).unwrap_or(total_protocol_fee);
+        let amount = amount.map_or(total_protocol_fee, |v| v.0);
         require!(amount > 0 && amount <= total_protocol_fee, "Invalid amount");
         self.data_mut().cur_available_protocol_fee -= amount;
         self.data_mut().acc_claimed_protocol_fee += amount;
@@ -450,7 +454,7 @@ impl Contract {
     pub fn set_unhealthy_utxo_amount(&mut self, unhealthy_utxo_amount: U64) {
         assert_one_yocto();
         require!(
-            unhealthy_utxo_amount.0 as u128 > self.internal_config().min_change_amount,
+            u128::from(unhealthy_utxo_amount.0) > self.internal_config().min_change_amount,
             "Invalid unhealthy_utxo_amount"
         );
         self.internal_mut_config().unhealthy_utxo_amount = unhealthy_utxo_amount.0;

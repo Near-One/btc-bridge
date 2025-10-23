@@ -112,7 +112,7 @@ impl zcash_address::TryFromAddress for Address {
 }
 
 impl Address {
-    /// Parse an address string + chain into AddressInner
+    /// Parse an address string + chain into `AddressInner`
     pub fn parse(address: &str, chain: Chain) -> Result<Self, String> {
         if chain == Chain::ZcashMainnet || chain == Chain::ZcashTestnet {
             let addr = ZcashAddress::try_from_encoded(address)
@@ -191,8 +191,8 @@ impl Address {
                                 })?,
                             ))
                         }
-                        _ => continue,
-                    };
+                        _ => {}
+                    }
                 }
 
                 Err("No receiver found in address".to_string())
@@ -250,7 +250,7 @@ impl Address {
 /// Formats bech32 as upper case if alternate formatting is chosen (`{:#}`).
 impl fmt::Display for Address {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        use Address::*;
+        use Address::{P2pkh, P2sh, Segwit, Unified};
         match self {
             P2pkh { hash, chain } => {
                 let prefix = get_pubkey_address_prefix(chain);
@@ -286,7 +286,7 @@ impl fmt::Display for Address {
                 };
 
                 let str_address = ZcashAddress::from_unified(network, address.clone()).encode();
-                write!(fmt, "{}", str_address)
+                write!(fmt, "{str_address}")
             }
         }
     }

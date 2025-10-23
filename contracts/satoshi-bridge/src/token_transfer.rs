@@ -1,4 +1,7 @@
-use crate::*;
+use crate::{
+    env, is_promise_success, near, AccountId, Contract, ContractExt, Event, Gas, NearToken,
+    Promise, U128,
+};
 use near_contract_standards::fungible_token::core::ext_ft_core;
 
 pub const GAS_FOR_TOKEN_TRANSFER: Gas = Gas::from_tgas(20);

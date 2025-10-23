@@ -54,10 +54,10 @@ mod extend_post_action_msg_templates {
             .build());
         unit_env
             .contract
-            .extend_post_action_msg_templates(burrowland_id(), HashSet::from(["".to_string()]));
+            .extend_post_action_msg_templates(burrowland_id(), HashSet::from([String::new()]));
         unit_env
             .contract
-            .extend_post_action_msg_templates(burrowland_id(), HashSet::from(["".to_string()]));
+            .extend_post_action_msg_templates(burrowland_id(), HashSet::from([String::new()]));
     }
 
     #[test]
@@ -70,7 +70,7 @@ mod extend_post_action_msg_templates {
             .build());
         unit_env.contract.extend_post_action_msg_templates(
             burrowland_id(),
-            HashSet::from(["".to_string(), "".to_string(), "aa".to_string()]),
+            HashSet::from([String::new(), "aa".to_string()]),
         );
         let post_action_msg_templates = unit_env
             .contract
@@ -151,7 +151,7 @@ mod remove_post_action_msg_templates {
             .build());
         unit_env
             .contract
-            .extend_post_action_msg_templates(burrowland_id(), HashSet::from(["".to_string()]));
+            .extend_post_action_msg_templates(burrowland_id(), HashSet::from([String::new()]));
         unit_env
             .contract
             .remove_post_action_msg_templates(burrowland_id(), Some(HashSet::new()));
@@ -168,7 +168,7 @@ mod remove_post_action_msg_templates {
             .build());
         unit_env
             .contract
-            .extend_post_action_msg_templates(burrowland_id(), HashSet::from(["".to_string()]));
+            .extend_post_action_msg_templates(burrowland_id(), HashSet::from([String::new()]));
         unit_env.contract.remove_post_action_msg_templates(
             burrowland_id(),
             Some(HashSet::from(["aa".to_string()])),
@@ -186,7 +186,7 @@ mod remove_post_action_msg_templates {
         unit_env.contract.extend_post_action_msg_templates(
             burrowland_id(),
             HashSet::from([
-                "".to_string(),
+                String::new(),
                 "aa".to_string(),
                 "bb".to_string(),
                 "cc".to_string(),
@@ -267,21 +267,21 @@ fn test_check_deposit_msg() {
                         receiver_id: burrowland_id(),
                         amount: U128(10),
                         memo: None,
-                        msg: "".to_string(),
+                        msg: String::new(),
                         gas: None
                     },
                     PostAction {
                         receiver_id: burrowland_id(),
                         amount: U128(10),
                         memo: None,
-                        msg: "".to_string(),
+                        msg: String::new(),
                         gas: None
                     },
                     PostAction {
                         receiver_id: burrowland_id(),
                         amount: U128(10),
                         memo: None,
-                        msg: "".to_string(),
+                        msg: String::new(),
                         gas: None
                     },
                 ]),
@@ -301,14 +301,14 @@ fn test_check_deposit_msg() {
                         receiver_id: burrowland_id(),
                         amount: U128(10),
                         memo: None,
-                        msg: "".to_string(),
+                        msg: String::new(),
                         gas: None
                     },
                     PostAction {
                         receiver_id: burrowland_id(),
                         amount: U128(10),
                         memo: None,
-                        msg: "".to_string(),
+                        msg: String::new(),
                         gas: None
                     },
                 ]),
@@ -336,7 +336,7 @@ fn test_check_deposit_msg() {
                     receiver_id: burrowland_id(),
                     amount: U128(10),
                     memo: None,
-                    msg: "".to_string(),
+                    msg: String::new(),
                     gas: Some(Gas::from_tgas(200))
                 },]),
                 extra_msg: None,
@@ -355,14 +355,14 @@ fn test_check_deposit_msg() {
                         receiver_id: burrowland_id(),
                         amount: U128(10),
                         memo: None,
-                        msg: "".to_string(),
+                        msg: String::new(),
                         gas: Some(Gas::from_tgas(50))
                     },
                     PostAction {
                         receiver_id: burrowland_id(),
                         amount: U128(10),
                         memo: None,
-                        msg: "".to_string(),
+                        msg: String::new(),
                         gas: Some(Gas::from_tgas(10))
                     },
                 ]),
@@ -382,14 +382,14 @@ fn test_check_deposit_msg() {
                         receiver_id: burrowland_id(),
                         amount: U128(10),
                         memo: None,
-                        msg: "".to_string(),
+                        msg: String::new(),
                         gas: Some(Gas::from_tgas(50))
                     },
                     PostAction {
                         receiver_id: burrowland_id(),
                         amount: U128(10),
                         memo: None,
-                        msg: "".to_string(),
+                        msg: String::new(),
                         gas: Some(Gas::from_tgas(100))
                     },
                 ]),
@@ -409,14 +409,14 @@ fn test_check_deposit_msg() {
                         receiver_id: burrowland_id(),
                         amount: U128(10),
                         memo: None,
-                        msg: "".to_string(),
+                        msg: String::new(),
                         gas: Some(Gas::from_tgas(50))
                     },
                     PostAction {
                         receiver_id: burrowland_id(),
                         amount: U128(100),
                         memo: None,
-                        msg: "".to_string(),
+                        msg: String::new(),
                         gas: Some(Gas::from_tgas(50))
                     },
                 ]),
@@ -433,7 +433,7 @@ fn test_check_deposit_msg() {
         .build());
     unit_env
         .contract
-        .extend_post_action_msg_templates(burrowland_id(), HashSet::from(["".to_string()]));
+        .extend_post_action_msg_templates(burrowland_id(), HashSet::from([String::new()]));
     assert!(unit_env
         .contract
         .check_deposit_msg(
@@ -461,7 +461,7 @@ fn test_check_deposit_msg() {
                     receiver_id: burrowland_id(),
                     amount: U128(10),
                     memo: None,
-                    msg: "".to_string(),
+                    msg: String::new(),
                     gas: Some(Gas::from_tgas(50))
                 },]),
                 extra_msg: None,

@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{near, AccountId};
 
 #[near(serializers = [borsh, json])]
 pub struct Account {

@@ -1,7 +1,9 @@
 use std::borrow::{Borrow, BorrowMut};
 
-use crate::psbt_wrapper::PsbtWrapper;
-use crate::*;
+use crate::{
+    env, nano_to_sec, near, network, psbt_wrapper::PsbtWrapper, require, u128_dec_format,
+    AccountId, Contract, SignatureResponse, WrappedTransaction, U128, VUTXO,
+};
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone, PartialEq, Eq)]
@@ -161,21 +163,21 @@ impl BTCPendingInfo {
             PendingInfoState::ActiveUtxoManagementRbf(state) => state.assert_pending_verify(),
             PendingInfoState::ActiveUtxoManagementCancelRbf(state) => state.assert_pending_verify(),
             _ => env::panic_str("Not active utxo management related tx"),
-        };
+        }
     }
 
     pub fn assert_active_utxo_management_original_pending_verify_tx(&self) {
         match self.state.borrow() {
             PendingInfoState::ActiveUtxoManagementOriginal(state) => state.assert_pending_verify(),
             _ => env::panic_str("Not active utxo management original tx"),
-        };
+        }
     }
 
     pub fn assert_withdraw_original_pending_verify_tx(&self) {
         match self.state.borrow() {
             PendingInfoState::WithdrawOriginal(state) => state.assert_pending_verify(),
             _ => env::panic_str("Not withdraw original tx"),
-        };
+        }
     }
 
     pub fn get_max_gas_fee(&self) -> u128 {
@@ -203,22 +205,22 @@ impl BTCPendingInfo {
     pub fn to_pending_verify_stage(&mut self) {
         match self.state.borrow_mut() {
             PendingInfoState::WithdrawOriginal(state) => {
-                state.stage = PendingInfoStage::PendingVerify
+                state.stage = PendingInfoStage::PendingVerify;
             }
             PendingInfoState::WithdrawUserRbf(state) => {
-                state.stage = PendingInfoStage::PendingVerify
+                state.stage = PendingInfoStage::PendingVerify;
             }
             PendingInfoState::WithdrawCancelRbf(state) => {
-                state.stage = PendingInfoStage::PendingVerify
+                state.stage = PendingInfoStage::PendingVerify;
             }
             PendingInfoState::ActiveUtxoManagementOriginal(state) => {
-                state.stage = PendingInfoStage::PendingVerify
+                state.stage = PendingInfoStage::PendingVerify;
             }
             PendingInfoState::ActiveUtxoManagementRbf(state) => {
-                state.stage = PendingInfoStage::PendingVerify
+                state.stage = PendingInfoStage::PendingVerify;
             }
             PendingInfoState::ActiveUtxoManagementCancelRbf(state) => {
-                state.stage = PendingInfoStage::PendingVerify
+                state.stage = PendingInfoStage::PendingVerify;
             }
         }
     }
@@ -226,20 +228,20 @@ impl BTCPendingInfo {
     pub fn to_pending_burn_stage(&mut self) {
         match self.state.borrow_mut() {
             PendingInfoState::WithdrawOriginal(state) => {
-                state.stage = PendingInfoStage::PendingBurn
+                state.stage = PendingInfoStage::PendingBurn;
             }
             PendingInfoState::WithdrawUserRbf(state) => state.stage = PendingInfoStage::PendingBurn,
             PendingInfoState::WithdrawCancelRbf(state) => {
-                state.stage = PendingInfoStage::PendingBurn
+                state.stage = PendingInfoStage::PendingBurn;
             }
             PendingInfoState::ActiveUtxoManagementOriginal(state) => {
-                state.stage = PendingInfoStage::PendingBurn
+                state.stage = PendingInfoStage::PendingBurn;
             }
             PendingInfoState::ActiveUtxoManagementRbf(state) => {
-                state.stage = PendingInfoStage::PendingBurn
+                state.stage = PendingInfoStage::PendingBurn;
             }
             PendingInfoState::ActiveUtxoManagementCancelRbf(state) => {
-                state.stage = PendingInfoStage::PendingBurn
+                state.stage = PendingInfoStage::PendingBurn;
             }
         }
     }
@@ -273,7 +275,7 @@ impl BTCPendingInfo {
     }
 
     pub fn is_all_signed(&self) -> bool {
-        self.signatures.iter().all(|v| v.is_some())
+        self.signatures.iter().all(Option::is_some)
     }
 
     pub fn get_psbt(&self) -> PsbtWrapper {
@@ -346,14 +348,14 @@ impl Contract {
         self.data()
             .btc_pending_infos
             .get(btc_pending_id)
-            .map(|o| o.into())
+            .map(Into::into)
     }
 
     pub fn internal_unwrap_btc_pending_info(&self, btc_pending_id: &String) -> &BTCPendingInfo {
         self.data()
             .btc_pending_infos
             .get(btc_pending_id)
-            .map(|o| o.into())
+            .map(Into::into)
             .expect("BTC pending info not exist")
     }
 
@@ -364,7 +366,7 @@ impl Contract {
         self.data_mut()
             .btc_pending_infos
             .get_mut(btc_pending_id)
-            .map(|o| o.into())
+            .map(Into::into)
             .expect("BTC pending info not exist")
     }
 
@@ -394,7 +396,7 @@ pub fn generate_btc_pending_sign_id(payload_preimages: &[Vec<u8>]) -> String {
         &payload_preimages
             .iter()
             .flatten()
-            .cloned()
+            .copied()
             .collect::<Vec<u8>>(),
     );
     hex::encode(hash_bytes)
