@@ -91,7 +91,7 @@ impl Contract {
                     };
                     let utxo_storage_key = generate_utxo_storage_key(
                         tx_id.clone(),
-                        u32::try_from(index).expect("Index overflow"),
+                        u32::try_from(index).unwrap_or_else(|_| env::panic_str("Index overflow")),
                     );
                     self.internal_set_utxo(&utxo_storage_key, utxo);
                     utxo_storage_keys.push(utxo_storage_key);
