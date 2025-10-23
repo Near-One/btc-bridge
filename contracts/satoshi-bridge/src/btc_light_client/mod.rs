@@ -58,7 +58,7 @@ impl ProofArgs {
                 .into_iter()
                 .map(|v| {
                     v.parse()
-                        .unwrap_or_else(|_| panic!("Invalid merkle_proof: {v:?}"))
+                        .unwrap_or_else(|_| env::panic_str("Invalid merkle_proof: {v:?}"))
                 })
                 .collect(),
             confirmations,
