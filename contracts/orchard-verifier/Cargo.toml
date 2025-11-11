@@ -1,0 +1,30 @@
+[package]
+name = "orchard-verifier"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk = { workspace = true, features = ["unstable"] }
+hex = "0.4.3"
+zcash_primitives = { version = "0.24.0", default-features = false, features = ["transparent-inputs", "circuits"] }
+orchard = { version = "0.11.0", default-features = false, features = ["circuit"] }
+zcash_address = "0.9.0"
+zcash_protocol = { version = "0.6.1" }
+
+[dev-dependencies]
+near-workspaces = { version = "0.20", features = ["unstable"] }
+tokio = { version = "1.12.0", features = ["full"] }
+rand = "0.8"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2.12", features = ["custom"] }
