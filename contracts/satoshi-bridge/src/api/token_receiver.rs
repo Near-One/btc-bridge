@@ -84,22 +84,74 @@ impl Contract {
                 .is_none(),
             "Previous btc tx has not been signed"
         );
-        let target_address_script_pubkey = self
-            .internal_config()
-            .string_to_script_pubkey(&target_btc_address);
-
-        let withdraw_change_address_script_pubkey =
-            self.internal_config().get_change_script_pubkey();
         let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount);
-        let (actual_received_amount, gas_fee) = self.check_withdraw_psbt_valid(
-            &target_address_script_pubkey,
-            &withdraw_change_address_script_pubkey,
-            psbt,
-            &vutxos,
-            amount,
-            withdraw_fee,
-            max_gas_fee,
-        );
+        // If an Orchard bundle is present (zcash feature), compute fees using
+        // change-only outputs and enforce the Orchard expected amount/recipient.
+        #[cfg(feature = "zcash")]
+        let (actual_received_amount, gas_fee) = if psbt.has_orchard_bundle() {
+            // Recover Orchard output via OVK and enforce policy.
+            let bundle = psbt
+                .get_orchard_bundle()
+                .expect("Missing orchard bundle for recovery");
+
+            // Validate outputs are change-only and compute miner fee.
+            let (_change_sum, miner_fee) =
+                self.check_psbt_output_all_change_address(psbt, &vutxos, false, true);
+
+            // Enforce miner fee bounds and total conservation.
+            let cfg = self.internal_config();
+            require!(
+                miner_fee >= cfg.min_btc_gas_fee && miner_fee <= cfg.max_btc_gas_fee,
+                format!(
+                    "Invalid gas fee ({}). valid range: [{}, {}].",
+                    miner_fee, cfg.min_btc_gas_fee, cfg.max_btc_gas_fee
+                )
+            );
+            let expected_total = amount
+                .checked_sub(withdraw_fee)
+                .expect("withdraw fee exceeds amount");
+            let orchard_amount = crate::zcash_utils::orchard_policy::ensure_orchard_policy(
+                bundle,
+                &target_btc_address,
+                &self.internal_config().chain,
+                expected_total,
+                miner_fee,
+            );
+
+            (orchard_amount as u128, miner_fee)
+        } else {
+            let target_address_script_pubkey = self
+                .internal_config()
+                .string_to_script_pubkey(&target_btc_address);
+            let withdraw_change_address_script_pubkey =
+                self.internal_config().get_change_script_pubkey();
+            self.check_withdraw_psbt_valid(
+                &target_address_script_pubkey,
+                &withdraw_change_address_script_pubkey,
+                psbt,
+                &vutxos,
+                amount,
+                withdraw_fee,
+                max_gas_fee,
+            )
+        };
+        #[cfg(not(feature = "zcash"))]
+        let (actual_received_amount, gas_fee) = {
+            let target_address_script_pubkey = self
+                .internal_config()
+                .string_to_script_pubkey(&target_btc_address);
+            let withdraw_change_address_script_pubkey =
+                self.internal_config().get_change_script_pubkey();
+            self.check_withdraw_psbt_valid(
+                &target_address_script_pubkey,
+                &withdraw_change_address_script_pubkey,
+                psbt,
+                &vutxos,
+                amount,
+                withdraw_fee,
+                max_gas_fee,
+            )
+        };
 
         let need_signature_num = psbt.get_input_num();
         let psbt_hex = psbt.serialize();

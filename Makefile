@@ -4,6 +4,11 @@ RFLAGS="-C link-arg=-s"
 
 build: lint satoshi-bridge zcash-bridge nbtc mock-chain-signatures mock-btc-light-client mock-dapp
 
+# Build with Orchard proof verification enabled explicitly (WASM copied to res/zcash_verify.wasm)
+.PHONY: zcash-verify
+zcash-verify: contracts/satoshi-bridge
+	$(call local_build_zcash_verify_wasm)
+
 lint:
 	@cargo fmt --all
 	@cargo clippy --fix --allow-dirty --allow-staged
@@ -13,6 +18,10 @@ satoshi-bridge: contracts/satoshi-bridge
 
 zcash-bridge: contracts/satoshi-bridge
 	$(call local_build_zcash_wasm)
+
+.PHONY: zcash-bridge-test
+zcash-bridge-test: contracts/satoshi-bridge
+	$(call local_build_zcash_test_wasm)
 
 nbtc: contracts/nbtc
 	$(call local_build_wasm,nbtc,nbtc)
@@ -34,6 +43,7 @@ release:
 	$(call build_release_wasm,satoshi-bridge,satoshi_bridge)
 	$(call build_release_wasm,nbtc,nbtc)
 	$(call build_release_zcash_wasm)
+	$(call build_release_zcash_verify_wasm)
 
 clean:
 	cargo clean
@@ -71,4 +81,26 @@ define local_build_zcash_wasm
     @rustup target add wasm32-unknown-unknown
     @cargo near build non-reproducible-wasm --manifest-path ./contracts/satoshi-bridge/Cargo.toml --locked --no-abi --no-default-features --features zcash
     @cp target/near/satoshi_bridge/satoshi_bridge.wasm ./res/zcash.wasm
+endef
+
+define local_build_zcash_test_wasm
+    @mkdir -p res
+    @rustup target add wasm32-unknown-unknown
+    @cargo near build non-reproducible-wasm --manifest-path ./contracts/satoshi-bridge/Cargo.toml --no-abi --no-default-features --features zcash,test-utils
+    @cp target/near/satoshi_bridge/satoshi_bridge.wasm ./res/zcash_test.wasm
+endef
+
+# Build a zcash-enabled WASM including on-chain Orchard proof verification
+define local_build_zcash_verify_wasm
+    @mkdir -p res
+    @rustup target add wasm32-unknown-unknown
+    @cargo near build non-reproducible-wasm --manifest-path ./contracts/satoshi-bridge/Cargo.toml --no-abi --no-default-features --features zcash,orchard_proof_verify
+    @cp target/near/satoshi_bridge/satoshi_bridge.wasm ./res/zcash_verify.wasm
+endef
+
+define build_release_zcash_verify_wasm
+    @mkdir -p res
+    @rustup target add wasm32-unknown-unknown
+    @cargo near build reproducible-wasm --manifest-path ./contracts/satoshi-bridge/Cargo.toml --no-abi --no-default-features --features zcash,orchard_proof_verify
+    @cp target/near/satoshi_bridge/satoshi_bridge.wasm ./res/zcash_verify_release.wasm
 endef

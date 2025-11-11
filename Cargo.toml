@@ -15,6 +15,7 @@ near-contract-standards = "5.14.0"
 hex="0.4.3"
 bitcoin = { version = "0.32.0", default-features = false, features = ["serde"] }
 near-plugins = { git = "https://github.com/aurora-is-near/near-plugins", tag = "v0.4.1" }
+core2 = "0.3"
 
 [profile.release]
 codegen-units = 1

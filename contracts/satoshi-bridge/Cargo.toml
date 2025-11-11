@@ -56,7 +56,13 @@ getrandom = { version = "0.2.12", features = ["custom"] }
 [dev-dependencies]
 near-workspaces = { version = "0.20", features = ["unstable"] }
 tokio = { version = "1.12.0", features = ["full"] }
+orchard = { version = "0.11.0", features = ["circuit"], optional = false }
+rand = "0.8"
 
 [features]
-default = ["zcash"]
+default = ["zcash", "orchard_proof_verify"]
 zcash = ["zcash_primitives", "zcash_transparent", "orchard", "core2"]
+# Enable on-chain Orchard proof verification. This pulls in orchard's circuit
+# verification logic and should be used to preflight bundles before reserving UTXOs.
+orchard_proof_verify = ["zcash", "orchard/circuit"]
+test-utils = []

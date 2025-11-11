@@ -181,6 +181,8 @@ impl From<ConfigV0> for Config {
             unhealthy_utxo_amount: 1000,
             #[cfg(feature = "zcash")]
             expiry_height_gap: 1000,
+            #[cfg(feature = "zcash")]
+            orchard_verifier_account_id: None,
         }
     }
 }

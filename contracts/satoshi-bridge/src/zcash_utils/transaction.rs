@@ -8,6 +8,9 @@ use zcash_primitives::transaction::{
 use zcash_protocol::value::ZatBalance;
 use zcash_transparent::builder::TransparentBuilder;
 use zcash_transparent::bundle::Authorized;
+// Use the EffectsOnly authorization state to include Orchard bundle data in txid parts
+// Note: We compute the ZIP-244 digest from the frozen transaction elsewhere,
+// so we don't need to include Orchard here.
 
 #[derive(Debug, PartialEq)]
 pub struct Transaction {
@@ -86,7 +89,7 @@ impl Transaction {
         expiry_height: u32,
         public_key: &bitcoin::PublicKey,
         branch_id: BranchId,
-        orchard_bundle: &Option<orchard::Bundle<orchard::bundle::Authorized, ZatBalance>>,
+        _orchard_bundle: &Option<orchard::Bundle<orchard::bundle::Authorized, ZatBalance>>,
     ) -> TransactionData<Unauthorized> {
         let transparent_bundle = Self::get_transparent_builder(vin, vout, input, public_key)
             .build()
@@ -95,9 +98,10 @@ impl Transaction {
         let lock_time = 0;
         let expiry_height = BlockHeight::from_u32(expiry_height);
 
-        // TODO: pass the orchard_bundle properly
-        // How to convert orchard_bundle from Authorized to Unauthorized?
-        // NOTE: the `TransactionData` is needed just to call `zcash_primitives::transaction::sighash::signature_hash`
+        // NOTE: the `TransactionData` is needed just to call
+        // `zcash_primitives::transaction::sighash::signature_hash` in
+        // contexts that do not require Orchard. For digests that must
+        // include Orchard, use the frozen transaction path.
         let inner_tx = TransactionData::from_parts(
             TxVersion::V5,
             branch_id,
@@ -106,7 +110,7 @@ impl Transaction {
             Some(transparent_bundle),
             None,
             None,
-            None, // orchard_bundle
+            None,
         );
 
         inner_tx

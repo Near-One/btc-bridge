@@ -2155,6 +2155,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ea1f30cedd69f0a2954655f7188c6a834246d2bcf1e315e2ac40c4b24dc9519"
 dependencies = [
  "cfg-if 1.0.3",
+ "rayon",
 ]
 
 [[package]]
@@ -3745,6 +3746,7 @@ dependencies = [
  "near-sdk",
  "near-workspaces",
  "orchard",
+ "rand",
  "tokio",
  "zcash_address",
  "zcash_primitives",

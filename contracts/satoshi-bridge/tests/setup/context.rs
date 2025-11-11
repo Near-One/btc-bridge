@@ -13,13 +13,16 @@ use near_sdk::{
     AccountId, Gas, NearToken,
 };
 use near_workspaces::{
-    network::Sandbox, result::ExecutionFinalResult, Account, Contract, Result, Worker,
+    compile_project,
+    network::Sandbox,
+    result::ExecutionFinalResult,
+    Account, Contract, Result, Worker,
 };
 use satoshi_bridge::{
     btc_light_client::deposit, BTCPendingInfo, DepositMsg, Metadata, TokenReceiverMessage, UTXO,
 };
 
-use crate::{PRICE_ORICE_NEAR_PRICE_ID, PYTH_ORICE_NEAR_PRICE_ID};
+use crate::setup::{PRICE_ORICE_NEAR_PRICE_ID, PYTH_ORICE_NEAR_PRICE_ID};
 
 const DATA_IMAGE_SVG_NEAR_ICON: &str = "data:image/svg+xml,%3Csvg%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cg%20clip-path%3D%22url(%23clip0_2351_779)%22%3E%3Cpath%20d%3D%22M16%2032C24.8366%2032%2032%2024.8366%2032%2016C32%207.16344%2024.8366%200%2016%200C7.16344%200%200%207.16344%200%2016C0%2024.8366%207.16344%2032%2016%2032Z%22%20fill%3D%22%2300E99F%22%2F%3E%3Cpath%20d%3D%22M16.0006%2028.2858C22.7858%2028.2858%2028.2863%2022.7853%2028.2863%2016.0001C28.2863%209.21486%2022.7858%203.71436%2016.0006%203.71436C9.21535%203.71436%203.71484%209.21486%203.71484%2016.0001C3.71484%2022.7853%209.21535%2028.2858%2016.0006%2028.2858Z%22%20stroke%3D%22black%22%2F%3E%3Cpath%20d%3D%22M27.1412%2016C27.1412%2022.1541%2022.1524%2027.1429%2015.9983%2027.1429C9.84427%2027.1429%204.85547%2022.1541%204.85547%2016C4.85547%209.84598%209.84427%204.85718%2015.9983%204.85718C22.1524%204.85718%2027.1412%209.84598%2027.1412%2016Z%22%20stroke%3D%22black%22%20stroke-width%3D%220.5%22%2F%3E%3Cpath%20fill-rule%3D%22evenodd%22%20clip-rule%3D%22evenodd%22%20d%3D%22M16.2167%2011.1743C15.9198%2011.1643%2015.6095%2011.1622%2015.2868%2011.1668V9.32056H13.8907V11.2217C13.1583%2011.2659%2012.3792%2011.3332%2011.5625%2011.4149V12.811H12.9586V18.8607H11.7952V20.4895H13.8893V22.5836H15.2854V20.4895H16.2161V22.5836H17.3795V20.4895C18.4654%2020.4119%2020.6836%2019.7915%2020.8698%2017.93C21.0559%2016.0686%2019.7064%2015.6032%2019.0083%2015.6032C19.5512%2015.3705%2020.544%2014.5328%2020.1717%2013.0436C19.9215%2012.043%2019.0072%2011.5204%2017.6128%2011.2984V9.32164H16.2167V11.1743ZM18.0737%2013.9723C18.0737%2012.8554%2016.2122%2012.7313%2015.2815%2012.8088V15.1356C16.2122%2015.2132%2018.0737%2015.0891%2018.0737%2013.9723ZM15.2826%2016.5322V18.8591C16.2133%2018.9366%2018.3075%2018.859%2018.3075%2017.6956C18.3075%2016.2994%2016.2133%2016.4547%2015.2826%2016.5322Z%22%20fill%3D%22black%22%2F%3E%3C%2Fg%3E%3Cdefs%3E%3CclipPath%20id%3D%22clip0_2351_779%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20fill%3D%22white%22%2F%3E%3C%2FclipPath%3E%3C%2Fdefs%3E%3C%2Fsvg%3E";
 
@@ -39,13 +42,24 @@ pub struct Context {
 
 impl Context {
     pub async fn new(worker: &Worker<Sandbox>) -> Self {
+        Self::new_with_chain(worker, "BitcoinMainnet").await
+    }
+
+    pub async fn new_with_chain(worker: &Worker<Sandbox>, chain: &str) -> Self {
         let root = worker.root_account().unwrap();
+        async fn compile_or_read(crate_dir: &str, fallback_res: &str) -> Vec<u8> {
+            match compile_project(crate_dir).await {
+                Ok(wasm) => wasm,
+                Err(_) => std::fs::read(fallback_res).expect("read fallback wasm"),
+            }
+        }
         let (
             bridge_contract,
             nbtc_contract,
             chain_signatures_contract,
             btc_light_client_contract,
             dapp_contract,
+            orchard_verifier_contract,
         ) = tokio::join!(
             async {
                 let bridge = root
@@ -55,8 +69,20 @@ impl Context {
                     .await
                     .unwrap()
                     .unwrap();
+                // Prefer a test-enabled zcash artifact if present; else zcash-only; else compile
+                let wasm = if let Ok(bytes) = std::fs::read("../../res/zcash_test.wasm") {
+                    bytes
+                } else if let Ok(bytes) = std::fs::read("../../res/zcash.wasm") {
+                    bytes
+                } else {
+                        compile_or_read(
+                            "../../contracts/satoshi-bridge",
+                            "../../res/satoshi_bridge.wasm",
+                        )
+                        .await
+                };
                 bridge
-                    .deploy(&std::fs::read("../../res/satoshi_bridge.wasm").unwrap())
+                    .deploy(&wasm)
                     .await
                     .unwrap()
                     .unwrap()
@@ -69,20 +95,25 @@ impl Context {
                     .await
                     .unwrap()
                     .unwrap();
-                nbtc.deploy(&std::fs::read("../../res/nbtc.wasm").unwrap())
+                let wasm = compile_or_read("../../contracts/nbtc", "../../res/nbtc.wasm").await;
+                nbtc.deploy(&wasm)
                     .await
                     .unwrap()
                     .unwrap()
             },
             async {
+                let wasm =
+                    compile_or_read("../../contracts/mock-chain-signatures", "../../res/mock_chain_signatures.wasm").await;
                 worker
-                    .dev_deploy(&std::fs::read("../../res/mock_chain_signatures.wasm").unwrap())
+                    .dev_deploy(&wasm)
                     .await
                     .unwrap()
             },
             async {
+                let wasm =
+                    compile_or_read("../../contracts/mock-btc-light-client", "../../res/mock_btc_light_client.wasm").await;
                 worker
-                    .dev_deploy(&std::fs::read("../../res/mock_btc_light_client.wasm").unwrap())
+                    .dev_deploy(&wasm)
                     .await
                     .unwrap()
             },
@@ -94,10 +125,28 @@ impl Context {
                     .await
                     .unwrap()
                     .unwrap();
-                nbtc.deploy(&std::fs::read("../../res/mock_dapp.wasm").unwrap())
+                let wasm =
+                    compile_or_read("../../contracts/mock-dapp", "../../res/mock_dapp.wasm").await;
+                nbtc.deploy(&wasm)
                     .await
                     .unwrap()
                     .unwrap()
+            },
+            async {
+                // Deploy Orchard verifier contract
+                let wasm = compile_project("../../contracts/orchard-verifier")
+                    .await
+                    .unwrap();
+                let contract = worker.dev_deploy(&wasm).await.unwrap();
+                // Initialize if needed
+                contract
+                    .call("new")
+                    .args_json(json!({}))
+                    .transact()
+                    .await
+                    .unwrap()
+                    .unwrap();
+                contract
             },
         );
 
@@ -145,6 +194,7 @@ impl Context {
                 "name": "Near WTC".to_string(),
                 "symbol": "NBTC".to_string(),
                 "icon": Some(DATA_IMAGE_SVG_NEAR_ICON.to_string()),
+                "decimals": 8u8,
             }))
             .transact()
             .await
@@ -164,7 +214,7 @@ impl Context {
         root.call(bridge_contract.id(), "new")
             .args_json(json!({
                 "config": {
-                    "chain": "BitcoinMainnet",
+                    "chain": chain,
                     "chain_signatures_account_id": chain_signatures_contract.id(),
                     "nbtc_account_id": nbtc_contract.id(),
                     "btc_light_client_account_id": btc_light_client_contract.id(),
@@ -200,6 +250,8 @@ impl Context {
                     "rbf_num_limit": 99,
                     "max_btc_tx_pending_sec": 3600 * 24,
                     "unhealthy_utxo_amount": 1000,
+                    "orchard_verifier_account_id": if chain.contains("Zcash") { Some(orchard_verifier_contract.id()) } else { Option::<&AccountId>::None },
+                    "expiry_height_gap": 1000,
                 }
             }))
             .transact()

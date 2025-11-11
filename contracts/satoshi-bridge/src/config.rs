@@ -108,6 +108,11 @@ pub struct Config {
     pub unhealthy_utxo_amount: u64,
     #[cfg(feature = "zcash")]
     pub expiry_height_gap: u32,
+    // Optional: external Orchard verifier contract to offload proof verification.
+    // When set, the bridge will cross-contract call `verify_orchard_bundle` and
+    // only proceed once it succeeds.
+    #[cfg(feature = "zcash")]
+    pub orchard_verifier_account_id: Option<AccountId>,
 }
 
 impl Config {

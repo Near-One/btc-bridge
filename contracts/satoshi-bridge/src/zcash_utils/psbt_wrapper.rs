@@ -2,6 +2,7 @@ use crate::*;
 use std::io;
 use std::io::{Cursor, Read, Write};
 
+use crate::zcash_utils::orchard_policy::BRIDGE_OVK;
 use crate::zcash_utils::transaction::Transaction;
 use bitcoin::hashes::Hash;
 use bitcoin::{OutPoint, TxOut};
@@ -33,6 +34,8 @@ impl PsbtWrapper {
         orchard_bundle_bytes: Option<Vec<u8>>,
         expiry_height: u32,
         config: &Config,
+        orchard_expected_recipient: Option<String>,
+        orchard_expected_amount: Option<u64>,
     ) -> Self {
         require!(!input.is_empty(), "empty input");
         require!(!output.is_empty(), "empty output");
@@ -74,7 +77,44 @@ impl PsbtWrapper {
         // We have to take into account the gas cost and limits
         let orchard_bundle = if let Some(orchard_bundle_bytes) = orchard_bundle_bytes {
             let mut reader = Cursor::new(orchard_bundle_bytes);
-            read_v5_bundle(&mut reader).unwrap()
+            let bundle_opt = read_v5_bundle(&mut reader).unwrap();
+
+            if let Some(ref bundle) = bundle_opt {
+                // Basic sanity: support a single Orchard action initially
+                require!(
+                    bundle.actions().len() == 1,
+                    "Only one orchard action is supported"
+                );
+
+                // Attempt output recovery with a known OVK to ensure the ciphertext is
+                // well-formed and recoverable under the bridge’s policy.
+                // This does not enforce recipient/amount yet; it ensures recoverability.
+                let recovered = bundle
+                    .recover_output_with_ovk(
+                        0,
+                        &orchard::keys::OutgoingViewingKey::from(BRIDGE_OVK),
+                    )
+                    .expect("Failed to recover Orchard output with bridge OVK");
+
+                // If expectations are provided, enforce them.
+                if let Some(expected_amt) = orchard_expected_amount {
+                    let amt: u64 = recovered.0.value().inner();
+                    require!(amt == expected_amt, "Orchard amount mismatch");
+                }
+                let _ = orchard_expected_recipient; // PoC: recipient check handled later.
+
+                // Optionally, verify the Orchard proof on-chain before we enter
+                // PendingSign. This prevents reserving inputs for invalid bundles.
+                #[cfg(all(feature = "zcash", feature = "orchard_proof_verify"))]
+                {
+                    if config.orchard_verifier_account_id.is_none() {
+                        let res = crate::zcash_utils::orchard_policy::verify_orchard_bundle_preflight(bundle);
+                        require!(res.is_ok(), "Invalid Orchard proof");
+                    }
+                }
+            }
+
+            bundle_opt
         } else {
             None
         };
@@ -133,6 +173,29 @@ impl PsbtWrapper {
 
     pub fn get_output_num(&self) -> usize {
         self.vout.len()
+    }
+
+    #[cfg(feature = "zcash")]
+    pub fn has_orchard_bundle(&self) -> bool {
+        self.orchard_bundle.is_some()
+    }
+
+    #[cfg(feature = "zcash")]
+    pub fn enforce_orchard_expected(&self, expected_amount: u64) {
+        if let Some(bundle) = &self.orchard_bundle {
+            let (note, _addr, _memo) = bundle
+                .recover_output_with_ovk(0, &orchard::keys::OutgoingViewingKey::from(BRIDGE_OVK))
+                .expect("Failed to recover Orchard output with bridge OVK");
+            let amt: u64 = note.value().inner();
+            require!(amt == expected_amount, "Orchard amount mismatch");
+        }
+    }
+
+    #[cfg(feature = "zcash")]
+    pub fn get_orchard_bundle(
+        &self,
+    ) -> Option<&orchard::Bundle<orchard::bundle::Authorized, ZatBalance>> {
+        self.orchard_bundle.as_ref()
     }
     pub fn get_utxo_storage_keys(&self) -> Vec<String> {
         self.vin
@@ -281,6 +344,16 @@ impl PsbtWrapper {
 
     #[allow(unused_variables)]
     pub fn get_hash_to_sign(&self, vin: usize, public_key: &bitcoin::PublicKey) -> [u8; 32] {
+        // Build the frozen transaction (including Orchard if present) and
+        // compute ZIP-244 digests from it so the signature commits to
+        // the Orchard bytes as well.
+        let frozen = self.get_zcash_tx();
+        let txid_parts = frozen
+            .inner_tx
+            .digest(zcash_primitives::transaction::txid::TxIdDigester);
+
+        // Build a TransactionData in the transparent builder context for the
+        // signature hash API type requirements (transparent TA generics).
         let tx_data = WrappedTransaction::to_zcash_tx(
             &self.vin,
             &self.vout,
@@ -290,7 +363,6 @@ impl PsbtWrapper {
             self.branch_id,
             &self.orchard_bundle,
         );
-        let txid_parts = tx_data.digest(zcash_primitives::transaction::txid::TxIdDigester);
         let script = &self.inputs_utxo[vin].script_pubkey;
         let sig_input = zcash_primitives::transaction::sighash::SignableInput::Transparent(
             zcash_transparent::sighash::SignableInput::from_parts(
