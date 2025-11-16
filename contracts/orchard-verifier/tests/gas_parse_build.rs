@@ -5,6 +5,7 @@ use near_workspaces::network::Sandbox;
 use near_workspaces::Worker;
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
 
 fn gen_bundle_hex(amount: u64) -> String {
     use orchard::builder::{Builder, BundleType};
@@ -98,19 +99,47 @@ async fn gas_parse_build() {
     };
 
     println!("Calling parse_and_build_only");
-    let outcome = contract
+    let tx_status = contract
         .call("parse_and_build_only")
         .args_json(serde_json::json!({ "bundle_hex": bundle_hex }))
         .gas(NearGas::from_tgas(300000))
-        .transact()
+        .transact_async()
         .await
         .unwrap();
 
-    println!("{:#?}", outcome);
-    println!(
-        "parse_and_build_only total_gas_burnt: {} success={} failures={:#?}",
-        outcome.total_gas_burnt,
-        outcome.is_success(),
-        outcome.receipt_failures()
-    );
+    // Manual polling loop with custom logic (e.g., timeout, backoff, logging)
+    let mut attempts = 0;
+    const MAX_ATTEMPTS: usize = 1000000; // Adjust for timeout (e.g., 100 * 300ms = 30s)
+    const POLL_INTERVAL: Duration = Duration::from_secs(30);
+    let _result = loop {
+        attempts += 1;
+        if attempts > MAX_ATTEMPTS {
+            panic!("Transaction did not complete within the expected time");
+        }
+
+        match tx_status.status().await.unwrap() {
+            std::task::Poll::Ready(result) => {
+                // Transaction completed
+                println!("Transaction finalized: {:#?}", result);
+                println!(
+                    "parse_and_build_only total_gas_burnt: {} success={} failures={:#?}",
+                    result.total_gas_burnt,
+                    result.is_success(),
+                    result.receipt_failures()
+                );
+                break;
+            }
+            std::task::Poll::Pending => {
+                // Still pending, wait and retry
+                println!("Transaction pending, attempt {}", attempts);
+                println!(
+                    "Time taken so far: {} seconds",
+                    attempts as u64 * POLL_INTERVAL.as_secs()
+                );
+                tokio::time::sleep(POLL_INTERVAL).await;
+            }
+        }
+    };
+
+    // Fetch the txhash continuously until the transaction is complete
 }
