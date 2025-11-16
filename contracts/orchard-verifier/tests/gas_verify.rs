@@ -1,8 +1,10 @@
-use near_sdk::serde_json;
+use near_gas::NearGas;
+use near_sdk::{serde_json, NearToken};
 use near_workspaces::network::Sandbox;
 use near_workspaces::Worker;
 use std::fs;
 use std::path::Path;
+use std::time::Duration;
 
 fn gen_bundle_hex(amount: u64) -> String {
     use orchard::builder::{Builder, BundleType};
@@ -54,6 +56,19 @@ async fn gas_verify() {
     println!("Deploying contract");
     let contract = worker.dev_deploy(&wasm).await.unwrap();
 
+    println!("Transferring NEAR to contract");
+    let root_account = worker.root_account().unwrap();
+    let _result = root_account
+        .transfer_near(contract.as_account().id(), NearToken::from_near(1_000_000))
+        .await
+        .unwrap();
+
+    let contract_account_balance = contract.as_account().view_account().await.unwrap().balance;
+    println!(
+        "Contract account balance after deploy: {} NEAR",
+        contract_account_balance.as_near()
+    );
+
     println!("Initializing contract");
     contract
         .call("new")
@@ -81,19 +96,45 @@ async fn gas_verify() {
     };
 
     println!("Calling verify_orchard_bundle");
-    let outcome = contract
+    let tx_status = contract
         .call("verify_orchard_bundle")
         .args_json(serde_json::json!({ "bundle_hex": bundle_hex }))
-        .max_gas()
-        .transact()
+        .gas(NearGas::from_tgas(300000))
+        .transact_async()
         .await
         .unwrap();
 
-    println!("{:#?}", outcome);
-    println!(
-        "verify_orchard_bundle total_gas_burnt: {} success={} failures={:#?}",
-        outcome.total_gas_burnt,
-        outcome.is_success(),
-        outcome.receipt_failures()
-    );
+    // Manual polling loop with custom logic (e.g., timeout, backoff, logging)
+    let mut attempts = 0;
+    const MAX_ATTEMPTS: usize = 1000000; // Adjust for timeout (e.g., 100 * 300ms = 30s)
+    const POLL_INTERVAL: Duration = Duration::from_secs(30);
+    let _result = loop {
+        attempts += 1;
+        if attempts > MAX_ATTEMPTS {
+            panic!("Transaction did not complete within the expected time");
+        }
+
+        match tx_status.status().await.unwrap() {
+            std::task::Poll::Ready(result) => {
+                // Transaction completed
+                println!("Transaction finalized: {:#?}", result);
+                println!(
+                    "verify_orchard_bundle total_gas_burnt: {} success={} failures={:#?}",
+                    result.total_gas_burnt,
+                    result.is_success(),
+                    result.receipt_failures()
+                );
+                break;
+            }
+            std::task::Poll::Pending => {
+                // Still pending, wait and retry
+                println!("Transaction pending, attempt {}", attempts);
+                println!(
+                    "Time taken so far: {} seconds",
+                    attempts as u64 * POLL_INTERVAL.as_secs()
+                );
+                tokio::time::sleep(POLL_INTERVAL).await;
+            }
+        }
+    };
 }
