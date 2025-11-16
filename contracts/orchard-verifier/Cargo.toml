@@ -9,13 +9,19 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 near-sdk = { workspace = true, features = ["unstable"] }
 hex = "0.4.3"
-zcash_primitives = { version = "0.24.0", default-features = false, features = ["transparent-inputs", "circuits"] }
-orchard = { version = "0.11.0", default-features = false, features = ["circuit"] }
+zcash_primitives = { version = "0.24.0", default-features = false, features = [
+    "transparent-inputs",
+    "circuits",
+] }
+orchard = { version = "0.11.0", default-features = false, features = [
+    "circuit",
+] }
 zcash_address = "0.9.0"
 zcash_protocol = { version = "0.6.1" }
+near-gas = "0.3.2"
 
 [dev-dependencies]
-near-workspaces = { version = "0.20", features = ["unstable"] }
+near-workspaces = { version = "0.21", features = ["unstable"] }
 tokio = { version = "1.12.0", features = ["full"] }
 rand = "0.8"
 

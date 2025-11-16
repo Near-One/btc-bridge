@@ -1,9 +1,11 @@
 use near_sdk::serde_json;
 use near_workspaces::network::Sandbox;
 use near_workspaces::Worker;
+use std::fs;
+use std::path::Path;
 
 fn gen_bundle_hex(amount: u64) -> String {
-    use orchard::builder::{BundleType, Builder};
+    use orchard::builder::{Builder, BundleType};
     use orchard::keys::{FullViewingKey, OutgoingViewingKey, Scope, SpendingKey};
     use orchard::tree::Anchor;
     use orchard::value::NoteValue;
@@ -43,12 +45,16 @@ fn gen_bundle_hex(amount: u64) -> String {
 
 #[tokio::test]
 async fn gas_verify() {
+    println!("Starting worker");
     let worker: Worker<Sandbox> = near_workspaces::sandbox().await.unwrap();
+    println!("Compiling contract");
     let wasm = near_workspaces::compile_project(env!("CARGO_MANIFEST_DIR"))
         .await
         .expect("compile orchard verifier");
+    println!("Deploying contract");
     let contract = worker.dev_deploy(&wasm).await.unwrap();
 
+    println!("Initializing contract");
     contract
         .call("new")
         .args_json(serde_json::json!({}))
@@ -57,8 +63,24 @@ async fn gas_verify() {
         .unwrap()
         .unwrap();
 
-    let bundle_hex = gen_bundle_hex(50_000);
+    println!("Generating bundle hex");
+    let bundle_hex_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("bundle_hex.txt");
+    let bundle_hex = if bundle_hex_path.exists() {
+        println!("Loading bundle hex from file");
+        std::fs::read_to_string(&bundle_hex_path)
+            .unwrap()
+            .trim()
+            .to_string()
+    } else {
+        println!("Generating new bundle hex");
+        let hex = gen_bundle_hex(50_000);
+        std::fs::write(&bundle_hex_path, &hex).unwrap();
+        hex
+    };
 
+    println!("Calling verify_orchard_bundle");
     let outcome = contract
         .call("verify_orchard_bundle")
         .args_json(serde_json::json!({ "bundle_hex": bundle_hex }))
