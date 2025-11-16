@@ -1,7 +1,7 @@
-use near_sdk::{near, require, env};
 use near_sdk::json_types::U128;
-use zcash_address::unified::{Container, Encoding};
+use near_sdk::{env, near, require};
 use std::io::Cursor;
+use zcash_address::unified::{Container, Encoding};
 
 #[derive(Default)]
 #[near(contract_state)]
@@ -17,13 +17,17 @@ impl Contract {
     pub fn verify_orchard_bundle(&self, bundle_hex: String) {
         env::log_str("verify_orchard_bundle: start");
         let bytes = hex::decode(bundle_hex).expect("hex");
-        env::log_str(&format!("verify_orchard_bundle: bundle_bytes={}", bytes.len()));
+        env::log_str(&format!(
+            "verify_orchard_bundle: bundle_bytes={}",
+            bytes.len()
+        ));
         let mut cursor = Cursor::new(bytes);
-        let bundle = zcash_primitives::transaction::components::orchard::read_v5_bundle(&mut cursor)
-            .expect("read bundle")
-            .expect("some bundle");
+        let bundle =
+            zcash_primitives::transaction::components::orchard::read_v5_bundle(&mut cursor)
+                .expect("read bundle")
+                .expect("some bundle");
 
-        require!(bundle.actions().len() == 1, "single action only");
+        //require!(bundle.actions().len() == 1, "single action only");
 
         env::log_str("verify_orchard_bundle: building VK");
         let vk = orchard::circuit::VerifyingKey::build();
@@ -55,9 +59,10 @@ impl Contract {
     ) {
         let bytes = hex::decode(bundle_hex).expect("hex");
         let mut cursor = std::io::Cursor::new(bytes);
-        let bundle = zcash_primitives::transaction::components::orchard::read_v5_bundle(&mut cursor)
-            .expect("read bundle")
-            .expect("some bundle");
+        let bundle =
+            zcash_primitives::transaction::components::orchard::read_v5_bundle(&mut cursor)
+                .expect("read bundle")
+                .expect("some bundle");
         require!(bundle.actions().len() == 1, "single action only");
 
         // Recover output via OVK = 00..00
@@ -125,11 +130,15 @@ impl Contract {
     pub fn parse_and_build_only(&self, bundle_hex: String) {
         env::log_str("parse_and_build_only: start");
         let bytes = hex::decode(bundle_hex).expect("hex");
-        env::log_str(&format!("parse_and_build_only: bundle_bytes={}", bytes.len()));
+        env::log_str(&format!(
+            "parse_and_build_only: bundle_bytes={}",
+            bytes.len()
+        ));
         let mut cursor = Cursor::new(bytes);
-        let bundle = zcash_primitives::transaction::components::orchard::read_v5_bundle(&mut cursor)
-            .expect("read bundle")
-            .expect("some bundle");
+        let bundle =
+            zcash_primitives::transaction::components::orchard::read_v5_bundle(&mut cursor)
+                .expect("read bundle")
+                .expect("some bundle");
         env::log_str(&format!(
             "parse_and_build_only: actions_len={}",
             bundle.actions().len()
