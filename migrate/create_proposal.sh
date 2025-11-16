@@ -1,4 +1,4 @@
-EXPECTED_NBTC_BS58_HASH=HgZnctwS7JdgbnXH6sbanQ9XoZCdf7iSz9vCdvMtRrGC
+EXPECTED_NBTC_BS58_HASH=3dXNLxNT1cSso4SeDzffnpq1SynCBb95WF9gBLVYvYSE
 NBTC_ACCOUNT_ID=nbtc.bridge.near
 DAO_ACCOUNT_ID=rainbowbridge.sputnik-dao.near
 SIGNER_ACCOUNT_ID=bridge-ops.near
