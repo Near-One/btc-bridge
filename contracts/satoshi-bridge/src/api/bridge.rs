@@ -1,4 +1,3 @@
-use crate::btc_light_client::deposit::inject_utxo_id_in_msg;
 use crate::{
     assert_one_yocto, env, generate_utxo_storage_key, get_deposit_path, nano_to_sec, near,
     psbt_wrapper::PsbtWrapper, require, AccessControllable, AccountId, BTCPendingInfo, Contract,
@@ -398,11 +397,6 @@ impl Contract {
     pub fn get_user_deposit_address(&self, deposit_msg: DepositMsg) -> String {
         let path = get_deposit_path(&deposit_msg);
         let deposit_address = self.generate_utxo_chain_address(&path).to_string();
-
-        if let Some(safe_deposit_msg) = deposit_msg.safe_deposit.clone() {
-            let _ = inject_utxo_id_in_msg(safe_deposit_msg.msg, "utxo_id");
-        }
-
         Event::LogDepositAddress {
             deposit_msg,
             path,
