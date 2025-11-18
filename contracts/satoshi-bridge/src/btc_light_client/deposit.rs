@@ -274,9 +274,13 @@ fn is_refund_required() -> bool {
     }
 }
 
-fn inject_utxo_id_in_msg(msg: String, utxo_id: &str) -> String {
+pub(crate) fn inject_utxo_id_in_msg(msg: String, utxo_id: &str) -> String {
     if let Ok(mut json) = serde_json::from_str::<Value>(&msg) {
         if let Some(field) = json.get_mut("utxo_id") {
+            require!(
+                *field == Value::String("{{UTXO_TX_ID}}".to_string()),
+                "Invalid `utxo_id` value: this field can only be `{{UTXO_TX_ID}}`."
+            );
             *field = Value::String(utxo_id.to_string());
             return serde_json::to_string(&json).unwrap();
         }
@@ -301,17 +305,23 @@ mod tests {
     #[test]
     fn test_utxo_id_injection() {
         let duplicated_msg =
-            r#"{"utxo_id":"first","utxo_id":"second","x":"some_recipient","y":"1000","z":"OS"}"#
+            r#"{"utxo_id":"first","utxo_id":"{{UTXO_TX_ID}}","x":"some_recipient","y":"1000","z":"OS"}"#
                 .to_string();
-
-        println!("Duplicated msg: {}", duplicated_msg);
         let injected_msg = inject_utxo_id_in_msg(duplicated_msg, "correct_utxo_id");
-        println!("Injected msg: {}", injected_msg);
 
         let parsed_msg: UtxoFinTransferMsg = serde_json::from_str(&injected_msg).unwrap();
         assert_eq!(parsed_msg.utxo_id, "correct_utxo_id");
 
         let expected = r#"{"utxo_id":"correct_utxo_id","x":"some_recipient","y":"1000","z":"OS"}"#;
         assert_eq!(injected_msg, expected);
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid `utxo_id` value: this field can only be `{{UTXO_TX_ID}}`.")]
+    fn test_incorrect_utxo_id_injection() {
+        let duplicated_msg =
+            r#"{"utxo_id":"first","utxo_id":"  {{UTXO_TX_ID}}","x":"some_recipient","y":"1000","z":"OS"}"#
+                .to_string();
+        let _ = inject_utxo_id_in_msg(duplicated_msg, "correct_utxo_id");
     }
 }
