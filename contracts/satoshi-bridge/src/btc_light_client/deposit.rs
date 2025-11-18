@@ -1,4 +1,4 @@
-use near_sdk::{serde, serde_json::Value, PromiseResult};
+use near_sdk::{serde_json::Value, PromiseResult};
 
 use crate::{
     burn::GAS_FOR_BURN_CALL,
@@ -282,13 +282,6 @@ fn inject_utxo_id_in_msg(msg: String, utxo_id: &str) -> String {
         }
     }
     msg
-}
-
-#[near(serializers=[json])]
-struct UTXOMsg {
-    utxo_id: String,
-    #[serde(flatten)]
-    msg: Value,
 }
 
 #[cfg(test)]
