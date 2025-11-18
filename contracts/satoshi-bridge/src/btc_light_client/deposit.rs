@@ -304,10 +304,7 @@ mod tests {
             r#"{"utxo_id":"first","utxo_id":"second","x":"some_recipient","y":"1000","z":"OS"}"#
                 .to_string();
 
-        println!("Duplicated msg: {}", duplicated_msg);
         let injected_msg = inject_utxo_id_in_msg(duplicated_msg, "correct_utxo_id");
-        println!("Injected msg: {}", injected_msg);
-
         let parsed_msg: UtxoFinTransferMsg = serde_json::from_str(&injected_msg).unwrap();
         assert_eq!(parsed_msg.utxo_id, "correct_utxo_id");
 
