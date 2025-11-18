@@ -1,4 +1,4 @@
-use near_sdk::PromiseResult;
+use near_sdk::{serde, serde_json::Value, PromiseResult};
 
 use crate::{
     burn::GAS_FOR_BURN_CALL,
@@ -196,7 +196,8 @@ impl Contract {
         );
 
         let msg = (!msg.is_empty())
-            .then(|| msg.replace("{{UTXO_TX_ID}}", &pending_utxo_info.utxo_storage_key));
+            .then(|| inject_utxo_id_in_msg(msg, &pending_utxo_info.utxo_storage_key));
+
         ext_nbtc::ext(self.internal_config().nbtc_account_id.clone())
             .with_static_gas(GAS_FOR_MINT_CALL)
             .with_attached_deposit(NearToken::from_yoctonear(1))
@@ -270,5 +271,54 @@ fn is_refund_required() -> bool {
         }
         // Unexpected case: don't refund
         PromiseResult::Failed => false,
+    }
+}
+
+fn inject_utxo_id_in_msg(msg: String, utxo_id: &str) -> String {
+    if let Ok(mut json) = serde_json::from_str::<Value>(&msg) {
+        if let Some(field) = json.get_mut("utxo_id") {
+            *field = Value::String(utxo_id.to_string());
+            return serde_json::to_string(&json).unwrap();
+        }
+    }
+    msg
+}
+
+#[near(serializers=[json])]
+struct UTXOMsg {
+    utxo_id: String,
+    #[serde(flatten)]
+    msg: Value,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::btc_light_client::deposit::inject_utxo_id_in_msg;
+    use near_sdk::{json_types::U128, near, serde_json};
+
+    #[near(serializers=[json])]
+    #[derive(Debug, Clone)]
+    pub struct UtxoFinTransferMsg {
+        pub utxo_id: String,
+        pub x: String,
+        pub y: U128,
+        pub z: String,
+    }
+
+    #[test]
+    fn test_utxo_id_injection() {
+        let duplicated_msg =
+            r#"{"utxo_id":"first","utxo_id":"second","x":"some_recipient","y":"1000","z":"OS"}"#
+                .to_string();
+
+        println!("Duplicated msg: {}", duplicated_msg);
+        let injected_msg = inject_utxo_id_in_msg(duplicated_msg, "correct_utxo_id");
+        println!("Injected msg: {}", injected_msg);
+
+        let parsed_msg: UtxoFinTransferMsg = serde_json::from_str(&injected_msg).unwrap();
+        assert_eq!(parsed_msg.utxo_id, "correct_utxo_id");
+
+        let expected = r#"{"utxo_id":"correct_utxo_id","x":"some_recipient","y":"1000","z":"OS"}"#;
+        assert_eq!(injected_msg, expected);
     }
 }
