@@ -308,7 +308,7 @@ mod tests {
     use crate::btc_light_client::deposit::inject_utxo_id_in_msg;
     use near_sdk::{near, serde_json};
 
-    #[near(serializers = [json])]
+    #[near(serializers=[json])]
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct UtxoFinTransferInner {
         pub utxo_id: String,
@@ -317,7 +317,7 @@ mod tests {
         pub msg: String,
     }
 
-    #[near(serializers = [json])]
+    #[near(serializers=[json])]
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct UtxoFinTransferMsg {
         #[serde(rename = "UtxoFinTransfer")]
