@@ -308,14 +308,14 @@ fn inject_utxo_id_in_msg(msg: String, utxo_id: &str) -> String {
         return serde_json::to_string(&json).unwrap_or(msg);
     }
 
-    let wrapped = format!("\"{}\"", msg);
+    let wrapped = format!("\"{msg}\"");
     if let Ok(unescaped) = serde_json::from_str::<String>(&wrapped) {
         if let Ok(mut json) = serde_json::from_str::<Value>(&unescaped) {
             inject(&mut json, utxo_id);
             return serde_json::to_string(&json).unwrap_or(unescaped);
-        } else {
-            return unescaped;
         }
+
+        return unescaped;
     }
 
     msg
