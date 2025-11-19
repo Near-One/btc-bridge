@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{ext_contract, AccountId, PostAction, U128};
 
 pub mod burn;
 pub mod mint;
@@ -21,4 +21,5 @@ pub trait NBtc {
         relayer_account_id: AccountId,
         relayer_fee: U128,
     );
+    fn safe_mint(&mut self, account_id: AccountId, amount: U128, msg: Option<String>);
 }

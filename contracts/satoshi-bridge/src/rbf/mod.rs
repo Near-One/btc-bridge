@@ -1,5 +1,7 @@
-use crate::psbt_wrapper::PsbtWrapper;
-use crate::*;
+use crate::{
+    env, nano_to_sec, psbt_wrapper::PsbtWrapper, require, BTCPendingInfo, Contract,
+    PendingInfoState,
+};
 
 pub mod active_utxo_management;
 pub mod cancel_active_utxo_management;
@@ -47,13 +49,13 @@ pub fn init_rbf_btc_pending_info(
 ) -> BTCPendingInfo {
     BTCPendingInfo {
         account_id: original_tx_btc_pending_info.account_id.clone(),
-        btc_pending_id: Default::default(),
+        btc_pending_id: String::new(),
         transfer_amount: original_tx_btc_pending_info.transfer_amount,
         actual_received_amount: original_tx_btc_pending_info.actual_received_amount,
         withdraw_fee: original_tx_btc_pending_info.withdraw_fee,
         burn_amount: original_tx_btc_pending_info.burn_amount,
         gas_fee: original_tx_btc_pending_info.gas_fee,
-        psbt_hex: Default::default(),
+        psbt_hex: String::new(),
         vutxos: original_tx_btc_pending_info.vutxos.clone(),
         signatures: vec![None; original_tx_btc_pending_info.signatures.len()],
         tx_bytes_with_sign: None,

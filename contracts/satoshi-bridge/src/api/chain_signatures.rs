@@ -1,4 +1,7 @@
-use crate::*;
+use crate::{
+    near, require, AccessControllable, Contract, ContractExt, Pausable, PromiseOrValue, Role,
+};
+
 use near_plugins::pause;
 
 #[near]

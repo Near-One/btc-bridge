@@ -58,7 +58,13 @@ impl Contract {
         max_gas_fee: Option<U128>,
     ) -> PromiseOrValue<U128> {
         let mut psbt = PsbtWrapper::new(input, output);
-        self.create_btc_pending_info(sender_id, amount, target_btc_address, &mut psbt, max_gas_fee);
+        self.create_btc_pending_info(
+            sender_id,
+            amount,
+            target_btc_address,
+            &mut psbt,
+            max_gas_fee,
+        );
         PromiseOrValue::Value(U128(0))
     }
 

@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{env, near, Account, AccountId, Contract, ContractExt, NearToken, Promise};
 
 use near_contract_standards::storage_management::{
     StorageBalance, StorageBalanceBounds, StorageManagement,

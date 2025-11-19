@@ -1,5 +1,9 @@
-use crate::psbt_wrapper::PsbtWrapper;
-use crate::*;
+use crate::{
+    env, nano_to_sec, near, psbt_wrapper::PsbtWrapper, require, serde_json, AccessControllable,
+    AccountId, BTCPendingInfo, Contract, ContractExt, Event, Gas, OriginalState, OutPoint,
+    Pausable, PendingInfoStage, PendingInfoState, PromiseOrValue, Role, TxOut, U128,
+};
+
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_plugins::pause;
 
@@ -51,14 +55,14 @@ impl FungibleTokenReceiver for Contract {
                 target_btc_address,
                 input,
                 output,
-                max_gas_fee
+                max_gas_fee,
             } => self.ft_on_transfer_withdraw_chain_specific(
                 sender_id,
                 amount,
                 target_btc_address,
                 input,
                 output,
-                max_gas_fee
+                max_gas_fee,
             ),
         }
     }
@@ -94,7 +98,7 @@ impl Contract {
             &vutxos,
             amount,
             withdraw_fee,
-            max_gas_fee
+            max_gas_fee,
         );
 
         let need_signature_num = psbt.get_input_num();

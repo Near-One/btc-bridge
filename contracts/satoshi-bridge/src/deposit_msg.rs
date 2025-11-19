@@ -1,4 +1,6 @@
-use crate::*;
+use crate::{
+    env, is_structure_equal, near, serde_json, AccountId, Contract, Event, Gas, Value, U128,
+};
 
 const MAX_POST_ACTIONS_NUM: usize = 2;
 const MAX_TOTAL_POST_ACTIONS_GAS: Gas = Gas::from_tgas(130);
@@ -16,6 +18,17 @@ pub struct DepositMsg {
     // Used to support other dApps extending based on verify_deposit.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extra_msg: Option<String>,
+    // Replacment for the legacy post_actions to support safer cross-contract calls.
+    // If this field is present, the legacy post_actions field must be None
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub safe_deposit: Option<SafeDepositMsg>,
+}
+
+#[near(serializers = [json])]
+#[derive(Clone)]
+pub struct SafeDepositMsg {
+    pub msg: String,
+    // TODO: add relayer fee support in the future.
 }
 
 #[near(serializers = [json])]
@@ -117,8 +130,7 @@ impl Contract {
                     Event::InvalidPostAction {
                         index: Some(index),
                         err_msg: format!(
-                            "The amount({}) of gas exceeds the limit of {}.",
-                            gas, MAX_PER_POST_ACTIONS_GAS
+                            "The amount({gas}) of gas exceeds the limit of {MAX_PER_POST_ACTIONS_GAS}."
                         ),
                     }
                     .emit();
@@ -128,8 +140,7 @@ impl Contract {
                     Event::InvalidPostAction {
                         index: Some(index),
                         err_msg: format!(
-                            "The gas amount({}) does not meet the minimum requirement of {}.",
-                            gas, MIN_PER_POST_ACTIONS_GAS
+                            "The gas amount({gas}) does not meet the minimum requirement of {MIN_PER_POST_ACTIONS_GAS}."
                         ),
                     }
                     .emit();
@@ -143,8 +154,7 @@ impl Contract {
             Event::InvalidPostAction {
                 index: None,
                 err_msg: format!(
-                    "The total amount({}) of gas exceeds the limit of {}.",
-                    total_gas, MAX_TOTAL_POST_ACTIONS_GAS
+                    "The total amount({total_gas}) of gas exceeds the limit of {MAX_TOTAL_POST_ACTIONS_GAS}."
                 ),
             }
             .emit();
@@ -154,8 +164,7 @@ impl Contract {
             Event::InvalidPostAction {
                 index: None,
                 err_msg: format!(
-                    "The total amount({}) of nBTC used in post_actions exceeds the mint amount ({}).",
-                    total_amount, actual_mintable_amount
+                    "The total amount({total_amount}) of nBTC used in post_actions exceeds the mint amount ({actual_mintable_amount})."
                 ),
             }
             .emit();

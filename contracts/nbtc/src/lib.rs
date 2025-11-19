@@ -60,7 +60,7 @@ impl Contract {
         decimals: u8,
     ) -> Self {
         require!(!env::state_exists(), "Already initialized");
-        Self {
+        let mut contract = Self {
             controller,
             bridge_id,
             token: FungibleToken::new(StorageKey::FungibleToken),
@@ -76,7 +76,13 @@ impl Contract {
                     decimals,
                 }),
             ),
-        }
+        };
+
+        contract
+            .token
+            .internal_register_account(&contract.bridge_id);
+
+        contract
     }
 
     #[payable]
@@ -84,6 +90,29 @@ impl Contract {
         assert_one_yocto();
         self.assert_controller();
         self.controller = controller;
+    }
+
+    #[payable]
+    pub fn safe_mint(
+        &mut self,
+        account_id: AccountId,
+        amount: U128,
+        msg: Option<String>,
+    ) -> PromiseOrValue<U128> {
+        self.assert_bridge();
+
+        if self.token.accounts.get(&account_id).is_none() {
+            return PromiseOrValue::Value(U128(0));
+        }
+
+        if let Some(msg) = msg {
+            self.token.internal_deposit(&self.bridge_id, amount.into());
+
+            self.ft_transfer_call(account_id, amount, None, msg)
+        } else {
+            self.token.internal_deposit(&account_id, amount.into());
+            PromiseOrValue::Value(amount)
+        }
     }
 
     pub fn mint(
@@ -142,7 +171,7 @@ impl Contract {
 impl FungibleTokenCore for Contract {
     #[payable]
     fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>) {
-        self.token.ft_transfer(receiver_id, amount, memo)
+        self.token.ft_transfer(receiver_id, amount, memo);
     }
 
     #[payable]

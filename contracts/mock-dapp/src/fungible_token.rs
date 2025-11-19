@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{env, near, AccountId, Contract, ContractExt, PromiseOrValue, U128};
 
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_sdk::{log, require, serde_json};

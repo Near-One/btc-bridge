@@ -1,5 +1,9 @@
-use crate::psbt_wrapper::PsbtWrapper;
-use crate::*;
+use crate::{
+    assert_one_yocto, env, generate_utxo_storage_key, get_deposit_path, nano_to_sec, near,
+    psbt_wrapper::PsbtWrapper, require, AccessControllable, AccountId, BTCPendingInfo, Contract,
+    ContractExt, DepositMsg, Event, LockTime, OriginalState, OutPoint, Pausable, PendingInfoStage,
+    PendingInfoState, PendingUTXOInfo, Promise, Role, TxOut, WrappedTransaction, UTXO,
+};
 use near_plugins::{access_control_any, pause};
 
 #[near]
@@ -28,10 +32,14 @@ impl Contract {
         tx_index: u64,
         merkle_proof: Vec<String>,
     ) -> Promise {
+        require!(
+            deposit_msg.safe_deposit.is_none(),
+            "safe_deposit not supported in verify_deposit"
+        );
         let path = get_deposit_path(&deposit_msg);
         let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
             .expect("Deserialization tx_bytes failed");
-        let deposit_amount = transaction.output()[vout].value.to_sat() as u128;
+        let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
         require!(deposit_amount > 0, "Invalid deposit_amount");
         require!(
             transaction.lock_time() == LockTime::ZERO,
@@ -53,7 +61,10 @@ impl Contract {
             balance: transaction.output()[vout].value.to_sat(),
         };
         let tx_id = transaction.compute_txid().to_string();
-        let utxo_storage_key = generate_utxo_storage_key(tx_id.clone(), vout as u32);
+        let utxo_storage_key = generate_utxo_storage_key(
+            tx_id.clone(),
+            u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
+        );
         self.internal_verify_deposit(
             deposit_amount,
             tx_block_blockhash,
@@ -65,6 +76,83 @@ impl Contract {
                 utxo,
             },
             deposit_msg,
+        )
+    }
+
+    /// Safe version of verify_deposit, only supports minting nBTC with safe_deposit message and revert the deposit on failed XCC calls.
+    /// It doesn't charge deposit fee, and doesn't pay the token storage for the user
+    ///
+    /// # Arguments
+    ///
+    /// * `deposit_msg` - Information used to generate the deposit address path.
+    /// * `tx_bytes` - Successfully confirmed BTC transaction bytes
+    /// * `vout` - The index of the output where the user sent BTC to the deposit address
+    /// * `tx_block_blockhash` - The block hash where the transaction is located.
+    /// * `tx_index` - The index of the transaction in the block.
+    /// * `merkle_proof` - Merkle proof of the transaction.
+    ///
+    /// # Returns
+    ///
+    /// bool - Whether nBTC minting was successful.
+    #[payable]
+    #[pause(except(roles(Role::DAO)))]
+    pub fn safe_verify_deposit(
+        &mut self,
+        deposit_msg: DepositMsg,
+        tx_bytes: Vec<u8>,
+        vout: usize,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Promise {
+        require!(
+            env::attached_deposit() >= self.required_balance_for_safe_deposit(),
+            "Insufficient deposit for storage"
+        );
+
+        let path = get_deposit_path(&deposit_msg);
+        let safe_deposit_msg = deposit_msg
+            .safe_deposit
+            .unwrap_or_else(|| env::panic_str("safe_deposit is required in safe_verify_deposit"));
+
+        let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
+            .expect("Deserialization tx_bytes failed");
+        let deposit_amount = transaction.output()[vout].value.to_sat().into();
+        require!(deposit_amount > 0, "Invalid deposit_amount");
+        require!(
+            transaction.lock_time() == LockTime::ZERO,
+            "Tx with a non-zero lock_time are not supported."
+        );
+        let deposit_address = self.generate_utxo_chain_address(&path);
+        let deposit_address_script_pubkey = deposit_address
+            .script_pubkey()
+            .expect("Invalid deposit address");
+        require!(
+            deposit_address_script_pubkey == transaction.output()[vout].script_pubkey,
+            "Invalid deposit tx_bytes"
+        );
+
+        let utxo = UTXO {
+            path,
+            tx_bytes,
+            vout,
+            balance: transaction.output()[vout].value.to_sat(),
+        };
+        let tx_id = transaction.compute_txid().to_string();
+        let utxo_storage_key = generate_utxo_storage_key(tx_id.clone(), vout.try_into().unwrap());
+
+        self.internal_safe_verify_deposit(
+            deposit_amount,
+            tx_block_blockhash,
+            tx_index,
+            merkle_proof,
+            PendingUTXOInfo {
+                tx_id,
+                utxo_storage_key,
+                utxo,
+            },
+            deposit_msg.recipient_id,
+            safe_deposit_msg,
         )
     }
 
