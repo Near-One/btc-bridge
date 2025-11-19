@@ -344,7 +344,7 @@ mod tests {
     #[test]
     fn test_utxo_id_injection() {
         let nested_msg =
-            r#"{"UtxoFinTransfer":{"msg":"","recipient":"sol:BXss9YNCX2p6VPf2Em54pHXkXnC2FPBeZgbB9fY1cuBR","relayer_fee":"12","utxo_id":"{{UTXO_TX_ID}}"}}"#
+            r#"{"UtxoFinTransfer":{"msg":"OS","recipient":"some_recipient","relayer_fee":"1000","utxo_id":"{{UTXO_TX_ID}}"}}"#
                 .to_string();
 
         let injected_msg = inject_utxo_id_in_msg(nested_msg, "correct_utxo_id");
@@ -353,9 +353,9 @@ mod tests {
         let expected = UtxoFinTransferMsg {
             inner: UtxoFinTransferInner {
                 utxo_id: "correct_utxo_id".to_string(),
-                recipient: "sol:BXss9YNCX2p6VPf2Em54pHXkXnC2FPBeZgbB9fY1cuBR".to_string(),
-                relayer_fee: "12".to_string(),
-                msg: "".to_string(),
+                recipient: "some_recipient".to_string(),
+                relayer_fee: "1000".to_string(),
+                msg: "OS".to_string(),
             },
         };
 
