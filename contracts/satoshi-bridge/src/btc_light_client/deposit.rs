@@ -291,16 +291,34 @@ fn inject_utxo_id_in_msg(msg: String, utxo_id: &str) -> String {
                     inject(v, utxo_id);
                 }
             }
+            Value::String(s) => {
+                if let Ok(mut inner) = serde_json::from_str::<Value>(s) {
+                    inject(&mut inner, utxo_id);
+                    if let Ok(new_s) = serde_json::to_string(&inner) {
+                        *s = new_s;
+                    }
+                }
+            }
             _ => {}
         }
     }
 
     if let Ok(mut json) = serde_json::from_str::<Value>(&msg) {
         inject(&mut json, utxo_id);
-        serde_json::to_string(&json).unwrap_or(msg)
-    } else {
-        msg
+        return serde_json::to_string(&json).unwrap_or(msg);
     }
+
+    let wrapped = format!("\"{}\"", msg);
+    if let Ok(unescaped) = serde_json::from_str::<String>(&wrapped) {
+        if let Ok(mut json) = serde_json::from_str::<Value>(&unescaped) {
+            inject(&mut json, utxo_id);
+            return serde_json::to_string(&json).unwrap_or(unescaped);
+        } else {
+            return unescaped;
+        }
+    }
+
+    msg
 }
 
 #[cfg(test)]
@@ -338,6 +356,7 @@ mod tests {
             relayer_fee: "1000".to_string(),
             msg: "OS".to_string(),
         };
+
         assert_eq!(parsed_msg, expected);
     }
 
@@ -348,7 +367,26 @@ mod tests {
                 .to_string();
 
         let injected_msg = inject_utxo_id_in_msg(nested_msg, "correct_utxo_id");
-        println!("Injected msg: {}", injected_msg);
+        let parsed_msg: UtxoFinTransferMsg = serde_json::from_str(&injected_msg).unwrap();
+        let expected = UtxoFinTransferMsg {
+            inner: UtxoFinTransferInner {
+                utxo_id: "correct_utxo_id".to_string(),
+                recipient: "some_recipient".to_string(),
+                relayer_fee: "1000".to_string(),
+                msg: "OS".to_string(),
+            },
+        };
+
+        assert_eq!(parsed_msg, expected);
+    }
+
+    #[test]
+    fn test_escaped_utxo_id_injection() {
+        let nested_msg =
+            r#"{\"UtxoFinTransfer\":{\"msg\":\"OS\",\"recipient\":\"some_recipient\",\"relayer_fee\":\"1000\",\"utxo_id\":\"{{UTXO_TX_ID}}\"}}"#
+                .to_string();
+
+        let injected_msg = inject_utxo_id_in_msg(nested_msg, "correct_utxo_id");
         let parsed_msg: UtxoFinTransferMsg = serde_json::from_str(&injected_msg).unwrap();
         let expected = UtxoFinTransferMsg {
             inner: UtxoFinTransferInner {
