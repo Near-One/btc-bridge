@@ -197,7 +197,7 @@ impl PsbtWrapper {
     }
 
     pub fn deserialize(psbt_hex: &String) -> Self {
-        let bytes = hex::decode(&psbt_hex).unwrap();
+        let bytes = hex::decode(psbt_hex).unwrap();
         let mut rdr = Cursor::new(bytes);
         let version = read_u8(&mut rdr).unwrap();
         let branch_id = if version == 2 {
@@ -288,7 +288,7 @@ impl PsbtWrapper {
             self.expiry_height,
             public_key,
             self.branch_id,
-            &self.orchard_bundle,
+            self.orchard_bundle.clone(),
         );
         let txid_parts = tx_data.digest(zcash_primitives::transaction::txid::TxIdDigester);
         let script = &self.inputs_utxo[vin].script_pubkey;
@@ -302,9 +302,8 @@ impl PsbtWrapper {
             ),
         );
 
-        zcash_primitives::transaction::sighash::signature_hash(&tx_data, &sig_input, &txid_parts)
+        *zcash_primitives::transaction::sighash::signature_hash(&tx_data, &sig_input, &txid_parts)
             .as_ref()
-            .clone()
     }
 
     pub fn save_signature(
@@ -339,7 +338,7 @@ impl PsbtWrapper {
 
 fn get_branch_id(expiry_height: u32, config: &Config) -> BranchId {
     let current_height = expiry_height - config.expiry_height_gap;
-    return config.chain.get_branch_id(current_height);
+    config.chain.get_branch_id(current_height)
 }
 
 fn read_u32_le<R: Read>(r: &mut R) -> io::Result<u32> {
