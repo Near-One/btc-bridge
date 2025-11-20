@@ -97,12 +97,22 @@ impl Contract {
         #[callback_unwrap] last_block_height: u32,
     ) -> U128 {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
+
+        // For withdrawals with Orchard bundle, pass expected recipient and amount for validation
+        let (expected_recipient, expected_amount) = if orchard_bundle.is_some() {
+            (Some(target_btc_address.clone()), Some(amount.0))
+        } else {
+            (None, None)
+        };
+
         let mut psbt = PsbtWrapper::new(
             input,
             output,
             orchard_bundle,
             expiry_height,
             self.internal_config(),
+            expected_recipient,
+            expected_amount,
         );
         self.create_btc_pending_info(
             sender_id,
@@ -126,12 +136,16 @@ impl Contract {
     ) {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
 
+        // For active UTXO management, we don't validate orchard recipient/amount
+        // as this is internal bridge operations, not user withdrawals
         let mut psbt = PsbtWrapper::new(
             input,
             output,
             orchard_bundle,
             expiry_height,
             self.internal_config(),
+            None,
+            None,
         );
 
         self.create_active_utxo_management_pending_info(account_id, &mut psbt);

@@ -100,6 +100,9 @@ impl Transaction {
         let lock_time = 0;
         let expiry_height = BlockHeight::from_u32(expiry_height);
 
+        // The Orchard bundle is included in TransactionData, which binds it into the
+        // ZIP-244 sighash. This ensures any change to the Orchard bytes invalidates
+        // transparent signatures.
         TransactionData::from_parts(
             TxVersion::V5,
             branch_id,
