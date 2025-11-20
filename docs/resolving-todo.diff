@@ -1,0 +1,152 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index fbae2b6..98ddce1 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -3729,6 +3729,7 @@ dependencies = [
+  "near-sdk",
+  "near-workspaces",
+  "orchard",
++ "sapling-crypto",
+  "tokio",
+  "zcash_address",
+  "zcash_primitives",
+diff --git a/contracts/satoshi-bridge/Cargo.toml b/contracts/satoshi-bridge/Cargo.toml
+index be9e862..9d1d8a8 100644
+--- a/contracts/satoshi-bridge/Cargo.toml
++++ b/contracts/satoshi-bridge/Cargo.toml
+@@ -46,6 +46,7 @@ crypto-shared = { git = "https://github.com/near/mpc_old", rev = "0afee9004a1b1c
+ zcash_primitives = { version = "0.24.0", default-features = false, features = ["circuits", "transparent-inputs"], optional = true }
+ zcash_transparent = { version = "0.4.0", features = ["transparent-inputs"], optional = true }
+ orchard = { version = "0.11.0", default-features = false, optional = true }
++sapling-crypto = { version = "0.5.0", default-features = false, optional = true }
+ zcash_protocol = { version = "0.6.1" }
+ core2 = { version = "0.3", optional = true }
+ zcash_address = { version = "0.9.0" }
+@@ -59,4 +60,4 @@ tokio = { version = "1.12.0", features = ["full"] }
+ 
+ [features]
+ default = ["zcash"]
+-zcash = ["zcash_primitives", "zcash_transparent", "orchard", "core2"]
++zcash = ["zcash_primitives", "zcash_transparent", "orchard", "core2", "sapling-crypto"]
+diff --git a/contracts/satoshi-bridge/src/bitcoin_utils/contract_methods.rs b/contracts/satoshi-bridge/src/bitcoin_utils/contract_methods.rs
+index 55d6f07..e3bb76d 100644
+--- a/contracts/satoshi-bridge/src/bitcoin_utils/contract_methods.rs
++++ b/contracts/satoshi-bridge/src/bitcoin_utils/contract_methods.rs
+@@ -58,7 +58,13 @@ impl Contract {
+         max_gas_fee: Option<U128>,
+     ) -> PromiseOrValue<U128> {
+         let mut psbt = PsbtWrapper::new(input, output);
+-        self.create_btc_pending_info(sender_id, amount, target_btc_address, &mut psbt, max_gas_fee);
++        self.create_btc_pending_info(
++            sender_id,
++            amount,
++            target_btc_address,
++            &mut psbt,
++            max_gas_fee,
++        );
+         PromiseOrValue::Value(U128(0))
+     }
+ 
+diff --git a/contracts/satoshi-bridge/src/zcash_utils/psbt_wrapper.rs b/contracts/satoshi-bridge/src/zcash_utils/psbt_wrapper.rs
+index 61ef681..26518a9 100644
+--- a/contracts/satoshi-bridge/src/zcash_utils/psbt_wrapper.rs
++++ b/contracts/satoshi-bridge/src/zcash_utils/psbt_wrapper.rs
+@@ -197,7 +197,7 @@ impl PsbtWrapper {
+     }
+ 
+     pub fn deserialize(psbt_hex: &String) -> Self {
+-        let bytes = hex::decode(&psbt_hex).unwrap();
++        let bytes = hex::decode(psbt_hex).unwrap();
+         let mut rdr = Cursor::new(bytes);
+         let version = read_u8(&mut rdr).unwrap();
+         let branch_id = if version == 2 {
+@@ -288,7 +288,7 @@ impl PsbtWrapper {
+             self.expiry_height,
+             public_key,
+             self.branch_id,
+-            &self.orchard_bundle,
++            self.orchard_bundle.clone(),
+         );
+         let txid_parts = tx_data.digest(zcash_primitives::transaction::txid::TxIdDigester);
+         let script = &self.inputs_utxo[vin].script_pubkey;
+@@ -302,9 +302,8 @@ impl PsbtWrapper {
+             ),
+         );
+ 
+-        zcash_primitives::transaction::sighash::signature_hash(&tx_data, &sig_input, &txid_parts)
++        *zcash_primitives::transaction::sighash::signature_hash(&tx_data, &sig_input, &txid_parts)
+             .as_ref()
+-            .clone()
+     }
+ 
+     pub fn save_signature(
+@@ -339,7 +338,7 @@ impl PsbtWrapper {
+ 
+ fn get_branch_id(expiry_height: u32, config: &Config) -> BranchId {
+     let current_height = expiry_height - config.expiry_height_gap;
+-    return config.chain.get_branch_id(current_height);
++    config.chain.get_branch_id(current_height)
+ }
+ 
+ fn read_u32_le<R: Read>(r: &mut R) -> io::Result<u32> {
+diff --git a/contracts/satoshi-bridge/src/zcash_utils/transaction.rs b/contracts/satoshi-bridge/src/zcash_utils/transaction.rs
+index ded2332..e12cd69 100644
+--- a/contracts/satoshi-bridge/src/zcash_utils/transaction.rs
++++ b/contracts/satoshi-bridge/src/zcash_utils/transaction.rs
+@@ -2,13 +2,18 @@ use crate::network;
+ use bitcoin::hashes::Hash;
+ use bitcoin::{absolute, ScriptBuf, TxOut, Txid};
+ use zcash_primitives::consensus::{BlockHeight, BranchId};
+-use zcash_primitives::transaction::{
+-    Transaction as ZCashTransaction, TransactionData, TxVersion, Unauthorized,
+-};
++use zcash_primitives::transaction::{Transaction as ZCashTransaction, TransactionData, TxVersion};
+ use zcash_protocol::value::ZatBalance;
+ use zcash_transparent::builder::TransparentBuilder;
+ use zcash_transparent::bundle::Authorized;
+ 
++pub struct TransparentUnauthorized;
++impl zcash_primitives::transaction::Authorization for TransparentUnauthorized {
++    type TransparentAuth = zcash_transparent::builder::Unauthorized;
++    type SaplingAuth = sapling_crypto::bundle::Authorized;
++    type OrchardAuth = orchard::bundle::Authorized;
++}
++
+ #[derive(Debug, PartialEq)]
+ pub struct Transaction {
+     pub inner_tx: ZCashTransaction,
+@@ -86,8 +91,8 @@ impl Transaction {
+         expiry_height: u32,
+         public_key: &bitcoin::PublicKey,
+         branch_id: BranchId,
+-        orchard_bundle: &Option<orchard::Bundle<orchard::bundle::Authorized, ZatBalance>>,
+-    ) -> TransactionData<Unauthorized> {
++        orchard_bundle: Option<orchard::Bundle<orchard::bundle::Authorized, ZatBalance>>,
++    ) -> TransactionData<TransparentUnauthorized> {
+         let transparent_bundle = Self::get_transparent_builder(vin, vout, input, public_key)
+             .build()
+             .unwrap();
+@@ -95,10 +100,7 @@ impl Transaction {
+         let lock_time = 0;
+         let expiry_height = BlockHeight::from_u32(expiry_height);
+ 
+-        // TODO: pass the orchard_bundle properly
+-        // How to convert orchard_bundle from Authorized to Unauthorized?
+-        // NOTE: the `TransactionData` is needed just to call `zcash_primitives::transaction::sighash::signature_hash`
+-        let inner_tx = TransactionData::from_parts(
++        TransactionData::from_parts(
+             TxVersion::V5,
+             branch_id,
+             lock_time,
+@@ -106,9 +108,7 @@ impl Transaction {
+             Some(transparent_bundle),
+             None,
+             None,
+-            None, // orchard_bundle
+-        );
+-
+-        inner_tx
++            orchard_bundle,
++        )
+     }
+ }
