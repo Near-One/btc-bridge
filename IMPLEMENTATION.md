@@ -60,24 +60,38 @@ Updated `ft_on_transfer_callback` and `active_utxo_management_callback`:
 - This reveals recipient and amount for bridge-created shielded outputs
 - Does NOT deanonymize other Zcash activity
 
+## What Was Implemented
+
+All recommended features from the design document have been implemented:
+
+1. **Binding Orchard into ZIP-244 sighash** ✅
+2. **OVK-based output recovery and validation** ✅
+3. **Recipient address validation** ✅ (via dedicated orchard_policy module)
+
 ## What Was NOT Implemented
 
 The following optional features were not implemented:
 
 1. **RedPallas signature verification** - Would provide stronger binding without Halo2 cost, but adds complexity
 2. **Halo2 proof verification** - Expensive and provides little additional security given network validation
-3. **Recipient address validation** - Deferred due to address encoding complexity; amount check provides sufficient policy enforcement
 
 ## Testing
 
-Created test skeleton in `contracts/satoshi-bridge/tests/test_orchard_withdrawal.rs`:
+Implemented comprehensive integration tests in `contracts/satoshi-bridge/tests/test_orchard_withdrawal.rs`:
 
-- Demonstrates the expected withdrawal flow with Orchard bundles
-- Full integration testing requires additional tooling to generate valid Orchard test bundles
-- Test utilities would need to create bundles with:
-  - Valid Halo2 proofs
-  - Correct RedPallas signatures
-  - Proper encryption with BRIDGE_OVK
+- **test_orchard_withdrawal_with_ovk_validation**: Full end-to-end withdrawal test with Orchard bundle
+- **test_orchard_withdrawal_amount_mismatch**: Validates that wrong amounts are rejected
+
+Test infrastructure (`tests/setup/orchard.rs`):
+- `gen_ua_and_orchard_bundle_hex()`: Generates valid Orchard bundles with Halo2 proofs
+- `get_or_gen_bundle()`: Caches generated bundles to disk (generation is expensive)
+- Bundle cache files: `tests/orchard_bundle_cache_{amount}.txt`
+
+The test suite generates real Orchard bundles with:
+- Valid Halo2 proofs
+- Correct RedPallas signatures
+- Proper encryption with BRIDGE_OVK
+- Unified Addresses with Orchard receivers
 
 ## Future Work
 
@@ -91,16 +105,25 @@ Created test skeleton in `contracts/satoshi-bridge/tests/test_orchard_withdrawal
 
 - Implementation docs: `docs/orchard-bundle-verification.md`
 - Sighash binding: `contracts/satoshi-bridge/src/zcash_utils/transaction.rs:87-116`
-- OVK validation: `contracts/satoshi-bridge/src/zcash_utils/psbt_wrapper.rs:73-114`
+- Orchard policy module: `contracts/satoshi-bridge/src/zcash_utils/orchard_policy.rs`
+- OVK validation: `contracts/satoshi-bridge/src/zcash_utils/psbt_wrapper.rs:70-96`
 - API integration: `contracts/satoshi-bridge/src/zcash_utils/contract_methods.rs:88-152`
-- Test skeleton: `contracts/satoshi-bridge/tests/test_orchard_withdrawal.rs`
+- Integration tests: `contracts/satoshi-bridge/tests/test_orchard_withdrawal.rs`
+- Test helpers: `contracts/satoshi-bridge/tests/setup/orchard.rs`
 
-## Build Verification
+## Build and Test Verification
 
-The implementation compiles successfully:
+The implementation compiles and tests successfully:
 
 ```bash
+# Build for WASM
 cargo build -p satoshi-bridge --target wasm32-unknown-unknown --release
+
+# Run unit tests
+cargo test -p satoshi-bridge --features zcash --lib
+
+# Run Orchard integration tests (generates bundles on first run)
+cargo test -p satoshi-bridge --features zcash --test test_orchard_withdrawal
 ```
 
-No warnings related to the Orchard validation code.
+All tests pass with no errors.

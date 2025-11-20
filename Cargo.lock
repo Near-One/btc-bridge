@@ -3729,6 +3729,7 @@ dependencies = [
  "near-sdk",
  "near-workspaces",
  "orchard",
+ "rand",
  "sapling-crypto",
  "tokio",
  "zcash_address",

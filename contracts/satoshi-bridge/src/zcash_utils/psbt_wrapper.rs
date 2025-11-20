@@ -2,6 +2,7 @@ use crate::*;
 use std::io;
 use std::io::{Cursor, Read, Write};
 
+use crate::zcash_utils::orchard_policy;
 use crate::zcash_utils::transaction::Transaction;
 use bitcoin::hashes::Hash;
 use bitcoin::{OutPoint, TxOut};
@@ -16,10 +17,6 @@ use zcash_transparent::bundle::Authorized;
 use zcash_transparent::bundle::TxIn as ZcashTxIn;
 use zcash_transparent::bundle::TxOut as ZcashTxOut;
 use zcash_transparent::sighash::SighashType;
-
-/// Bridge OVK for recovering and validating Orchard outputs.
-/// Using all-zeros for now as specified.
-const BRIDGE_OVK: [u8; 32] = [0u8; 32];
 
 pub struct PsbtWrapper {
     branch_id: BranchId,
@@ -77,36 +74,21 @@ impl PsbtWrapper {
                 .expect("Failed to read orchard bundle")
                 .expect("Orchard bundle is empty");
 
-            // Enforce single action for now
-            require!(
-                bundle.actions().len() == 1,
-                "Only one orchard action is supported"
-            );
-
-            // OVK-based output recovery and policy validation
-            if let Some(expected_amt) = expected_amount {
-                let ovk = orchard::keys::OutgoingViewingKey::from(BRIDGE_OVK);
-
-                // Recover the output using the bridge OVK to ensure it's well-formed
-                // and verify the amount matches expectations
-                let (note, _addr, _memo) = bundle
-                    .recover_output_with_ovk(0, &ovk)
-                    .expect("Failed to recover Orchard output with bridge OVK");
-
-                let note_value = note.value().inner();
-
+            // Validate orchard bundle against policy if expected values are provided
+            if let (Some(expected_addr), Some(expected_amt)) = (expected_recipient, expected_amount) {
+                orchard_policy::validate_orchard_bundle(
+                    &bundle,
+                    &expected_addr,
+                    expected_amt as u64,
+                    &config.chain,
+                );
+            } else {
+                // If no expected values provided, at minimum enforce single action
                 require!(
-                    note_value == expected_amt as u64,
-                    format!(
-                        "Orchard amount mismatch: expected {}, got {}",
-                        expected_amt, note_value
-                    )
+                    bundle.actions().len() == 1,
+                    "Only one orchard action is supported"
                 );
             }
-
-            // Note: Recipient address validation is deferred. The OVK recovery and amount check
-            // provide sufficient policy enforcement for the bridge's security model.
-            let _ = expected_recipient;
 
             Some(bundle)
         } else {

@@ -82,9 +82,11 @@ define_rbf_callback!(
     internal_cancel_active_utxo_management
 );
 
+#[allow(clippy::too_many_arguments)]
 #[near]
 impl Contract {
     #[private]
+    #[allow(clippy::too_many_arguments)]
     pub fn ft_on_transfer_callback(
         &mut self,
         sender_id: AccountId,
@@ -126,6 +128,7 @@ impl Contract {
     }
 
     #[private]
+    #[allow(clippy::too_many_arguments)]
     pub fn active_utxo_management_callback(
         &mut self,
         account_id: AccountId,
@@ -171,6 +174,7 @@ impl Contract {
     ) {
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn ft_on_transfer_withdraw_chain_specific(
         &self,
         sender_id: AccountId,
