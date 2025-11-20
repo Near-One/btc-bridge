@@ -2,6 +2,7 @@ use crate::*;
 use std::io;
 use std::io::{Cursor, Read, Write};
 
+use crate::zcash_utils::orchard_policy;
 use crate::zcash_utils::transaction::Transaction;
 use bitcoin::hashes::Hash;
 use bitcoin::{OutPoint, TxOut};
@@ -33,9 +34,15 @@ impl PsbtWrapper {
         orchard_bundle_bytes: Option<Vec<u8>>,
         expiry_height: u32,
         config: &Config,
+        expected_recipient: Option<String>,
+        expected_amount: Option<u128>,
     ) -> Self {
         require!(!input.is_empty(), "empty input");
-        require!(!output.is_empty(), "empty output");
+        // Allow empty output if we have an orchard bundle (funds go to shielded pool)
+        require!(
+            !output.is_empty() || orchard_bundle_bytes.is_some(),
+            "empty output"
+        );
 
         let sequence = bitcoin::Sequence::MAX;
         let vout = output
@@ -64,17 +71,31 @@ impl PsbtWrapper {
             vin.len()
         ];
 
-        // TODO: pass the recipient address and amount to verify the orchard output
-        // let recipient_address = "<SOME ZCASH ADDRESS>";
-        // let value = "<Amount of the output>";
-
-        // TODO: verify orchard bundle
-        // How to verify orchard bundle value and recipient?
-        // Should we call orchard_bundle.unwrap().verify_proof(vk) here? what is the vk?
-        // We have to take into account the gas cost and limits
+        // Parse and validate orchard bundle if present
         let orchard_bundle = if let Some(orchard_bundle_bytes) = orchard_bundle_bytes {
             let mut reader = Cursor::new(orchard_bundle_bytes);
-            read_v5_bundle(&mut reader).unwrap()
+            let bundle = read_v5_bundle(&mut reader)
+                .expect("Failed to read orchard bundle")
+                .expect("Orchard bundle is empty");
+
+            // Validate orchard bundle against policy if expected values are provided
+            if let (Some(expected_addr), Some(expected_amt)) = (expected_recipient, expected_amount)
+            {
+                orchard_policy::validate_orchard_bundle(
+                    &bundle,
+                    &expected_addr,
+                    expected_amt as u64,
+                    &config.chain,
+                );
+            } else {
+                // If no expected values provided, at minimum enforce single action
+                require!(
+                    bundle.actions().len() == 1,
+                    "Only one orchard action is supported"
+                );
+            }
+
+            Some(bundle)
         } else {
             None
         };
@@ -190,6 +211,19 @@ impl PsbtWrapper {
             t.write(&mut buf).unwrap();
         }
 
+        // Serialize orchard bundle if present
+        if let Some(ref bundle) = self.orchard_bundle {
+            zcash_primitives::transaction::components::orchard::write_v5_bundle(
+                Some(bundle),
+                &mut buf,
+            )
+            .unwrap();
+        } else {
+            // Write empty bundle marker
+            zcash_primitives::transaction::components::orchard::write_v5_bundle(None, &mut buf)
+                .unwrap();
+        }
+
         buf
     }
     pub fn serialize(&self) -> String {
@@ -200,7 +234,7 @@ impl PsbtWrapper {
         let bytes = hex::decode(psbt_hex).unwrap();
         let mut rdr = Cursor::new(bytes);
         let version = read_u8(&mut rdr).unwrap();
-        let branch_id = if version == 2 {
+        let branch_id = if version >= 2 {
             let branch_id_u8 = read_u8(&mut rdr).unwrap();
             match branch_id_u8 {
                 7 => BranchId::Nu6,

@@ -82,9 +82,11 @@ define_rbf_callback!(
     internal_cancel_active_utxo_management
 );
 
+#[allow(clippy::too_many_arguments)]
 #[near]
 impl Contract {
     #[private]
+    #[allow(clippy::too_many_arguments)]
     pub fn ft_on_transfer_callback(
         &mut self,
         sender_id: AccountId,
@@ -97,12 +99,30 @@ impl Contract {
         #[callback_unwrap] last_block_height: u32,
     ) -> U128 {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
+
+        // For withdrawals with Orchard bundle, calculate the expected net amount after fees
+        let (expected_recipient, expected_amount) = if orchard_bundle.is_some() {
+            let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount.0);
+            // The orchard amount is the withdrawal amount minus the withdraw fee and gas fee
+            // max_gas_fee defaults to 10000 satoshis if not provided
+            let gas_fee = max_gas_fee.map(|g| g.0).unwrap_or(10000);
+            let orchard_amount = amount
+                .0
+                .saturating_sub(withdraw_fee)
+                .saturating_sub(gas_fee);
+            (Some(target_btc_address.clone()), Some(orchard_amount))
+        } else {
+            (None, None)
+        };
+
         let mut psbt = PsbtWrapper::new(
             input,
             output,
             orchard_bundle,
             expiry_height,
             self.internal_config(),
+            expected_recipient,
+            expected_amount,
         );
         self.create_btc_pending_info(
             sender_id,
@@ -116,6 +136,7 @@ impl Contract {
     }
 
     #[private]
+    #[allow(clippy::too_many_arguments)]
     pub fn active_utxo_management_callback(
         &mut self,
         account_id: AccountId,
@@ -126,12 +147,16 @@ impl Contract {
     ) {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
 
+        // For active UTXO management, we don't validate orchard recipient/amount
+        // as this is internal bridge operations, not user withdrawals
         let mut psbt = PsbtWrapper::new(
             input,
             output,
             orchard_bundle,
             expiry_height,
             self.internal_config(),
+            None,
+            None,
         );
 
         self.create_active_utxo_management_pending_info(account_id, &mut psbt);
@@ -157,6 +182,7 @@ impl Contract {
     ) {
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn ft_on_transfer_withdraw_chain_specific(
         &self,
         sender_id: AccountId,
@@ -167,6 +193,15 @@ impl Contract {
         max_gas_fee: Option<U128>,
         orchard_bundle: Option<Vec<u8>>,
     ) -> PromiseOrValue<U128> {
+        // Validate: Unified Address requires Orchard bundle
+        if target_btc_address.starts_with("u1") || target_btc_address.starts_with("u") {
+            require!(
+                orchard_bundle.is_some(),
+                "Unified Address provided without Orchard bundle. \
+                 Either provide both or use a transparent Zcash address (starts with t1/t3)"
+            );
+        }
+
         PromiseOrValue::Promise(
             self.get_last_block_height_promise().then(
                 Self::ext(env::current_account_id())

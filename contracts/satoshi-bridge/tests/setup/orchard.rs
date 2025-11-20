@@ -1,0 +1,153 @@
+use orchard::builder::{Builder, BundleType};
+use orchard::keys::{FullViewingKey, OutgoingViewingKey, Scope, SpendingKey};
+use orchard::tree::Anchor;
+use orchard::value::NoteValue;
+use rand::rngs::OsRng;
+use zcash_address::unified::{Encoding, Receiver};
+use zcash_address::{ToAddress, ZcashAddress};
+use zcash_primitives::transaction::components::orchard::write_v5_bundle;
+
+/// Bridge OVK used for all test bundles (same as production)
+pub const BRIDGE_OVK: [u8; 32] = [0u8; 32];
+
+/// Generate a Unified Address containing an Orchard receiver and a single-action
+/// Orchard v5 bundle hex that is recoverable with BRIDGE_OVK.
+///
+/// This function is expensive (generates Halo2 proof), so results should be cached.
+///
+/// If spending_key_bytes is provided, uses that key; otherwise defaults to [7u8; 32].
+pub fn gen_ua_and_orchard_bundle_hex_with_key(
+    amount: u64,
+    network: &str,
+    spending_key_bytes: Option<[u8; 32]>,
+) -> (String, String) {
+    let mut rng = OsRng;
+
+    // Use provided spending key or default to [7u8; 32] for test reproducibility
+    let sk_bytes = spending_key_bytes.unwrap_or([7u8; 32]);
+    let sk = SpendingKey::from_bytes(sk_bytes).expect("spending key");
+    let fvk = FullViewingKey::from(&sk);
+    let recipient = fvk.address_at(0u32, Scope::External);
+
+    // Build a simple output-only bundle with BRIDGE_OVK
+    // Use Coinbase bundle type which supports single output without dummy actions
+    let mut builder = Builder::new(BundleType::Coinbase, Anchor::empty_tree());
+    builder
+        .add_output(
+            Some(OutgoingViewingKey::from(BRIDGE_OVK)),
+            recipient,
+            NoteValue::from_raw(amount),
+            [0u8; 512], // memo
+        )
+        .expect("add output");
+
+    // Build and authorize the bundle (this is the expensive part - generates Halo2 proof)
+    let (unauth, _) = builder
+        .build::<zcash_protocol::value::ZatBalance>(&mut rng)
+        .expect("build orchard bundle")
+        .expect("bundle present");
+
+    let pk = orchard::circuit::ProvingKey::build();
+    let authorized = unauth
+        .create_proof(&pk, &mut rng)
+        .expect("create proof")
+        .prepare(rng, [0u8; 32])
+        .finalize()
+        .expect("finalize proof");
+
+    // Produce Unified Address string containing the Orchard receiver
+    let orchard_raw = recipient.to_raw_address_bytes();
+    let ua = zcash_address::unified::Address::try_from_items(vec![Receiver::Orchard(orchard_raw)])
+        .expect("UA from orchard receiver");
+
+    let network_type = match network {
+        "main" | "mainnet" => zcash_protocol::consensus::NetworkType::Main,
+        _ => zcash_protocol::consensus::NetworkType::Test,
+    };
+    let zaddr = ZcashAddress::from_unified(network_type, ua);
+    let ua_str = zaddr.encode();
+
+    // Serialize bundle to v5 bytes and hex-encode
+    let mut bytes = vec![];
+    write_v5_bundle(Some(&authorized), &mut bytes).expect("write v5 bundle");
+
+    (ua_str, hex::encode(bytes))
+}
+
+/// Generate a Unified Address and bundle with default spending key [7u8; 32].
+/// Wrapper for backward compatibility.
+pub fn gen_ua_and_orchard_bundle_hex(amount: u64, network: &str) -> (String, String) {
+    gen_ua_and_orchard_bundle_hex_with_key(amount, network, None)
+}
+
+/// Get or generate a cached Orchard bundle for the given amount.
+/// Caches to a local file to avoid expensive regeneration.
+pub fn get_or_gen_bundle(amount: u64) -> (String, String) {
+    use std::fs;
+    use std::path::Path;
+
+    let cache_file = format!("tests/orchard_bundle_cache_{}.txt", amount);
+    let cache_path = Path::new(&cache_file);
+
+    // Try to load from cache
+    if cache_path.exists() {
+        if let Ok(contents) = fs::read_to_string(cache_path) {
+            let lines: Vec<&str> = contents.lines().collect();
+            if lines.len() == 2 {
+                return (lines[0].to_string(), lines[1].to_string());
+            }
+        }
+    }
+
+    // Cache miss or invalid - generate new bundle
+    println!(
+        "Generating Orchard bundle for amount {}... (this may take a while)",
+        amount
+    );
+    let (ua, bundle_hex) = gen_ua_and_orchard_bundle_hex(amount, "testnet");
+
+    // Save to cache
+    let cache_content = format!("{}\n{}", ua, bundle_hex);
+    if let Err(e) = fs::write(cache_path, cache_content) {
+        eprintln!("Warning: Failed to cache bundle: {}", e);
+    }
+
+    (ua, bundle_hex)
+}
+
+/// Generate a bundle with a specific spending key (for testing recipient mismatch).
+/// Caches based on both amount and spending key to avoid expensive regeneration.
+pub fn gen_bundle_with_key(amount: u64, spending_key: [u8; 32]) -> (String, String) {
+    use std::fs;
+    use std::path::Path;
+
+    // Create cache key from amount + hex-encoded spending key
+    let key_hex = hex::encode(spending_key);
+    let cache_file = format!("tests/orchard_bundle_cache_{}_{}.txt", amount, key_hex);
+    let cache_path = Path::new(&cache_file);
+
+    // Try to load from cache
+    if cache_path.exists() {
+        if let Ok(contents) = fs::read_to_string(cache_path) {
+            let lines: Vec<&str> = contents.lines().collect();
+            if lines.len() == 2 {
+                return (lines[0].to_string(), lines[1].to_string());
+            }
+        }
+    }
+
+    // Cache miss or invalid - generate new bundle
+    println!(
+        "Generating Orchard bundle with custom key for amount {}... (this may take a while)",
+        amount
+    );
+    let (ua, bundle_hex) = gen_ua_and_orchard_bundle_hex_with_key(amount, "testnet", Some(spending_key));
+
+    // Save to cache
+    let cache_content = format!("{}\n{}", ua, bundle_hex);
+    if let Err(e) = fs::write(cache_path, cache_content) {
+        eprintln!("Warning: Failed to cache bundle: {}", e);
+    }
+
+    (ua, bundle_hex)
+}

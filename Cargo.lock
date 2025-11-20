@@ -3718,6 +3718,7 @@ name = "satoshi-bridge"
 version = "0.6.0"
 dependencies = [
  "bitcoin",
+ "bs58 0.5.1",
  "core2",
  "crypto-shared",
  "ed25519-dalek",
@@ -3729,6 +3730,7 @@ dependencies = [
  "near-sdk",
  "near-workspaces",
  "orchard",
+ "rand",
  "sapling-crypto",
  "tokio",
  "zcash_address",
