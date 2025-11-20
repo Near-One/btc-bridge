@@ -158,7 +158,8 @@ async fn test_orchard_missing_bundle() {
     let withdraw_amount = 200000u128;
 
     // Generate a valid UA to use as target address, but don't provide the bundle
-    let orchard_amount = withdraw_amount - 10000 - config.withdraw_bridge_fee.get_fee(withdraw_amount);
+    let orchard_amount =
+        withdraw_amount - 10000 - config.withdraw_bridge_fee.get_fee(withdraw_amount);
     let (recipient_ua, _bundle_hex) = get_or_gen_bundle(orchard_amount as u64);
 
     // Try to withdraw with UA but no bundle - should work if validation only happens when bundle is present
@@ -280,16 +281,15 @@ async fn test_orchard_bundle_in_zcash_tx() {
     check!(context.sign_btc_transaction("relayer", &btc_pending_sign_txs[0], 0, 0));
 
     // Fetch the pending info and check the transaction bytes
-    let pending_infos = context
-        .get_btc_pending_infos_paged()
-        .await
-        .unwrap();
+    let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
 
-    let pending_info = pending_infos.get(&btc_pending_sign_txs[0]).expect("Pending info not found");
+    let pending_info = pending_infos
+        .get(&btc_pending_sign_txs[0])
+        .expect("Pending info not found");
 
     // The tx_bytes_with_sign should contain the Orchard bundle
     if let Some(tx_bytes) = &pending_info.tx_bytes_with_sign {
-        let tx_hex = hex::encode(&tx_bytes);
+        let tx_hex = hex::encode(tx_bytes);
 
         // The bundle hex should appear somewhere in the transaction bytes
         // (It won't be exact match due to the transaction wrapper, but the bundle data should be there)

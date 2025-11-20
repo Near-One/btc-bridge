@@ -45,7 +45,7 @@ pub fn gen_ua_and_orchard_bundle_hex(amount: u64, network: &str) -> (String, Str
     let authorized = unauth
         .create_proof(&pk, &mut rng)
         .expect("create proof")
-        .prepare(&mut rng, [0u8; 32])
+        .prepare(rng, [0u8; 32])
         .finalize()
         .expect("finalize proof");
 
@@ -88,7 +88,10 @@ pub fn get_or_gen_bundle(amount: u64) -> (String, String) {
     }
 
     // Cache miss or invalid - generate new bundle
-    println!("Generating Orchard bundle for amount {}... (this may take a while)", amount);
+    println!(
+        "Generating Orchard bundle for amount {}... (this may take a while)",
+        amount
+    );
     let (ua, bundle_hex) = gen_ua_and_orchard_bundle_hex(amount, "testnet");
 
     // Save to cache

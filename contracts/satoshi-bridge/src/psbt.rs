@@ -23,9 +23,15 @@ impl Contract {
             amount,
             withdraw_fee,
         );
-        
+
         if let Some(max_gas_fee) = max_gas_fee {
-            require!(gas_fee <= max_gas_fee.0, format!("Gas fee does not match the provided max fee (gas fee = {}; max gas fee = {})", gas_fee, max_gas_fee.0));
+            require!(
+                gas_fee <= max_gas_fee.0,
+                format!(
+                    "Gas fee does not match the provided max fee (gas fee = {}; max gas fee = {})",
+                    gas_fee, max_gas_fee.0
+                )
+            );
         }
 
         require!(

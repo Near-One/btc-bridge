@@ -75,7 +75,8 @@ impl PsbtWrapper {
                 .expect("Orchard bundle is empty");
 
             // Validate orchard bundle against policy if expected values are provided
-            if let (Some(expected_addr), Some(expected_amt)) = (expected_recipient, expected_amount) {
+            if let (Some(expected_addr), Some(expected_amt)) = (expected_recipient, expected_amount)
+            {
                 orchard_policy::validate_orchard_bundle(
                     &bundle,
                     &expected_addr,

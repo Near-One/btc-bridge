@@ -24,10 +24,7 @@ impl OrchardValidator {
     /// - Validates amount matches expected
     ///
     /// Returns the recovered recipient raw bytes (43 bytes) for further validation
-    pub fn validate_orchard_bundle(
-        bundle_bytes: Vec<u8>,
-        expected_amount: u64,
-    ) -> Vec<u8> {
+    pub fn validate_orchard_bundle(bundle_bytes: Vec<u8>, expected_amount: u64) -> Vec<u8> {
         // Parse bundle
         let mut reader = Cursor::new(&bundle_bytes);
         let bundle = read_v5_bundle(&mut reader)
