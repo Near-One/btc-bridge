@@ -358,4 +358,22 @@ mod tests {
 
         assert_eq!(parsed_msg, expected);
     }
+
+    #[test]
+    fn test_already_set_utxo_id_injection() {
+        let nested_msg =
+            r#"{"UtxoFinTransfer":{"msg":"OS","recipient":"{{UTXO_TX_ID}}","relayer_fee":"1000","utxo_id":"invalid_utxo_id"}}"#
+                .to_string();
+
+        let injected_msg = inject_utxo_id_in_msg(nested_msg, "correct_utxo_id");
+        let parsed_msg: BridgeOnTransferMsg = serde_json::from_str(&injected_msg).unwrap();
+        let expected = BridgeOnTransferMsg::UtxoFinTransfer(UtxoFinTransferMsg {
+            utxo_id: "correct_utxo_id".to_string(),
+            recipient: "{{UTXO_TX_ID}}".to_string(),
+            relayer_fee: "1000".to_string(),
+            msg: "OS".to_string(),
+        });
+
+        assert_eq!(parsed_msg, expected);
+    }
 }
