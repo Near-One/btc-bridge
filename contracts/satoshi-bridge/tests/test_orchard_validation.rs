@@ -5,15 +5,10 @@ use setup::*;
 
 /// Test: Bundle with wrong recipient should be rejected
 ///
-/// DEFERRED: Requires bundle generator with configurable spending keys.
-/// Current gen_ua_and_orchard_bundle_hex() uses hardcoded SpendingKey [7u8; 32],
-/// so all generated bundles have identical recipients. Cannot test recipient
-/// mismatch without generating bundles from different spending keys.
-///
-/// Note: Validation logic exists in orchard_policy::validate_orchard_bundle()
+/// Generates two bundles with different spending keys to create different recipients.
+/// Uses bundle A but claims it's for recipient B - should be rejected.
 #[tokio::test]
 #[cfg(feature = "zcash")]
-#[ignore = "Requires bundle generator with configurable spending keys"]
 async fn test_orchard_wrong_recipient() {
     // Set chain to ZcashTestnet for this test
     std::env::set_var("TEST_CHAIN", "ZcashTestnet");
@@ -74,28 +69,34 @@ async fn test_orchard_wrong_recipient() {
     let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
     let orchard_amount = withdraw_amount - _btc_gas_fee - withdraw_fee;
 
-    // Generate bundle with correct amount
-    let (_actual_recipient, bundle_hex) = get_or_gen_bundle(orchard_amount as u64);
+    // Generate bundle for recipient A (using spending key [1u8; 32])
+    let (recipient_a, bundle_a) = gen_bundle_with_key(orchard_amount as u64, [1u8; 32]);
 
-    // Generate a different recipient to claim
-    let different_amount = orchard_amount + 1000; // Different amount to get different UA
-    let (fake_recipient, _) = get_or_gen_bundle(different_amount as u64);
+    // Generate bundle for recipient B (using spending key [2u8; 32])
+    let (recipient_b, _bundle_b) = gen_bundle_with_key(orchard_amount as u64, [2u8; 32]);
 
-    // This should fail with "Orchard recipient mismatch"
+    println!("Recipient A: {}", recipient_a);
+    println!("Recipient B: {}", recipient_b);
+    assert_ne!(
+        recipient_a, recipient_b,
+        "Recipients should be different with different spending keys"
+    );
+
+    // This should fail: use bundle_a but claim it's for recipient_b
     let result = context
         .do_withdraw(
             "alice",
             "bridge",
             withdraw_amount,
             TokenReceiverMessage::Withdraw {
-                target_btc_address: fake_recipient, // Wrong recipient!
+                target_btc_address: recipient_b, // Wrong recipient!
                 input: vec![OutPoint {
                     txid: first_utxo[0].parse().unwrap(),
                     vout: first_utxo[1].parse().unwrap(),
                 }],
                 output: vec![],
                 max_gas_fee: None,
-                orchard_bundle_bytes: Some(bundle_hex),
+                orchard_bundle_bytes: Some(bundle_a), // Bundle for recipient A
             },
         )
         .await;

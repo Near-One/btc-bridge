@@ -14,11 +14,18 @@ pub const BRIDGE_OVK: [u8; 32] = [0u8; 32];
 /// Orchard v5 bundle hex that is recoverable with BRIDGE_OVK.
 ///
 /// This function is expensive (generates Halo2 proof), so results should be cached.
-pub fn gen_ua_and_orchard_bundle_hex(amount: u64, network: &str) -> (String, String) {
+///
+/// If spending_key_bytes is provided, uses that key; otherwise defaults to [7u8; 32].
+pub fn gen_ua_and_orchard_bundle_hex_with_key(
+    amount: u64,
+    network: &str,
+    spending_key_bytes: Option<[u8; 32]>,
+) -> (String, String) {
     let mut rng = OsRng;
 
-    // Deterministic recipient based on fixed SpendingKey for test reproducibility
-    let sk = SpendingKey::from_bytes([7u8; 32]).expect("spending key");
+    // Use provided spending key or default to [7u8; 32] for test reproducibility
+    let sk_bytes = spending_key_bytes.unwrap_or([7u8; 32]);
+    let sk = SpendingKey::from_bytes(sk_bytes).expect("spending key");
     let fvk = FullViewingKey::from(&sk);
     let recipient = fvk.address_at(0u32, Scope::External);
 
@@ -67,6 +74,12 @@ pub fn gen_ua_and_orchard_bundle_hex(amount: u64, network: &str) -> (String, Str
     (ua_str, hex::encode(bytes))
 }
 
+/// Generate a Unified Address and bundle with default spending key [7u8; 32].
+/// Wrapper for backward compatibility.
+pub fn gen_ua_and_orchard_bundle_hex(amount: u64, network: &str) -> (String, String) {
+    gen_ua_and_orchard_bundle_hex_with_key(amount, network, None)
+}
+
 /// Get or generate a cached Orchard bundle for the given amount.
 /// Caches to a local file to avoid expensive regeneration.
 pub fn get_or_gen_bundle(amount: u64) -> (String, String) {
@@ -100,4 +113,14 @@ pub fn get_or_gen_bundle(amount: u64) -> (String, String) {
     }
 
     (ua, bundle_hex)
+}
+
+/// Generate a bundle with a specific spending key (for testing recipient mismatch).
+/// Does NOT cache since different keys produce different addresses.
+pub fn gen_bundle_with_key(amount: u64, spending_key: [u8; 32]) -> (String, String) {
+    println!(
+        "Generating Orchard bundle with custom key for amount {}... (this may take a while)",
+        amount
+    );
+    gen_ua_and_orchard_bundle_hex_with_key(amount, "testnet", Some(spending_key))
 }
