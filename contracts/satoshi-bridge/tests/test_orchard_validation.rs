@@ -1,5 +1,5 @@
 mod setup;
-use bitcoin::{Amount, OutPoint, TxOut};
+use bitcoin::OutPoint;
 use satoshi_bridge::{DepositMsg, TokenReceiverMessage};
 use setup::*;
 
@@ -76,21 +76,23 @@ async fn test_orchard_wrong_recipient() {
     let (fake_recipient, _) = get_or_gen_bundle(different_amount as u64);
 
     // This should fail with "Orchard recipient mismatch"
-    let result = context.do_withdraw(
-        "alice",
-        "bridge",
-        withdraw_amount,
-        TokenReceiverMessage::Withdraw {
-            target_btc_address: fake_recipient, // Wrong recipient!
-            input: vec![OutPoint {
-                txid: first_utxo[0].parse().unwrap(),
-                vout: first_utxo[1].parse().unwrap(),
-            }],
-            output: vec![],
-            max_gas_fee: None,
-            orchard_bundle_bytes: Some(bundle_hex),
-        }
-    ).await;
+    let result = context
+        .do_withdraw(
+            "alice",
+            "bridge",
+            withdraw_amount,
+            TokenReceiverMessage::Withdraw {
+                target_btc_address: fake_recipient, // Wrong recipient!
+                input: vec![OutPoint {
+                    txid: first_utxo[0].parse().unwrap(),
+                    vout: first_utxo[1].parse().unwrap(),
+                }],
+                output: vec![],
+                max_gas_fee: None,
+                orchard_bundle_bytes: Some(bundle_hex),
+            },
+        )
+        .await;
 
     // Verify the error message
     let err_msg = tool_err_msg(&result);
@@ -287,7 +289,10 @@ async fn test_orchard_bundle_in_zcash_tx() {
         .collect::<Vec<_>>();
 
     println!("Pending transactions: {:?}", btc_pending_sign_txs);
-    assert!(!btc_pending_sign_txs.is_empty(), "Should have pending transactions");
+    assert!(
+        !btc_pending_sign_txs.is_empty(),
+        "Should have pending transactions"
+    );
 
     check!(print "Signing" context.sign_btc_transaction("relayer", &btc_pending_sign_txs[0], 0, 0));
 

@@ -167,7 +167,7 @@ impl Contract {
                 Event::SignedBtcTransaction {
                     account_id: &account_id,
                     tx_id: btc_pending_sign_id.clone(),
-                    tx_bytes: &tx_bytes_with_sign,
+                    tx_size: tx_bytes_with_sign.len(),
                 }
                 .emit();
                 btc_pending_info.tx_bytes_with_sign = Some(tx_bytes_with_sign);

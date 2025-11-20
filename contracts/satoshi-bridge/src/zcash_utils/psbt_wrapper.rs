@@ -211,6 +211,19 @@ impl PsbtWrapper {
             t.write(&mut buf).unwrap();
         }
 
+        // Serialize orchard bundle if present
+        if let Some(ref bundle) = self.orchard_bundle {
+            zcash_primitives::transaction::components::orchard::write_v5_bundle(
+                Some(bundle),
+                &mut buf,
+            )
+            .unwrap();
+        } else {
+            // Write empty bundle marker
+            zcash_primitives::transaction::components::orchard::write_v5_bundle(None, &mut buf)
+                .unwrap();
+        }
+
         buf
     }
     pub fn serialize(&self) -> String {
@@ -221,7 +234,7 @@ impl PsbtWrapper {
         let bytes = hex::decode(psbt_hex).unwrap();
         let mut rdr = Cursor::new(bytes);
         let version = read_u8(&mut rdr).unwrap();
-        let branch_id = if version == 2 {
+        let branch_id = if version >= 2 {
             let branch_id_u8 = read_u8(&mut rdr).unwrap();
             match branch_id_u8 {
                 7 => BranchId::Nu6,
