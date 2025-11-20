@@ -129,19 +129,12 @@ async fn test_orchard_multiple_actions() {
     println!("Test skeleton: Need multi-action bundle generator to test rejection");
 }
 
-/// Test: Missing Orchard bundle when address suggests one should be present
+/// Test: Missing Orchard bundle when Unified Address is provided
 ///
-/// DEFERRED: Edge case behavior not well-defined in product spec.
-/// When a Unified Address is provided but no Orchard bundle, should we:
-/// 1. Reject the withdrawal entirely?
-/// 2. Treat as transparent-only (extract transparent receiver from UA)?
-/// 3. Some other behavior?
-///
-/// Current behavior: Empty transparent output with no bundle is allowed
-/// (psbt_wrapper.rs:42 allows empty output when orchard_bundle_bytes.is_some())
+/// Should reject with clear error message when UA is provided without bundle.
+/// This prevents ambiguous behavior and user errors.
 #[tokio::test]
 #[cfg(feature = "zcash")]
-#[ignore = "Edge case not well-defined: UA without bundle"]
 async fn test_orchard_missing_bundle() {
     // Set chain to ZcashTestnet for this test
     std::env::set_var("TEST_CHAIN", "ZcashTestnet");
@@ -199,27 +192,37 @@ async fn test_orchard_missing_bundle() {
 
     let withdraw_amount = 200000u128;
 
-    // Use a regular Zcash transparent address (not a UA)
-    let zcash_transparent_address = alice_btc_deposit_address.clone(); // Reuse Alice's deposit address
+    // Generate a Unified Address (but don't provide a bundle)
+    let (unified_address, _bundle) = get_or_gen_bundle(100000); // Just get a UA, ignore bundle
 
-    // Try to withdraw to transparent address using helper (it will generate the output)
-    check!(context.do_withdraw(
-        "alice",
-        "bridge",
-        withdraw_amount,
-        TokenReceiverMessage::Withdraw {
-            target_btc_address: zcash_transparent_address,
-            input: vec![OutPoint {
-                txid: first_utxo[0].parse().unwrap(),
-                vout: first_utxo[1].parse().unwrap(),
-            }],
-            output: vec![], // Let the contract generate the output
-            max_gas_fee: None,
-            orchard_bundle_bytes: None, // No bundle for transparent-only withdrawal
-        }
-    ));
+    // This should FAIL: UA provided without bundle
+    let result = context
+        .do_withdraw(
+            "alice",
+            "bridge",
+            withdraw_amount,
+            TokenReceiverMessage::Withdraw {
+                target_btc_address: unified_address, // UA provided
+                input: vec![OutPoint {
+                    txid: first_utxo[0].parse().unwrap(),
+                    vout: first_utxo[1].parse().unwrap(),
+                }],
+                output: vec![],
+                max_gas_fee: None,
+                orchard_bundle_bytes: None, // But NO bundle!
+            },
+        )
+        .await;
 
-    println!("✓ Transparent-only withdrawal succeeded (no orchard bundle)");
+    // Verify the error message
+    let err_msg = tool_err_msg(&result);
+    assert!(
+        err_msg.contains("Unified Address provided without Orchard bundle"),
+        "Expected UA validation error, got: {}",
+        err_msg
+    );
+
+    println!("✓ UA without bundle correctly rejected");
 }
 
 /// Test: Verify the generated Zcash transaction includes the Orchard bundle

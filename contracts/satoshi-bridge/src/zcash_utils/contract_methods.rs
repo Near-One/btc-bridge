@@ -193,6 +193,15 @@ impl Contract {
         max_gas_fee: Option<U128>,
         orchard_bundle: Option<Vec<u8>>,
     ) -> PromiseOrValue<U128> {
+        // Validate: Unified Address requires Orchard bundle
+        if target_btc_address.starts_with("u1") || target_btc_address.starts_with("u") {
+            require!(
+                orchard_bundle.is_some(),
+                "Unified Address provided without Orchard bundle. \
+                 Either provide both or use a transparent Zcash address (starts with t1/t3)"
+            );
+        }
+
         PromiseOrValue::Promise(
             self.get_last_block_height_promise().then(
                 Self::ext(env::current_account_id())
