@@ -110,25 +110,6 @@ async fn test_orchard_wrong_recipient() {
     );
 }
 
-/// Test: Multiple Orchard actions should be rejected
-///
-/// DEFERRED: Requires multi-action Orchard bundle generator.
-/// Current gen_ua_and_orchard_bundle_hex() uses BundleType::Coinbase which only
-/// supports single-output bundles. Testing multi-action rejection would require:
-/// 1. Using BundleType::DEFAULT (creates 2-in-2-out pattern)
-/// 2. Generating dummy inputs and additional outputs
-/// 3. More complex proof generation
-///
-/// Note: Validation exists at psbt_wrapper.rs:92-95 (actions().len() == 1 check)
-#[tokio::test]
-#[cfg(feature = "zcash")]
-#[ignore = "Requires multi-action Orchard bundle generator"]
-async fn test_orchard_multiple_actions() {
-    // Would need to generate a bundle with 2+ actions using BundleType::DEFAULT
-    // For now, the single-action check happens in psbt_wrapper.rs:92-95
-    println!("Test skeleton: Need multi-action bundle generator to test rejection");
-}
-
 /// Test: Missing Orchard bundle when Unified Address is provided
 ///
 /// Should reject with clear error message when UA is provided without bundle.
