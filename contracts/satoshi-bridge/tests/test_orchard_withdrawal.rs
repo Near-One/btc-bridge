@@ -124,12 +124,8 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
     println!("✅ Withdrawal with Orchard bundle completed successfully");
 }
 
-// TODO: This test needs investigation - getting MethodNotFound errors
-// Temporarily disabled until the contract callback issue is resolved
 #[tokio::test]
 #[cfg(feature = "zcash")]
-#[ignore]
-#[allow(unused_variables)]
 async fn test_orchard_withdrawal_amount_mismatch() {
     // Set chain to ZcashTestnet for this test
     std::env::set_var("TEST_CHAIN", "ZcashTestnet");

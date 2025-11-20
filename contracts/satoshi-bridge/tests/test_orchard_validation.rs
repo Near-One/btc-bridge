@@ -4,7 +4,13 @@ use satoshi_bridge::{DepositMsg, TokenReceiverMessage};
 use setup::*;
 
 /// Test: Bundle with wrong recipient should be rejected
-/// TODO: Requires bundle generator with different spending keys
+///
+/// DEFERRED: Requires bundle generator with configurable spending keys.
+/// Current gen_ua_and_orchard_bundle_hex() uses hardcoded SpendingKey [7u8; 32],
+/// so all generated bundles have identical recipients. Cannot test recipient
+/// mismatch without generating bundles from different spending keys.
+///
+/// Note: Validation logic exists in orchard_policy::validate_orchard_bundle()
 #[tokio::test]
 #[cfg(feature = "zcash")]
 #[ignore = "Requires bundle generator with configurable spending keys"]
@@ -104,18 +110,34 @@ async fn test_orchard_wrong_recipient() {
 }
 
 /// Test: Multiple Orchard actions should be rejected
-/// TODO: This test is a skeleton - needs multi-action bundle generator
+///
+/// DEFERRED: Requires multi-action Orchard bundle generator.
+/// Current gen_ua_and_orchard_bundle_hex() uses BundleType::Coinbase which only
+/// supports single-output bundles. Testing multi-action rejection would require:
+/// 1. Using BundleType::DEFAULT (creates 2-in-2-out pattern)
+/// 2. Generating dummy inputs and additional outputs
+/// 3. More complex proof generation
+///
+/// Note: Validation exists at psbt_wrapper.rs:92-95 (actions().len() == 1 check)
 #[tokio::test]
 #[cfg(feature = "zcash")]
 #[ignore = "Requires multi-action Orchard bundle generator"]
 async fn test_orchard_multiple_actions() {
-    // TODO: Would need to generate a bundle with 2+ actions
-    // For now, the single-action check happens in psbt_wrapper.rs:65-68
+    // Would need to generate a bundle with 2+ actions using BundleType::DEFAULT
+    // For now, the single-action check happens in psbt_wrapper.rs:92-95
     println!("Test skeleton: Need multi-action bundle generator to test rejection");
 }
 
 /// Test: Missing Orchard bundle when address suggests one should be present
-/// TODO: This test needs redesign - edge case not well-defined
+///
+/// DEFERRED: Edge case behavior not well-defined in product spec.
+/// When a Unified Address is provided but no Orchard bundle, should we:
+/// 1. Reject the withdrawal entirely?
+/// 2. Treat as transparent-only (extract transparent receiver from UA)?
+/// 3. Some other behavior?
+///
+/// Current behavior: Empty transparent output with no bundle is allowed
+/// (psbt_wrapper.rs:42 allows empty output when orchard_bundle_bytes.is_some())
 #[tokio::test]
 #[cfg(feature = "zcash")]
 #[ignore = "Edge case not well-defined: UA without bundle"]
