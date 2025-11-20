@@ -122,14 +122,6 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
     ));
 
     println!("✅ Withdrawal with Orchard bundle completed successfully");
-
-    println!("\n🎉 Full e2e test passed!");
-    println!("✅ Contract compiles with Zcash features");
-    println!("✅ Contract fits in 1.28MB (under 1.5MB limit)");
-    println!("✅ Contract deploys successfully");
-    println!("✅ Zcash v5 transactions work for deposits");
-    println!("✅ Orchard bundle validation integrated");
-    println!("✅ Full withdrawal flow with Orchard works");
 }
 
 // TODO: This test needs investigation - getting MethodNotFound errors
