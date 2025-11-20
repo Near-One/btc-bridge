@@ -4,6 +4,25 @@ Quick reference for running and understanding the Zcash Orchard bundle tests.
 
 ## Running the Tests
 
+### ⚠️ IMPORTANT: Build the contract first!
+
+Before running tests, you MUST build the contract with Zcash support:
+
+```bash
+# From the satoshi-bridge directory
+cd contracts/satoshi-bridge
+cargo near build non-reproducible-wasm --features zcash --out-dir ../../res --no-abi
+```
+
+**Why?**
+- Tests deploy the WASM from `res/satoshi_bridge.wasm`
+- If you don't rebuild after code changes, tests will use stale code!
+- The optimized build (~1.3MB) fits under NEAR's 1.57MB limit
+
+**Note:** Use `--no-abi` because ABI generation fails with bitcoin types (missing JsonSchema).
+
+---
+
 ### Run all Orchard tests
 ```bash
 cargo test -p satoshi-bridge --features zcash --test test_orchard_validation --test test_orchard_withdrawal -- --test-threads=1 --nocapture
