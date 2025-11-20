@@ -275,40 +275,105 @@ fn is_refund_required() -> bool {
 }
 
 fn inject_utxo_id_in_msg(msg: String, utxo_id: &str) -> String {
-    if let Ok(mut json) = serde_json::from_str::<Value>(&msg) {
-        if let Some(field) = json.get_mut("utxo_id") {
-            *field = Value::String(utxo_id.to_string());
-            return serde_json::to_string(&json).unwrap();
+    fn inject(value: &mut Value, utxo_id: &str) {
+        match value {
+            Value::Object(map) => {
+                for (k, v) in map.iter_mut() {
+                    if k == "utxo_id" {
+                        *v = Value::String(utxo_id.to_string());
+                    } else {
+                        inject(v, utxo_id);
+                    }
+                }
+            }
+            Value::Array(arr) => {
+                for v in arr.iter_mut() {
+                    inject(v, utxo_id);
+                }
+            }
+            _ => {}
         }
     }
-    msg
+
+    if let Ok(mut json) = serde_json::from_str::<Value>(&msg) {
+        inject(&mut json, utxo_id);
+        serde_json::to_string(&json).unwrap()
+    } else {
+        msg
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::btc_light_client::deposit::inject_utxo_id_in_msg;
-    use near_sdk::{json_types::U128, near, serde_json};
+    use near_sdk::{near, serde_json};
 
     #[near(serializers=[json])]
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct UtxoFinTransferMsg {
         pub utxo_id: String,
-        pub x: String,
-        pub y: U128,
-        pub z: String,
+        pub recipient: String,
+        pub relayer_fee: String,
+        pub msg: String,
+    }
+
+    #[near(serializers=[json])]
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum BridgeOnTransferMsg {
+        UtxoFinTransfer(UtxoFinTransferMsg),
     }
 
     #[test]
-    fn test_utxo_id_injection() {
+    fn test_duplicated_utxo_id_injection() {
         let duplicated_msg =
-            r#"{"utxo_id":"first","utxo_id":"second","x":"some_recipient","y":"1000","z":"OS"}"#
+            r#"{"utxo_id":"first","utxo_id":"second","recipient":"some_recipient","relayer_fee":"1000","msg":"OS"}"#
                 .to_string();
 
         let injected_msg = inject_utxo_id_in_msg(duplicated_msg, "correct_utxo_id");
         let parsed_msg: UtxoFinTransferMsg = serde_json::from_str(&injected_msg).unwrap();
-        assert_eq!(parsed_msg.utxo_id, "correct_utxo_id");
+        let expected = UtxoFinTransferMsg {
+            utxo_id: "correct_utxo_id".to_string(),
+            recipient: "some_recipient".to_string(),
+            relayer_fee: "1000".to_string(),
+            msg: "OS".to_string(),
+        };
 
-        let expected = r#"{"utxo_id":"correct_utxo_id","x":"some_recipient","y":"1000","z":"OS"}"#;
-        assert_eq!(injected_msg, expected);
+        assert_eq!(parsed_msg, expected);
+    }
+
+    #[test]
+    fn test_utxo_id_injection() {
+        let nested_msg =
+            r#"{"UtxoFinTransfer":{"msg":"OS","recipient":"some_recipient","relayer_fee":"1000","utxo_id":"{{UTXO_TX_ID}}"}}"#
+                .to_string();
+
+        let injected_msg = inject_utxo_id_in_msg(nested_msg, "correct_utxo_id");
+        let parsed_msg: BridgeOnTransferMsg = serde_json::from_str(&injected_msg).unwrap();
+        let expected = BridgeOnTransferMsg::UtxoFinTransfer(UtxoFinTransferMsg {
+            utxo_id: "correct_utxo_id".to_string(),
+            recipient: "some_recipient".to_string(),
+            relayer_fee: "1000".to_string(),
+            msg: "OS".to_string(),
+        });
+
+        assert_eq!(parsed_msg, expected);
+    }
+
+    #[test]
+    fn test_already_set_utxo_id_injection() {
+        let nested_msg =
+            r#"{"UtxoFinTransfer":{"msg":"OS","recipient":"{{UTXO_TX_ID}}","relayer_fee":"1000","utxo_id":"invalid_utxo_id"}}"#
+                .to_string();
+
+        let injected_msg = inject_utxo_id_in_msg(nested_msg, "correct_utxo_id");
+        let parsed_msg: BridgeOnTransferMsg = serde_json::from_str(&injected_msg).unwrap();
+        let expected = BridgeOnTransferMsg::UtxoFinTransfer(UtxoFinTransferMsg {
+            utxo_id: "correct_utxo_id".to_string(),
+            recipient: "{{UTXO_TX_ID}}".to_string(),
+            relayer_fee: "1000".to_string(),
+            msg: "OS".to_string(),
+        });
+
+        assert_eq!(parsed_msg, expected);
     }
 }
