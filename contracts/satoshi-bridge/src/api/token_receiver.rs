@@ -84,22 +84,34 @@ impl Contract {
                 .is_none(),
             "Previous btc tx has not been signed"
         );
-        let target_address_script_pubkey = self
-            .internal_config()
-            .string_to_script_pubkey(&target_btc_address);
 
-        let withdraw_change_address_script_pubkey =
-            self.internal_config().get_change_script_pubkey();
         let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount);
-        let (actual_received_amount, gas_fee) = self.check_withdraw_psbt_valid(
-            &target_address_script_pubkey,
-            &withdraw_change_address_script_pubkey,
-            psbt,
-            &vutxos,
-            amount,
-            withdraw_fee,
-            max_gas_fee,
-        );
+
+        // For Orchard-only withdrawals (no transparent output), skip transparent validation
+        let (actual_received_amount, gas_fee) = if psbt.get_output_num() == 0 {
+            // Orchard-only case: all funds go to shielded pool
+            let gas_fee = max_gas_fee.map(|g| g.0).unwrap_or(10000);
+            let orchard_amount = amount.saturating_sub(withdraw_fee).saturating_sub(gas_fee);
+            (orchard_amount, gas_fee)
+        } else {
+            // Transparent output case: validate transparent outputs
+            let target_address_script_pubkey = self
+                .internal_config()
+                .string_to_script_pubkey(&target_btc_address);
+
+            let withdraw_change_address_script_pubkey =
+                self.internal_config().get_change_script_pubkey();
+
+            self.check_withdraw_psbt_valid(
+                &target_address_script_pubkey,
+                &withdraw_change_address_script_pubkey,
+                psbt,
+                &vutxos,
+                amount,
+                withdraw_fee,
+                max_gas_fee,
+            )
+        };
 
         let need_signature_num = psbt.get_input_num();
         let psbt_hex = psbt.serialize();

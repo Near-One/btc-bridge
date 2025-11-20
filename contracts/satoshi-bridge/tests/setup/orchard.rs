@@ -1,5 +1,3 @@
-#![cfg(feature = "zcash")]
-
 use orchard::builder::{Builder, BundleType};
 use orchard::keys::{FullViewingKey, OutgoingViewingKey, Scope, SpendingKey};
 use orchard::tree::Anchor;
@@ -25,7 +23,8 @@ pub fn gen_ua_and_orchard_bundle_hex(amount: u64, network: &str) -> (String, Str
     let recipient = fvk.address_at(0u32, Scope::External);
 
     // Build a simple output-only bundle with BRIDGE_OVK
-    let mut builder = Builder::new(BundleType::DEFAULT, Anchor::empty_tree());
+    // Use Coinbase bundle type which supports single output without dummy actions
+    let mut builder = Builder::new(BundleType::Coinbase, Anchor::empty_tree());
     builder
         .add_output(
             Some(OutgoingViewingKey::from(BRIDGE_OVK)),

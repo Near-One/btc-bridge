@@ -36,16 +36,21 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
 
     // Generate Zcash v5 transaction for deposit
     let zcash_tx_bytes = setup::utils::generate_zcash_transaction_bytes(
-        vec![
-            ("c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234", 1, None),
-        ],
+        vec![(
+            "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
+            1,
+            None,
+        )],
         vec![
             ("1MgiBKohM2poApYamQadp21vJrNyh5T19G", 90000),
             (alice_btc_deposit_address.as_str(), 500000),
         ],
     );
 
-    println!("Generated Zcash transaction, size: {} bytes", zcash_tx_bytes.len());
+    println!(
+        "Generated Zcash transaction, size: {} bytes",
+        zcash_tx_bytes.len()
+    );
 
     // Verify the deposit using Zcash transaction
     check!(context.verify_deposit(
@@ -84,9 +89,15 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
     let btc_gas_fee = 10000u128;
     let orchard_amount = (withdraw_amount - withdraw_fee - btc_gas_fee) as u64;
 
-    println!("Withdraw fee: {}, BTC gas fee: {}", withdraw_fee, btc_gas_fee);
+    println!(
+        "Withdraw fee: {}, BTC gas fee: {}",
+        withdraw_fee, btc_gas_fee
+    );
 
-    println!("Withdraw amount: {}, Orchard amount: {}", withdraw_amount, orchard_amount);
+    println!(
+        "Withdraw amount: {}, Orchard amount: {}",
+        withdraw_amount, orchard_amount
+    );
 
     // Generate Orchard bundle with correct amount
     let (recipient_ua, bundle_hex) = setup::orchard::get_or_gen_bundle(orchard_amount);
@@ -126,6 +137,7 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
 #[tokio::test]
 #[cfg(feature = "zcash")]
 #[ignore]
+#[allow(unused_variables)]
 async fn test_orchard_withdrawal_amount_mismatch() {
     // Set chain to ZcashTestnet for this test
     std::env::set_var("TEST_CHAIN", "ZcashTestnet");
@@ -196,33 +208,46 @@ async fn test_orchard_withdrawal_amount_mismatch() {
     let wrong_amount = 100000u64; // Different from expected_orchard_amount
     let (_recipient_ua, bundle_hex) = get_or_gen_bundle(wrong_amount);
 
-    println!("Expected orchard amount: {}, Using wrong amount: {}", expected_orchard_amount, wrong_amount);
+    println!(
+        "Expected orchard amount: {}, Using wrong amount: {}",
+        expected_orchard_amount, wrong_amount
+    );
 
     // This should fail with "Orchard amount mismatch"
-    let result = context.do_withdraw(
-        "alice",
-        "bridge",
-        withdraw_amount,
-        TokenReceiverMessage::Withdraw {
-            target_btc_address: "u1test...".to_string(), // Will use bundle's actual recipient
-            input: vec![OutPoint {
-                txid: first_utxo[0].parse().unwrap(),
-                vout: first_utxo[1].parse().unwrap(),
-            }],
-            output: vec![],
-            max_gas_fee: None,
-            orchard_bundle_bytes: Some(bundle_hex),
-        }
-    ).await;
+    let result = context
+        .do_withdraw(
+            "alice",
+            "bridge",
+            withdraw_amount,
+            TokenReceiverMessage::Withdraw {
+                target_btc_address: "u1test...".to_string(), // Will use bundle's actual recipient
+                input: vec![OutPoint {
+                    txid: first_utxo[0].parse().unwrap(),
+                    vout: first_utxo[1].parse().unwrap(),
+                }],
+                output: vec![],
+                max_gas_fee: None,
+                orchard_bundle_bytes: Some(bundle_hex),
+            },
+        )
+        .await;
 
     // Check that it failed with the expected error
-    assert!(result.is_ok(), "Withdrawal call should not fail at network level");
+    assert!(
+        result.is_ok(),
+        "Withdrawal call should not fail at network level"
+    );
     let outcome = result.unwrap();
-    assert!(!outcome.is_success() || !outcome.receipt_failures().is_empty(),
-        "Withdrawal should fail due to Orchard validation");
+    assert!(
+        !outcome.is_success() || !outcome.receipt_failures().is_empty(),
+        "Withdrawal should fail due to Orchard validation"
+    );
 
     // Check the error message contains "Orchard amount mismatch"
     let err_msg = setup::utils::tool_err_msg(&Ok(outcome));
-    assert!(err_msg.contains("Orchard amount mismatch"),
-        "Expected 'Orchard amount mismatch' error, got: {}", err_msg);
+    assert!(
+        err_msg.contains("Orchard amount mismatch"),
+        "Expected 'Orchard amount mismatch' error, got: {}",
+        err_msg
+    );
 }

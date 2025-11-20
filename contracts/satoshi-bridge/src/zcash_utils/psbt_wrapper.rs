@@ -38,7 +38,11 @@ impl PsbtWrapper {
         expected_amount: Option<u128>,
     ) -> Self {
         require!(!input.is_empty(), "empty input");
-        require!(!output.is_empty(), "empty output");
+        // Allow empty output if we have an orchard bundle (funds go to shielded pool)
+        require!(
+            !output.is_empty() || orchard_bundle_bytes.is_some(),
+            "empty output"
+        );
 
         let sequence = bitcoin::Sequence::MAX;
         let vout = output

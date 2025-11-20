@@ -100,9 +100,17 @@ impl Contract {
     ) -> U128 {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
 
-        // For withdrawals with Orchard bundle, pass expected recipient and amount for validation
+        // For withdrawals with Orchard bundle, calculate the expected net amount after fees
         let (expected_recipient, expected_amount) = if orchard_bundle.is_some() {
-            (Some(target_btc_address.clone()), Some(amount.0))
+            let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount.0);
+            // The orchard amount is the withdrawal amount minus the withdraw fee and gas fee
+            // max_gas_fee defaults to 10000 satoshis if not provided
+            let gas_fee = max_gas_fee.map(|g| g.0).unwrap_or(10000);
+            let orchard_amount = amount
+                .0
+                .saturating_sub(withdraw_fee)
+                .saturating_sub(gas_fee);
+            (Some(target_btc_address.clone()), Some(orchard_amount))
         } else {
             (None, None)
         };

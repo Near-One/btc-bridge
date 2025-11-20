@@ -126,7 +126,9 @@ pub fn generate_zcash_transaction_bytes(
 ) -> Vec<u8> {
     use zcash_primitives::consensus::{BlockHeight, BranchId};
     use zcash_primitives::transaction::{TransactionData, TxVersion};
-    use zcash_transparent::bundle::{Authorized, OutPoint as ZcashOutPoint, TxIn as ZcashTxIn, TxOut as ZcashTxOut};
+    use zcash_transparent::bundle::{
+        Authorized, OutPoint as ZcashOutPoint, TxIn as ZcashTxIn, TxOut as ZcashTxOut,
+    };
 
     // Create transparent inputs
     let zcash_inputs: Vec<ZcashTxIn<Authorized>> = tx_ins
@@ -217,9 +219,10 @@ pub fn generate_zcash_transaction_bytes(
     };
 
     // Build Zcash v5 transaction
+    // Use Nu6_1 for testnet to match contract's decode expectations
     let tx_data = TransactionData::from_parts(
         TxVersion::V5,               // V5
-        BranchId::Nu6,               // Use Nu6 branch
+        BranchId::Nu6_1,             // Use Nu6_1 for testnet
         0,                           // lock_time
         BlockHeight::from_u32(2000), // expiry_height (must be > 0 for v5)
         Some(transparent_bundle),
@@ -233,7 +236,8 @@ pub fn generate_zcash_transaction_bytes(
 
     // Serialize the transaction
     let mut buf = Vec::new();
-    tx.write(&mut buf).expect("Failed to serialize Zcash transaction");
+    tx.write(&mut buf)
+        .expect("Failed to serialize Zcash transaction");
 
     buf
 }
