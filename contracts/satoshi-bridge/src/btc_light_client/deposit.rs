@@ -328,7 +328,7 @@ mod tests {
 
     #[near(serializers=[json])]
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct UtxoFinTransferInner {
+    pub struct UtxoFinTransferMsg {
         pub utxo_id: String,
         pub recipient: String,
         pub relayer_fee: String,
@@ -337,9 +337,8 @@ mod tests {
 
     #[near(serializers=[json])]
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct UtxoFinTransferMsg {
-        #[serde(rename = "UtxoFinTransfer")]
-        pub inner: UtxoFinTransferInner,
+    pub enum BridgeOnTransferMsg {
+        UtxoFinTransfer(UtxoFinTransferMsg),
     }
 
     #[test]
@@ -349,8 +348,8 @@ mod tests {
                 .to_string();
 
         let injected_msg = inject_utxo_id_in_msg(duplicated_msg, "correct_utxo_id");
-        let parsed_msg: UtxoFinTransferInner = serde_json::from_str(&injected_msg).unwrap();
-        let expected = UtxoFinTransferInner {
+        let parsed_msg: UtxoFinTransferMsg = serde_json::from_str(&injected_msg).unwrap();
+        let expected = UtxoFinTransferMsg {
             utxo_id: "correct_utxo_id".to_string(),
             recipient: "some_recipient".to_string(),
             relayer_fee: "1000".to_string(),
@@ -367,15 +366,13 @@ mod tests {
                 .to_string();
 
         let injected_msg = inject_utxo_id_in_msg(nested_msg, "correct_utxo_id");
-        let parsed_msg: UtxoFinTransferMsg = serde_json::from_str(&injected_msg).unwrap();
-        let expected = UtxoFinTransferMsg {
-            inner: UtxoFinTransferInner {
-                utxo_id: "correct_utxo_id".to_string(),
-                recipient: "some_recipient".to_string(),
-                relayer_fee: "1000".to_string(),
-                msg: "OS".to_string(),
-            },
-        };
+        let parsed_msg: BridgeOnTransferMsg = serde_json::from_str(&injected_msg).unwrap();
+        let expected = BridgeOnTransferMsg::UtxoFinTransfer(UtxoFinTransferMsg {
+            utxo_id: "correct_utxo_id".to_string(),
+            recipient: "some_recipient".to_string(),
+            relayer_fee: "1000".to_string(),
+            msg: "OS".to_string(),
+        });
 
         assert_eq!(parsed_msg, expected);
     }
@@ -387,15 +384,13 @@ mod tests {
                 .to_string();
 
         let injected_msg = inject_utxo_id_in_msg(nested_msg, "correct_utxo_id");
-        let parsed_msg: UtxoFinTransferMsg = serde_json::from_str(&injected_msg).unwrap();
-        let expected = UtxoFinTransferMsg {
-            inner: UtxoFinTransferInner {
-                utxo_id: "correct_utxo_id".to_string(),
-                recipient: "some_recipient".to_string(),
-                relayer_fee: "1000".to_string(),
-                msg: "OS".to_string(),
-            },
-        };
+        let parsed_msg: BridgeOnTransferMsg = serde_json::from_str(&injected_msg).unwrap();
+        let expected = BridgeOnTransferMsg::UtxoFinTransfer(UtxoFinTransferMsg {
+            utxo_id: "correct_utxo_id".to_string(),
+            recipient: "some_recipient".to_string(),
+            relayer_fee: "1000".to_string(),
+            msg: "OS".to_string(),
+        });
 
         assert_eq!(parsed_msg, expected);
     }
