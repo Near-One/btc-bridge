@@ -21,6 +21,27 @@ NEAR smart contracts for a Bitcoin-to-NEAR bridge. Deposits are proven by parsin
 - `cargo test -p satoshi-bridge` — run integration tests (`near-workspaces`).
 - Prereqs: `rustup target add wasm32-unknown-unknown`; install `cargo-near` via the script in CI.
 
+### Building with Zcash Support
+
+The satoshi-bridge contract supports optional Zcash features. To build with Zcash support:
+
+```bash
+# Build optimized WASM (recommended for deployment)
+cargo near build non-reproducible-wasm --features zcash --out-dir res --no-abi
+
+# Build for testing (unoptimized, faster builds)
+cargo build -p satoshi-bridge --features zcash --release --target wasm32-unknown-unknown
+
+# Run Zcash tests
+cargo test -p satoshi-bridge --features zcash -- --test-threads=1 --nocapture
+```
+
+Notes:
+
+- Use `cargo near build` with `--no-abi` flag because ABI generation fails with bitcoin types (missing JsonSchema implementations)
+- The `--no-abi` build produces optimized WASM (~1.3MB) that fits within NEAR's 1.57MB contract size limit
+- Regular cargo build produces unoptimized WASM (~2.1MB) that exceeds the limit - don't use it
+
 ## Coding Style & Naming Conventions
 
 - Rust 2021; run `make lint` before pushing.

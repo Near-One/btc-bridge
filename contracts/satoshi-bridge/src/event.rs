@@ -53,7 +53,7 @@ pub enum Event<'a> {
     SignedBtcTransaction {
         account_id: &'a AccountId,
         tx_id: String,
-        tx_size: usize,
+        tx_bytes_base64: String,
     },
     WithdrawBtcDetail {
         cost_nbtc: U128,

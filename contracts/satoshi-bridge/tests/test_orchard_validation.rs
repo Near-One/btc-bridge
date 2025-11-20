@@ -129,7 +129,7 @@ async fn test_orchard_missing_bundle() {
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
     check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
 
-    let config = context.get_bridge_config().await.unwrap();
+    let _config = context.get_bridge_config().await.unwrap();
 
     // Setup: Deposit for alice
     let alice_btc_deposit_address = context
