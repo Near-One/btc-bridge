@@ -116,11 +116,38 @@ pub fn get_or_gen_bundle(amount: u64) -> (String, String) {
 }
 
 /// Generate a bundle with a specific spending key (for testing recipient mismatch).
-/// Does NOT cache since different keys produce different addresses.
+/// Caches based on both amount and spending key to avoid expensive regeneration.
 pub fn gen_bundle_with_key(amount: u64, spending_key: [u8; 32]) -> (String, String) {
+    use std::fs;
+    use std::path::Path;
+
+    // Create cache key from amount + hex-encoded spending key
+    let key_hex = hex::encode(spending_key);
+    let cache_file = format!("tests/orchard_bundle_cache_{}_{}.txt", amount, key_hex);
+    let cache_path = Path::new(&cache_file);
+
+    // Try to load from cache
+    if cache_path.exists() {
+        if let Ok(contents) = fs::read_to_string(cache_path) {
+            let lines: Vec<&str> = contents.lines().collect();
+            if lines.len() == 2 {
+                return (lines[0].to_string(), lines[1].to_string());
+            }
+        }
+    }
+
+    // Cache miss or invalid - generate new bundle
     println!(
         "Generating Orchard bundle with custom key for amount {}... (this may take a while)",
         amount
     );
-    gen_ua_and_orchard_bundle_hex_with_key(amount, "testnet", Some(spending_key))
+    let (ua, bundle_hex) = gen_ua_and_orchard_bundle_hex_with_key(amount, "testnet", Some(spending_key));
+
+    // Save to cache
+    let cache_content = format!("{}\n{}", ua, bundle_hex);
+    if let Err(e) = fs::write(cache_path, cache_content) {
+        eprintln!("Warning: Failed to cache bundle: {}", e);
+    }
+
+    (ua, bundle_hex)
 }

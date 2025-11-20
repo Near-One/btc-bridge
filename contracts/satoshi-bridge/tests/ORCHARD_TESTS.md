@@ -139,9 +139,20 @@ All tests use **single-action Orchard bundles** (`BundleType::Coinbase`). Multi-
 Validation enforced at: `psbt_wrapper.rs:92-95`
 
 ### Bundle Caching
-Orchard bundle generation is expensive (~80s per bundle due to Halo2 proof). Tests cache generated bundles to `tests/orchard_bundle_cache_{amount}.txt` for reuse.
+Orchard bundle generation is expensive (~80-90s per bundle due to Halo2 proof). Tests cache generated bundles for reuse:
 
-To regenerate caches: `rm contracts/satoshi-bridge/tests/orchard_bundle_cache_*.txt`
+**Cache file patterns:**
+- Default key: `tests/orchard_bundle_cache_{amount}.txt`
+- Custom key: `tests/orchard_bundle_cache_{amount}_{spending_key_hex}.txt`
+
+**Performance:**
+- First run: ~175s (generates 2 bundles with proofs)
+- Subsequent runs: ~16s (loads from cache) ⚡
+
+**To regenerate caches:**
+```bash
+rm contracts/satoshi-bridge/tests/orchard_bundle_cache_*.txt
+```
 
 ---
 
