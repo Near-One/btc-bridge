@@ -66,8 +66,8 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
     let first_utxo = utxos_keys[0].split('@').collect::<Vec<_>>();
 
     let withdraw_amount = 200000u128;
-    let _btc_gas_fee = 10000u128;
-    let _withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
+    let btc_gas_fee = 10000u128;
+    let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
     let orchard_amount = withdraw_amount - btc_gas_fee - withdraw_fee;
 
     // Generate or get cached Orchard bundle
@@ -194,8 +194,8 @@ async fn test_orchard_withdrawal_amount_mismatch() {
     let first_utxo = utxos_keys[0].split('@').collect::<Vec<_>>();
 
     let withdraw_amount = 200000u128;
-    let _btc_gas_fee = 10000u128;
-    let _withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
+    let btc_gas_fee = 10000u128;
+    let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
 
     // Generate bundle with WRONG amount (different from what we're withdrawing)
     let wrong_amount = 100000u64; // Different from orchard_amount
