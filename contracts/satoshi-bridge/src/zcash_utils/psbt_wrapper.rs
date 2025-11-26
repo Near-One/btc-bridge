@@ -356,15 +356,21 @@ impl PsbtWrapper {
 
     pub fn get_min_fee(&self) -> Zatoshis {
         let fee_rule = zcash_primitives::transaction::fees::zip317::FeeRule::standard();
+        let orchard_action_count = self
+            .orchard_bundle
+            .as_ref()
+            .map(|bundle| bundle.actions().len())
+            .unwrap_or(0);
+
         fee_rule
             .fee_required(
                 &zcash_protocol::consensus::MainNetwork,
                 BlockHeight::from_u32(0u32),
                 vec![InputSize::STANDARD_P2PKH; self.vin.len()],
                 self.vout.iter().map(|i| i.serialized_size()),
-                0,
-                0,
-                0,
+                0, // sapling_input_count
+                0, // sapling_output_count
+                orchard_action_count,
             )
             .unwrap()
     }
