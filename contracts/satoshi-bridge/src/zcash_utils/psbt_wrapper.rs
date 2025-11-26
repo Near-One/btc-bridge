@@ -88,10 +88,14 @@ impl PsbtWrapper {
                     &config.chain,
                 );
             } else {
-                // If no expected values provided, at minimum enforce single action
+                // If no expected values provided, enforce minimum actions per Orchard protocol
                 require!(
-                    bundle.actions().len() == 1,
-                    "Only one orchard action is supported"
+                    bundle.actions().len() >= orchard_policy::MIN_ACTIONS,
+                    format!(
+                        "Orchard bundle must have at least {} actions, got {}",
+                        orchard_policy::MIN_ACTIONS,
+                        bundle.actions().len()
+                    )
                 );
             }
 

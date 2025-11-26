@@ -9,6 +9,11 @@ use crate::network;
 /// Hardcoded to all zeroes for now; can be made configurable later.
 pub const BRIDGE_OVK: [u8; 32] = [0u8; 32];
 
+/// Minimum number of actions required in an Orchard bundle per the Orchard protocol.
+/// The Orchard builder automatically pads bundles to meet this minimum for privacy.
+/// See: https://github.com/zcash/orchard/blob/main/src/builder.rs#L36
+pub const MIN_ACTIONS: usize = 2;
+
 /// Recover the Orchard note value and raw address bytes (43 bytes) from the bundle
 /// using the bridge OVK. Assumes a single action.
 pub fn recover_orchard_output(
@@ -61,10 +66,14 @@ pub fn validate_orchard_bundle(
     expected_amount: u64,
     chain: &network::Chain,
 ) {
-    // Enforce single action
+    // Enforce minimum actions per Orchard protocol
     require!(
-        bundle.actions().len() == 1,
-        "Only one orchard action is supported"
+        bundle.actions().len() >= MIN_ACTIONS,
+        format!(
+            "Orchard bundle must have at least {} actions, got {}",
+            MIN_ACTIONS,
+            bundle.actions().len()
+        )
     );
 
     // Recover output with bridge OVK
