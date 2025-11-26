@@ -159,6 +159,11 @@ impl PsbtWrapper {
     pub fn get_output_num(&self) -> usize {
         self.vout.len()
     }
+
+    pub fn has_orchard_bundle(&self) -> bool {
+        self.orchard_bundle.is_some()
+    }
+
     pub fn get_utxo_storage_keys(&self) -> Vec<String> {
         self.vin
             .clone()

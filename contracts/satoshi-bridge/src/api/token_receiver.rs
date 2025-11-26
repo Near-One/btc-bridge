@@ -90,6 +90,16 @@ impl Contract {
         // Calculate actual gas fee using ZIP-317 formula
         let computed_gas_fee = psbt.get_min_fee().into_u64() as u128;
 
+        // Reject mixed scenarios: Orchard bundle with transparent outputs is not supported
+        // This simplifies validation and avoids edge cases
+        if psbt.has_orchard_bundle() && psbt.get_output_num() > 0 {
+            require!(
+                false,
+                "Mixed Orchard and transparent outputs not supported. \
+                 Use either pure Orchard (no transparent outputs) or pure transparent (no Orchard bundle)"
+            );
+        }
+
         // For Orchard-only withdrawals (no transparent output), skip transparent validation
         let (actual_received_amount, gas_fee) = if psbt.get_output_num() == 0 {
             // Orchard-only case: all funds go to shielded pool
