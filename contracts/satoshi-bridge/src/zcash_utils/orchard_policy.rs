@@ -25,6 +25,41 @@ pub fn recover_orchard_output(
     (note.value().inner(), addr.to_raw_address_bytes())
 }
 
+/// Check if a Unified Address contains an Orchard receiver.
+/// Returns true if the address is a Unified Address with an Orchard receiver.
+pub fn has_orchard_receiver(target_addr: &str, chain: &network::Chain) -> bool {
+    // Try to parse as Zcash address
+    let zaddr = match zcash_address::ZcashAddress::try_from_encoded(target_addr) {
+        Ok(addr) => addr,
+        Err(_) => return false, // Not a valid Zcash address
+    };
+
+    let net = match chain {
+        network::Chain::ZcashMainnet => zcash_protocol::consensus::NetworkType::Main,
+        network::Chain::ZcashTestnet => zcash_protocol::consensus::NetworkType::Test,
+        _ => return false, // Not a ZCash chain
+    };
+
+    let local_addr: network::Address = match zaddr.convert_if_network::<network::Address>(net) {
+        Ok(addr) => addr,
+        Err(_) => return false, // Network mismatch
+    };
+
+    // Check if it's a Unified Address
+    let ua = match local_addr {
+        network::Address::Unified { address, .. } => address,
+        _ => return false, // Not a Unified Address
+    };
+
+    // Check for Orchard receiver
+    for recv in ua.items_as_parsed() {
+        if let zcash_address::unified::Receiver::Orchard(_) = recv {
+            return true;
+        }
+    }
+    false
+}
+
 /// Extract the Orchard receiver raw bytes from a Unified Address string for the given chain.
 pub fn extract_orchard_receiver_from_unified(
     target_addr: &str,

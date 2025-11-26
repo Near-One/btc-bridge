@@ -1,4 +1,5 @@
 use crate::psbt_wrapper::PsbtWrapper;
+use crate::zcash_utils::orchard_policy;
 use crate::*;
 use bitcoin::{OutPoint, TxOut};
 use near_sdk::json_types::U128;
@@ -214,12 +215,14 @@ impl Contract {
         max_gas_fee: Option<U128>,
         orchard_bundle: Option<Vec<u8>>,
     ) -> PromiseOrValue<U128> {
-        // Validate: Unified Address requires Orchard bundle
-        if target_btc_address.starts_with("u1") || target_btc_address.starts_with("u") {
+        // Validate: If the address is a Unified Address with an Orchard receiver, require Orchard bundle
+        // Note: Unified Addresses can contain only transparent receivers, which is valid without a bundle
+        let chain = self.internal_config().chain.clone();
+        if orchard_policy::has_orchard_receiver(&target_btc_address, &chain) {
             require!(
                 orchard_bundle.is_some(),
-                "Unified Address provided without Orchard bundle. \
-                 Either provide both or use a transparent Zcash address (starts with t1/t3)"
+                "Unified Address contains Orchard receiver but no Orchard bundle provided. \
+                 Either provide an Orchard bundle or use a transparent-only address"
             );
         }
 
