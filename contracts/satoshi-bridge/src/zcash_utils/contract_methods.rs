@@ -100,12 +100,31 @@ impl Contract {
     ) -> U128 {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
 
+        // First, create a preliminary PSBT to calculate the actual ZIP-317 fee
+        // We pass None for expected values initially since we need the fee first
+        let psbt = PsbtWrapper::new(
+            input.clone(),
+            output.clone(),
+            orchard_bundle.clone(),
+            expiry_height,
+            self.internal_config(),
+            None,
+            None,
+        );
+
+        // Calculate actual gas fee using ZIP-317 formula based on transaction structure
+        let computed_gas_fee = psbt.get_min_fee().into_u64() as u128;
+
+        // If max_gas_fee is provided, use it as upper bound, otherwise use computed fee
+        let gas_fee = if let Some(max_fee) = max_gas_fee {
+            std::cmp::min(max_fee.0, computed_gas_fee)
+        } else {
+            computed_gas_fee
+        };
+
         // For withdrawals with Orchard bundle, calculate the expected net amount after fees
         let (expected_recipient, expected_amount) = if orchard_bundle.is_some() {
             let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount.0);
-            // The orchard amount is the withdrawal amount minus the withdraw fee and gas fee
-            // max_gas_fee defaults to 10000 satoshis if not provided
-            let gas_fee = max_gas_fee.map(|g| g.0).unwrap_or(10000);
             let orchard_amount = amount
                 .0
                 .saturating_sub(withdraw_fee)
@@ -115,6 +134,7 @@ impl Contract {
             (None, None)
         };
 
+        // Recreate PSBT with expected values for validation
         let mut psbt = PsbtWrapper::new(
             input,
             output,
@@ -124,12 +144,13 @@ impl Contract {
             expected_recipient,
             expected_amount,
         );
+
         self.create_btc_pending_info(
             sender_id,
             amount.0,
             target_btc_address,
             &mut psbt,
-            max_gas_fee,
+            Some(U128(gas_fee)),
         );
 
         U128(0)

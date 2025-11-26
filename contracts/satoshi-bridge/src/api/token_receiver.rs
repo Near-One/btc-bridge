@@ -87,10 +87,18 @@ impl Contract {
 
         let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount);
 
+        // Calculate actual gas fee using ZIP-317 formula
+        let computed_gas_fee = psbt.get_min_fee().into_u64() as u128;
+
         // For Orchard-only withdrawals (no transparent output), skip transparent validation
         let (actual_received_amount, gas_fee) = if psbt.get_output_num() == 0 {
             // Orchard-only case: all funds go to shielded pool
-            let gas_fee = max_gas_fee.map(|g| g.0).unwrap_or(10000);
+            // Use max_gas_fee as upper bound if provided, otherwise use computed fee
+            let gas_fee = if let Some(max_fee) = max_gas_fee {
+                std::cmp::min(max_fee.0, computed_gas_fee)
+            } else {
+                computed_gas_fee
+            };
             let orchard_amount = amount.saturating_sub(withdraw_fee).saturating_sub(gas_fee);
             (orchard_amount, gas_fee)
         } else {
