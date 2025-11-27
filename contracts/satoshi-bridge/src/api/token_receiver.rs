@@ -69,6 +69,52 @@ impl FungibleTokenReceiver for Contract {
 }
 
 impl Contract {
+    /// Validate transparent change outputs for Orchard withdrawals.
+    /// For Orchard withdrawals, transparent outputs must only be change back to the bridge.
+    fn check_orchard_with_transparent_change(
+        &self,
+        psbt: &PsbtWrapper,
+        vutxos: &[VUTXO],
+        withdraw_change_address_script_pubkey: &ScriptBuf,
+        gas_fee: u128,
+    ) {
+        let config = self.internal_config();
+        let input_amount = vutxos
+            .iter()
+            .map(|vutxo| vutxo.get_amount() as u128)
+            .sum::<u128>();
+
+        let mut total_change_amount = 0u128;
+
+        // All transparent outputs must be change outputs to bridge address
+        for output in psbt.get_output() {
+            let output_value = output.value.to_sat() as u128;
+            require!(
+                &output.script_pubkey == withdraw_change_address_script_pubkey,
+                "For Orchard withdrawals, all transparent outputs must be change to bridge address"
+            );
+            require!(
+                output_value >= config.min_change_amount,
+                "Change amount is too small"
+            );
+            require!(
+                output_value <= config.max_change_amount,
+                "Change amount exceeds maximum"
+            );
+            total_change_amount += output_value;
+        }
+
+        // Validate that change + gas_fee doesn't exceed input
+        // (The Orchard output already accounted for the user's funds)
+        require!(
+            total_change_amount + gas_fee <= input_amount,
+            format!(
+                "Change ({}) + gas_fee ({}) exceeds input ({})",
+                total_change_amount, gas_fee, input_amount
+            )
+        );
+    }
+
     pub(crate) fn create_btc_pending_info(
         &mut self,
         sender_id: AccountId,
@@ -90,19 +136,11 @@ impl Contract {
         // Calculate actual gas fee using ZIP-317 formula
         let computed_gas_fee = psbt.get_min_fee().into_u64() as u128;
 
-        // Reject mixed scenarios: Orchard bundle with transparent outputs is not supported
-        // This simplifies validation and avoids edge cases
-        if psbt.has_orchard_bundle() && psbt.get_output_num() > 0 {
-            require!(
-                false,
-                "Mixed Orchard and transparent outputs not supported. \
-                 Use either pure Orchard (no transparent outputs) or pure transparent (no Orchard bundle)"
-            );
-        }
+        // Determine validation path based on presence of Orchard bundle
+        let (actual_received_amount, gas_fee) = if psbt.has_orchard_bundle() {
+            // Orchard withdrawal case (with or without transparent change)
+            // Baseline scenario: 1 Orchard output to user + transparent change to bridge
 
-        // For Orchard-only withdrawals (no transparent output), validate the Orchard output
-        let (actual_received_amount, gas_fee) = if psbt.get_output_num() == 0 {
-            // Orchard-only case: validate the actual Orchard output amount
             // Use max_gas_fee as upper bound if provided, otherwise use computed fee
             let gas_fee = if let Some(max_fee) = max_gas_fee {
                 std::cmp::min(max_fee.0, computed_gas_fee)
@@ -123,9 +161,23 @@ impl Contract {
                 )
             );
 
+            // If there are transparent outputs, validate they are only change outputs
+            if psbt.get_output_num() > 0 {
+                let withdraw_change_address_script_pubkey =
+                    self.internal_config().get_change_script_pubkey();
+
+                // Validate all transparent outputs are valid change
+                self.check_orchard_with_transparent_change(
+                    psbt,
+                    &vutxos,
+                    &withdraw_change_address_script_pubkey,
+                    gas_fee,
+                );
+            }
+
             (actual_orchard_amount, gas_fee)
         } else {
-            // Transparent output case: validate transparent outputs
+            // Pure transparent withdrawal case: validate transparent outputs
             let target_address_script_pubkey = self
                 .internal_config()
                 .string_to_script_pubkey(&target_btc_address);
