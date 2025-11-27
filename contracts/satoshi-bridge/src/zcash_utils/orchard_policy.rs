@@ -92,13 +92,16 @@ pub fn extract_orchard_receiver_from_unified(
 }
 
 /// Validate Orchard bundle against policy:
-/// - Recovers the output using BRIDGE_OVK
-/// - Verifies the recovered amount matches expected
+/// - Recovers all outputs using BRIDGE_OVK
+/// - Verifies exactly one non-zero output exists
+/// - Verifies the recovered amount is within expected range (allows dust adjustment)
 /// - Verifies the recovered recipient matches the expected Unified Address's Orchard receiver
+/// - Verifies value balance matches the output amount (value flows from transparent to Orchard)
 pub fn validate_orchard_bundle(
     bundle: &Bundle<orchard::bundle::Authorized, ZatBalance>,
     expected_recipient: &str,
     expected_amount: u64,
+    min_change_amount: u64,
     chain: &network::Chain,
 ) {
     // Enforce minimum actions per Orchard protocol
@@ -111,15 +114,38 @@ pub fn validate_orchard_bundle(
         )
     );
 
-    // Recover output with bridge OVK
-    let (recovered_amount, recovered_addr_bytes) = recover_orchard_output(bundle);
+    // Recover all outputs and ensure only one is non-zero
+    let mut real_outputs = Vec::new();
+    let ovk = orchard::keys::OutgoingViewingKey::from(BRIDGE_OVK);
 
-    // Validate amount
+    for action_idx in 0..bundle.actions().len() {
+        if let Some((note, addr, _memo)) = bundle.recover_output_with_ovk(action_idx, &ovk) {
+            let value = note.value().inner();
+            if value > 0 {
+                real_outputs.push((value, addr.to_raw_address_bytes()));
+            }
+        }
+    }
+
     require!(
-        recovered_amount == expected_amount,
+        real_outputs.len() == 1,
         format!(
-            "Orchard amount mismatch: expected {}, got {}",
-            expected_amount, recovered_amount
+            "Expected exactly 1 non-zero Orchard output, found {}",
+            real_outputs.len()
+        )
+    );
+
+    let (recovered_amount, recovered_addr_bytes) = real_outputs[0];
+
+    // Validate amount is within range (allow dust adjustment like transparent validation)
+    let expected_max = expected_amount;
+    let expected_min = expected_amount.saturating_sub(min_change_amount);
+
+    require!(
+        recovered_amount >= expected_min && recovered_amount <= expected_max,
+        format!(
+            "Orchard amount {} out of valid range ({}, {})",
+            recovered_amount, expected_min, expected_max
         )
     );
 
@@ -130,6 +156,23 @@ pub fn validate_orchard_bundle(
         format!(
             "Orchard recipient mismatch: expected {} does not match recovered output",
             expected_recipient
+        )
+    );
+
+    // Validate value balance: for withdrawal, value flows FROM transparent TO Orchard
+    // So value_balance should be negative and equal to the output amount
+    let value_balance = bundle.value_balance();
+    let expected_value_balance = -i64::try_from(recovered_amount)
+        .expect("Orchard amount too large for i64");
+
+    let actual_value_balance: i64 = (*value_balance).into();
+    require!(
+        actual_value_balance == expected_value_balance,
+        format!(
+            "Orchard value balance mismatch: expected {}, got {}. \
+             Value balance must equal negative output amount for withdrawals",
+            expected_value_balance,
+            actual_value_balance
         )
     );
 }

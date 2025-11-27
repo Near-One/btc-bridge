@@ -85,6 +85,7 @@ impl PsbtWrapper {
                     &bundle,
                     &expected_addr,
                     expected_amt as u64,
+                    config.min_change_amount as u64,
                     &config.chain,
                 );
             } else {

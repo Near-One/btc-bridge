@@ -71,11 +71,13 @@ impl FungibleTokenReceiver for Contract {
 impl Contract {
     /// Validate transparent change outputs for Orchard withdrawals.
     /// For Orchard withdrawals, transparent outputs must only be change back to the bridge.
+    /// Validates exact accounting: input = orchard_amount + change + gas_fee
     fn check_orchard_with_transparent_change(
         &self,
         psbt: &PsbtWrapper,
         vutxos: &[VUTXO],
         withdraw_change_address_script_pubkey: &ScriptBuf,
+        orchard_amount: u128,
         gas_fee: u128,
     ) {
         let config = self.internal_config();
@@ -104,13 +106,14 @@ impl Contract {
             total_change_amount += output_value;
         }
 
-        // Validate that change + gas_fee doesn't exceed input
-        // (The Orchard output already accounted for the user's funds)
+        // Validate exact accounting: transparent_input = orchard_amount + change + gas_fee
+        // This ensures the value balance is correct and no value is missing or extra
+        let expected_input = orchard_amount + total_change_amount + gas_fee;
         require!(
-            total_change_amount + gas_fee <= input_amount,
+            input_amount == expected_input,
             format!(
-                "Change ({}) + gas_fee ({}) exceeds input ({})",
-                total_change_amount, gas_fee, input_amount
+                "Transparent accounting mismatch: input ({}) != orchard ({}) + change ({}) + fee ({})",
+                input_amount, orchard_amount, total_change_amount, gas_fee
             )
         );
     }
@@ -166,11 +169,12 @@ impl Contract {
                 let withdraw_change_address_script_pubkey =
                     self.internal_config().get_change_script_pubkey();
 
-                // Validate all transparent outputs are valid change
+                // Validate all transparent outputs are valid change with exact accounting
                 self.check_orchard_with_transparent_change(
                     psbt,
                     &vutxos,
                     &withdraw_change_address_script_pubkey,
+                    actual_orchard_amount,
                     gas_fee,
                 );
             }
