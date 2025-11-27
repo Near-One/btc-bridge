@@ -141,7 +141,8 @@ pub fn gen_bundle_with_key(amount: u64, spending_key: [u8; 32]) -> (String, Stri
         "Generating Orchard bundle with custom key for amount {}... (this may take a while)",
         amount
     );
-    let (ua, bundle_hex) = gen_ua_and_orchard_bundle_hex_with_key(amount, "testnet", Some(spending_key));
+    let (ua, bundle_hex) =
+        gen_ua_and_orchard_bundle_hex_with_key(amount, "testnet", Some(spending_key));
 
     // Save to cache
     let cache_content = format!("{}\n{}", ua, bundle_hex);

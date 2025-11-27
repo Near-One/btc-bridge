@@ -100,17 +100,30 @@ impl Contract {
             );
         }
 
-        // For Orchard-only withdrawals (no transparent output), skip transparent validation
+        // For Orchard-only withdrawals (no transparent output), validate the Orchard output
         let (actual_received_amount, gas_fee) = if psbt.get_output_num() == 0 {
-            // Orchard-only case: all funds go to shielded pool
+            // Orchard-only case: validate the actual Orchard output amount
             // Use max_gas_fee as upper bound if provided, otherwise use computed fee
             let gas_fee = if let Some(max_fee) = max_gas_fee {
                 std::cmp::min(max_fee.0, computed_gas_fee)
             } else {
                 computed_gas_fee
             };
-            let orchard_amount = amount.saturating_sub(withdraw_fee).saturating_sub(gas_fee);
-            (orchard_amount, gas_fee)
+
+            // Recover and validate the actual Orchard output amount from the bundle
+            let actual_orchard_amount = psbt.get_orchard_output_amount();
+            let expected_max = amount.saturating_sub(withdraw_fee).saturating_sub(gas_fee);
+            let expected_min = expected_max.saturating_sub(self.internal_config().min_change_amount);
+
+            require!(
+                actual_orchard_amount >= expected_min && actual_orchard_amount <= expected_max,
+                format!(
+                    "Orchard output amount ({}) out of valid range ({}, {})",
+                    actual_orchard_amount, expected_min, expected_max
+                )
+            );
+
+            (actual_orchard_amount, gas_fee)
         } else {
             // Transparent output case: validate transparent outputs
             let target_address_script_pubkey = self

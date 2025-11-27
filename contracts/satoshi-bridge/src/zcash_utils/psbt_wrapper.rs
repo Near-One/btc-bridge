@@ -164,6 +164,18 @@ impl PsbtWrapper {
         self.orchard_bundle.is_some()
     }
 
+    /// Get the Orchard output amount by recovering it with the bridge OVK.
+    /// Returns the amount in zatoshis (satoshis for ZCash).
+    /// Panics if there is no Orchard bundle.
+    pub fn get_orchard_output_amount(&self) -> u128 {
+        let bundle = self
+            .orchard_bundle
+            .as_ref()
+            .expect("No Orchard bundle present");
+        let (amount, _addr) = orchard_policy::recover_orchard_output(bundle);
+        amount as u128
+    }
+
     pub fn get_utxo_storage_keys(&self) -> Vec<String> {
         self.vin
             .clone()
