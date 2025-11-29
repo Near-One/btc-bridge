@@ -34,7 +34,7 @@ macro_rules! define_rbf_callback {
                 output: Vec<TxOut>,
                 #[callback_unwrap] last_block_height: u32,
             ) {
-                let expiry_height = last_block_height + self.get_config().expiry_height_gap;
+                let expiry_height = 0;//last_block_height + self.get_config().expiry_height_gap;
 
                 let original_tx_btc_pending_info =
                     self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
@@ -98,7 +98,7 @@ impl Contract {
         orchard_bundle: Option<Vec<u8>>,
         #[callback_unwrap] last_block_height: u32,
     ) -> U128 {
-        let expiry_height = last_block_height + self.get_config().expiry_height_gap;
+        let expiry_height = 0;//last_block_height + self.get_config().expiry_height_gap;
 
         // For withdrawals with Orchard bundle, calculate the expected net amount after fees
         let (expected_recipient, expected_amount) = if orchard_bundle.is_some() {
@@ -145,7 +145,7 @@ impl Contract {
         orchard_bundle: Option<Vec<u8>>,
         #[callback_unwrap] last_block_height: u32,
     ) {
-        let expiry_height = last_block_height + self.get_config().expiry_height_gap;
+        let expiry_height = 0;//last_block_height + self.get_config().expiry_height_gap;
 
         // For active UTXO management, we don't validate orchard recipient/amount
         // as this is internal bridge operations, not user withdrawals
