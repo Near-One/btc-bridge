@@ -14,17 +14,6 @@ pub const BRIDGE_OVK: [u8; 32] = [0u8; 32];
 /// See: https://github.com/zcash/orchard/blob/main/src/builder.rs#L36
 pub const MIN_ACTIONS: usize = 1;
 
-/// Recover the Orchard note value and raw address bytes (43 bytes) from the bundle
-/// using the bridge OVK. Assumes a single action.
-pub fn recover_orchard_output(
-    bundle: &Bundle<orchard::bundle::Authorized, ZatBalance>,
-) -> (u64, [u8; 43]) {
-    let (note, addr, _memo) = bundle
-        .recover_output_with_ovk(0, &orchard::keys::OutgoingViewingKey::from(BRIDGE_OVK))
-        .expect("Failed to recover Orchard output with bridge OVK");
-    (note.value().inner(), addr.to_raw_address_bytes())
-}
-
 /// Check if a Unified Address contains an Orchard receiver.
 /// Returns true if the address is a Unified Address with an Orchard receiver.
 pub fn has_orchard_receiver(target_addr: &str, chain: &network::Chain) -> bool {
