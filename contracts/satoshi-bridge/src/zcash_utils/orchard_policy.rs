@@ -103,6 +103,7 @@ pub fn validate_orchard_bundle(
     expected_amount: u64,
     min_change_amount: u64,
     chain: &network::Chain,
+    real_outputs: Vec<(u64, [u8; 43])>,
 ) {
     // Enforce minimum actions per Orchard protocol
     require!(
@@ -113,19 +114,6 @@ pub fn validate_orchard_bundle(
             bundle.actions().len()
         )
     );
-
-    // Recover all outputs and ensure only one is non-zero
-    let mut real_outputs = Vec::new();
-    let ovk = orchard::keys::OutgoingViewingKey::from(BRIDGE_OVK);
-
-    for action_idx in 0..bundle.actions().len() {
-        if let Some((note, addr, _memo)) = bundle.recover_output_with_ovk(action_idx, &ovk) {
-            let value = note.value().inner();
-            if value > 0 {
-                real_outputs.push((value, addr.to_raw_address_bytes()));
-            }
-        }
-    }
 
     require!(
         real_outputs.len() == 1,
@@ -162,8 +150,8 @@ pub fn validate_orchard_bundle(
     // Validate value balance: for withdrawal, value flows FROM transparent TO Orchard
     // So value_balance should be negative and equal to the output amount
     let value_balance = bundle.value_balance();
-    let expected_value_balance = -i64::try_from(recovered_amount)
-        .expect("Orchard amount too large for i64");
+    let expected_value_balance =
+        -i64::try_from(recovered_amount).expect("Orchard amount too large for i64");
 
     let actual_value_balance: i64 = (*value_balance).into();
     require!(
@@ -171,8 +159,7 @@ pub fn validate_orchard_bundle(
         format!(
             "Orchard value balance mismatch: expected {}, got {}. \
              Value balance must equal negative output amount for withdrawals",
-            expected_value_balance,
-            actual_value_balance
+            expected_value_balance, actual_value_balance
         )
     );
 }

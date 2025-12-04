@@ -3,6 +3,7 @@ use std::io;
 use std::io::{Cursor, Read, Write};
 
 use crate::zcash_utils::orchard_policy;
+use crate::zcash_utils::orchard_policy::BRIDGE_OVK;
 use crate::zcash_utils::transaction::Transaction;
 use bitcoin::hashes::Hash;
 use bitcoin::{OutPoint, TxOut};
@@ -25,6 +26,7 @@ pub struct PsbtWrapper {
     vout: Vec<ZcashTxOut>,
     inputs_utxo: Vec<ZcashTxOut>,
     orchard_bundle: Option<orchard::Bundle<orchard::bundle::Authorized, ZatBalance>>,
+    orchard_output: Option<(u64, [u8; 43])>,
 }
 
 impl PsbtWrapper {
@@ -71,12 +73,25 @@ impl PsbtWrapper {
             vin.len()
         ];
 
+        let mut real_outputs = Vec::new();
         // Parse and validate orchard bundle if present
         let orchard_bundle = if let Some(orchard_bundle_bytes) = orchard_bundle_bytes {
             let mut reader = Cursor::new(orchard_bundle_bytes);
             let bundle = read_v5_bundle(&mut reader)
                 .expect("Failed to read orchard bundle")
                 .expect("Orchard bundle is empty");
+
+            let ovk = orchard::keys::OutgoingViewingKey::from(BRIDGE_OVK);
+
+            for action_idx in 0..bundle.actions().len() {
+                if let Some((note, addr, _memo)) = bundle.recover_output_with_ovk(action_idx, &ovk)
+                {
+                    let value = note.value().inner();
+                    if value > 0 {
+                        real_outputs.push((value, addr.to_raw_address_bytes()));
+                    }
+                }
+            }
 
             // Validate orchard bundle against policy if expected values are provided
             if let (Some(expected_addr), Some(expected_amt)) = (expected_recipient, expected_amount)
@@ -87,6 +102,7 @@ impl PsbtWrapper {
                     expected_amt as u64,
                     config.min_change_amount as u64,
                     &config.chain,
+                    real_outputs.clone(),
                 );
             } else {
                 // If no expected values provided, enforce minimum actions per Orchard protocol
@@ -112,6 +128,7 @@ impl PsbtWrapper {
             vin,
             inputs_utxo: inputs,
             orchard_bundle,
+            orchard_output: real_outputs.pop(),
         }
     }
 
@@ -141,6 +158,7 @@ impl PsbtWrapper {
             vout,
             inputs_utxo: original_psbt.inputs_utxo,
             orchard_bundle: original_psbt.orchard_bundle,
+            orchard_output: original_psbt.orchard_output,
         }
     }
 
@@ -169,12 +187,11 @@ impl PsbtWrapper {
     /// Returns the amount in zatoshis (satoshis for ZCash).
     /// Panics if there is no Orchard bundle.
     pub fn get_orchard_output_amount(&self) -> u128 {
-        let bundle = self
-            .orchard_bundle
+        let (amount, _addr) = self
+            .orchard_output
             .as_ref()
             .expect("No Orchard bundle present");
-        let (amount, _addr) = orchard_policy::recover_orchard_output(bundle);
-        amount as u128
+        *amount as u128
     }
 
     pub fn get_utxo_storage_keys(&self) -> Vec<String> {
@@ -246,6 +263,14 @@ impl PsbtWrapper {
                 .unwrap();
         }
 
+        if let Some(orchard_output) = self.orchard_output {
+            buf.write_all(&[1u8; 1]).unwrap();
+            buf.write_all(&orchard_output.0.to_le_bytes()).unwrap();
+            buf.write_all(&orchard_output.1).unwrap();
+        } else {
+            buf.write_all(&[0u8; 1]).unwrap();
+        }
+
         buf
     }
     pub fn serialize(&self) -> String {
@@ -293,6 +318,19 @@ impl PsbtWrapper {
             None
         };
 
+        let is_some = read_u8(&mut rdr).unwrap();
+        let orchard_output = if is_some == 1 {
+            let amount = read_u64_le(&mut rdr).unwrap();
+            let mut addr = [0u8; 43];
+            for i in 0..43 {
+                addr[i] = read_u8(&mut rdr).unwrap();
+            }
+
+            Some((amount, addr))
+        } else {
+            None
+        };
+
         Self {
             branch_id,
             expiry_height,
@@ -300,6 +338,7 @@ impl PsbtWrapper {
             vout,
             inputs_utxo: inputs,
             orchard_bundle,
+            orchard_output,
         }
     }
 

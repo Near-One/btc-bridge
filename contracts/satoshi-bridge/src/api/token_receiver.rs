@@ -154,7 +154,8 @@ impl Contract {
             // Recover and validate the actual Orchard output amount from the bundle
             let actual_orchard_amount = psbt.get_orchard_output_amount();
             let expected_max = amount.saturating_sub(withdraw_fee).saturating_sub(gas_fee);
-            let expected_min = expected_max.saturating_sub(self.internal_config().min_change_amount);
+            let expected_min =
+                expected_max.saturating_sub(self.internal_config().min_change_amount);
 
             require!(
                 actual_orchard_amount >= expected_min && actual_orchard_amount <= expected_max,
