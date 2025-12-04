@@ -217,6 +217,12 @@ impl PsbtWrapper {
             .collect()
     }
 
+    pub fn add_extra_outputs(&self, actual_received_amounts: &mut Vec<u128>) {
+        if let Some((amount, _addr)) = self.orchard_output.clone() {
+            actual_received_amounts.push(amount as u128);
+        }
+    }
+
     pub fn get_output(&self) -> Vec<TxOut> {
         self.vout
             .clone()

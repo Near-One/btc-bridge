@@ -136,70 +136,22 @@ impl Contract {
 
         let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount);
 
-        // Calculate actual gas fee using ZIP-317 formula
-        let computed_gas_fee = psbt.get_min_fee().into_u64() as u128;
+        let target_address_script_pubkey = self
+            .internal_config()
+            .string_to_script_pubkey(&target_btc_address);
 
-        // Determine validation path based on presence of Orchard bundle
-        let (actual_received_amount, gas_fee) = if psbt.has_orchard_bundle() {
-            // Orchard withdrawal case (with or without transparent change)
-            // Baseline scenario: 1 Orchard output to user + transparent change to bridge
+        let withdraw_change_address_script_pubkey =
+            self.internal_config().get_change_script_pubkey();
 
-            // Use max_gas_fee as upper bound if provided, otherwise use computed fee
-            let gas_fee = if let Some(max_fee) = max_gas_fee {
-                std::cmp::min(max_fee.0, computed_gas_fee)
-            } else {
-                computed_gas_fee
-            };
-
-            // Recover and validate the actual Orchard output amount from the bundle
-            let actual_orchard_amount = psbt.get_orchard_output_amount();
-            let expected_max = amount.saturating_sub(withdraw_fee).saturating_sub(gas_fee);
-            let expected_min =
-                expected_max.saturating_sub(self.internal_config().min_change_amount);
-
-            require!(
-                actual_orchard_amount >= expected_min && actual_orchard_amount <= expected_max,
-                format!(
-                    "Orchard output amount ({}) out of valid range ({}, {})",
-                    actual_orchard_amount, expected_min, expected_max
-                )
-            );
-
-            // If there are transparent outputs, validate they are only change outputs
-            if psbt.get_output_num() > 0 {
-                let withdraw_change_address_script_pubkey =
-                    self.internal_config().get_change_script_pubkey();
-
-                // Validate all transparent outputs are valid change with exact accounting
-                self.check_orchard_with_transparent_change(
-                    psbt,
-                    &vutxos,
-                    &withdraw_change_address_script_pubkey,
-                    actual_orchard_amount,
-                    gas_fee,
-                );
-            }
-
-            (actual_orchard_amount, gas_fee)
-        } else {
-            // Pure transparent withdrawal case: validate transparent outputs
-            let target_address_script_pubkey = self
-                .internal_config()
-                .string_to_script_pubkey(&target_btc_address);
-
-            let withdraw_change_address_script_pubkey =
-                self.internal_config().get_change_script_pubkey();
-
-            self.check_withdraw_psbt_valid(
-                &target_address_script_pubkey,
-                &withdraw_change_address_script_pubkey,
-                psbt,
-                &vutxos,
-                amount,
-                withdraw_fee,
-                max_gas_fee,
-            )
-        };
+        let (actual_received_amount, gas_fee) = self.check_withdraw_psbt_valid(
+            &target_address_script_pubkey,
+            &withdraw_change_address_script_pubkey,
+            psbt,
+            &vutxos,
+            amount,
+            withdraw_fee,
+            max_gas_fee,
+        );
 
         let need_signature_num = psbt.get_input_num();
         let psbt_hex = psbt.serialize();
