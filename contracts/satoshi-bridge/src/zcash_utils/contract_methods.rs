@@ -101,16 +101,12 @@ impl Contract {
     ) -> U128 {
         let expiry_height = 0; //last_block_height + self.get_config().expiry_height_gap;
 
-        // First, create a preliminary PSBT to calculate the actual ZIP-317 fee
-        // We pass None for expected values initially since we need the fee first
-        let psbt = PsbtWrapper::new(
+        let mut psbt = PsbtWrapper::new(
             input.clone(),
             output.clone(),
             orchard_bundle.clone(),
             expiry_height,
             self.internal_config(),
-            None,
-            None,
         );
 
         // Calculate actual gas fee using ZIP-317 formula based on transaction structure
@@ -124,27 +120,22 @@ impl Contract {
         };
 
         // For withdrawals with Orchard bundle, calculate the expected net amount after fees
-        let (expected_recipient, expected_amount) = if orchard_bundle.is_some() {
+        if orchard_bundle.is_some() {
             let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount.0);
             let orchard_amount = amount
                 .0
                 .saturating_sub(withdraw_fee)
                 .saturating_sub(gas_fee);
-            (Some(target_btc_address.clone()), Some(orchard_amount))
-        } else {
-            (None, None)
-        };
 
-        // Recreate PSBT with expected values for validation
-        let mut psbt = PsbtWrapper::new(
-            input,
-            output,
-            orchard_bundle,
-            expiry_height,
-            self.internal_config(),
-            expected_recipient,
-            expected_amount,
-        );
+            let expected_recipient = target_btc_address.clone();
+            let expected_amount = orchard_amount;
+            psbt.validate_orchard_bundle(
+                expected_recipient,
+                expected_amount as u64,
+                self.internal_config().min_change_amount as u64,
+                self.internal_config().chain.clone(),
+            );
+        }
 
         self.create_btc_pending_info(
             sender_id,
@@ -177,8 +168,6 @@ impl Contract {
             orchard_bundle,
             expiry_height,
             self.internal_config(),
-            None,
-            None,
         );
 
         self.create_active_utxo_management_pending_info(account_id, &mut psbt);

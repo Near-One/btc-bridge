@@ -92,27 +92,9 @@ pub fn validate_orchard_bundle(
     expected_amount: u64,
     min_change_amount: u64,
     chain: &network::Chain,
-    real_outputs: Vec<(u64, [u8; 43])>,
+    orchard_output: (u64, [u8; 43]),
 ) {
-    // Enforce minimum actions per Orchard protocol
-    require!(
-        bundle.actions().len() >= MIN_ACTIONS,
-        format!(
-            "Orchard bundle must have at least {} actions, got {}",
-            MIN_ACTIONS,
-            bundle.actions().len()
-        )
-    );
-
-    require!(
-        real_outputs.len() == 1,
-        format!(
-            "Expected exactly 1 non-zero Orchard output, found {}",
-            real_outputs.len()
-        )
-    );
-
-    let (recovered_amount, recovered_addr_bytes) = real_outputs[0];
+    let (recovered_amount, recovered_addr_bytes) = orchard_output;
 
     // Validate amount is within range (allow dust adjustment like transparent validation)
     let expected_max = expected_amount;

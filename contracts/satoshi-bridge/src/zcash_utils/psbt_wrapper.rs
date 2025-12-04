@@ -36,8 +36,6 @@ impl PsbtWrapper {
         orchard_bundle_bytes: Option<Vec<u8>>,
         expiry_height: u32,
         config: &Config,
-        expected_recipient: Option<String>,
-        expected_amount: Option<u128>,
     ) -> Self {
         require!(!input.is_empty(), "empty input");
         // Allow empty output if we have an orchard bundle (funds go to shielded pool)
@@ -93,28 +91,23 @@ impl PsbtWrapper {
                 }
             }
 
-            // Validate orchard bundle against policy if expected values are provided
-            if let (Some(expected_addr), Some(expected_amt)) = (expected_recipient, expected_amount)
-            {
-                orchard_policy::validate_orchard_bundle(
-                    &bundle,
-                    &expected_addr,
-                    expected_amt as u64,
-                    config.min_change_amount as u64,
-                    &config.chain,
-                    real_outputs.clone(),
-                );
-            } else {
-                // If no expected values provided, enforce minimum actions per Orchard protocol
-                require!(
-                    bundle.actions().len() >= orchard_policy::MIN_ACTIONS,
-                    format!(
-                        "Orchard bundle must have at least {} actions, got {}",
-                        orchard_policy::MIN_ACTIONS,
-                        bundle.actions().len()
-                    )
-                );
-            }
+            require!(
+                real_outputs.len() == 1,
+                format!(
+                    "Expected exactly 1 non-zero Orchard output, found {}",
+                    real_outputs.len()
+                )
+            );
+
+            // If no expected values provided, enforce minimum actions per Orchard protocol
+            require!(
+                bundle.actions().len() >= orchard_policy::MIN_ACTIONS,
+                format!(
+                    "Orchard bundle must have at least {} actions, got {}",
+                    orchard_policy::MIN_ACTIONS,
+                    bundle.actions().len()
+                )
+            );
 
             Some(bundle)
         } else {
@@ -130,6 +123,23 @@ impl PsbtWrapper {
             orchard_bundle,
             orchard_output: real_outputs.pop(),
         }
+    }
+
+    pub fn validate_orchard_bundle(
+        &self,
+        expected_addr: String,
+        expected_amt: u64,
+        min_change_amount: u64,
+        chain: network::Chain,
+    ) {
+        orchard_policy::validate_orchard_bundle(
+            &self.orchard_bundle.clone().unwrap(),
+            &expected_addr,
+            expected_amt,
+            min_change_amount,
+            &chain,
+            self.orchard_output.clone().unwrap(),
+        );
     }
 
     pub fn from_original_psbt(
