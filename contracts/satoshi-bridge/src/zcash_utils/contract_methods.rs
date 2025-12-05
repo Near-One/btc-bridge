@@ -195,17 +195,6 @@ impl Contract {
         max_gas_fee: Option<U128>,
         orchard_bundle: Option<Vec<u8>>,
     ) -> PromiseOrValue<U128> {
-        // Validate: If the address is a Unified Address with an Orchard receiver, require Orchard bundle
-        // Note: Unified Addresses can contain only transparent receivers, which is valid without a bundle
-        let chain = self.internal_config().chain.clone();
-        if orchard_policy::has_orchard_receiver(&target_btc_address, &chain) {
-            require!(
-                orchard_bundle.is_some(),
-                "Unified Address contains Orchard receiver but no Orchard bundle provided. \
-                 Either provide an Orchard bundle or use a transparent-only address"
-            );
-        }
-
         PromiseOrValue::Promise(
             self.get_last_block_height_promise().then(
                 Self::ext(env::current_account_id())
