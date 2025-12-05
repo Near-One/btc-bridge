@@ -171,20 +171,20 @@ impl Contract {
                 // For ZCash chains, use base64 encoding to save space (1.33x vs 2x overhead for hex)
                 // ZCash transactions with Orchard bundles are larger and benefit from compact encoding
                 // For Bitcoin chains, keep hex encoding for backward compatibility
-                let tx_bytes_base64 = if chain == network::Chain::ZcashMainnet
-                    || chain == network::Chain::ZcashTestnet
-                {
+
+                #[cfg(feature = "zcash")]
+                let tx_bytes_base64 = {
                     use near_sdk::base64::{engine::general_purpose::STANDARD, Engine};
                     STANDARD.encode(&tx_bytes_with_sign)
-                } else {
-                    // Bitcoin chains: use hex for backward compatibility
-                    hex::encode(&tx_bytes_with_sign)
                 };
 
                 Event::SignedBtcTransaction {
                     account_id: &account_id,
                     tx_id: btc_pending_sign_id.clone(),
-                    tx_bytes_base64,
+                    #[cfg(not(feature = "zcash"))]
+                    tx_bytes: &tx_bytes_with_sign,
+                    #[cfg(feature = "zcash")]
+                    tx_bytes_base64
                 }
                 .emit();
 

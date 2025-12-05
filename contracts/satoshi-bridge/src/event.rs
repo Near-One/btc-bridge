@@ -53,6 +53,9 @@ pub enum Event<'a> {
     SignedBtcTransaction {
         account_id: &'a AccountId,
         tx_id: String,
+        #[cfg(not(feature = "zcash"))]
+        tx_bytes: &'a Vec<u8>,
+        #[cfg(feature = "zcash")]
         tx_bytes_base64: String,
     },
     WithdrawBtcDetail {
