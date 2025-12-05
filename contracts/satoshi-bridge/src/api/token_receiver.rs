@@ -84,16 +84,13 @@ impl Contract {
                 .is_none(),
             "Previous btc tx has not been signed"
         );
-
-        let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount);
-
         let target_address_script_pubkey = self
             .internal_config()
             .string_to_script_pubkey(&target_btc_address);
 
         let withdraw_change_address_script_pubkey =
             self.internal_config().get_change_script_pubkey();
-
+       let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount);
         let (actual_received_amount, gas_fee) = self.check_withdraw_psbt_valid(
             &target_address_script_pubkey,
             &withdraw_change_address_script_pubkey,
