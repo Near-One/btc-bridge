@@ -211,11 +211,10 @@ impl Contract {
         &mut self,
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
-        orchard_bundle: Option<Vec<u8>>,
     ) {
         assert_one_yocto();
         let account_id = env::predecessor_account_id();
-        self.active_utxo_management_chain_specific(account_id, input, output, orchard_bundle);
+        self.active_utxo_management_chain_specific(account_id, input, output);
     }
 
     /// The initiator of active UTXO management accelerates the transaction by increasing the gas fee.

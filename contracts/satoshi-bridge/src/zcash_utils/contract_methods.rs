@@ -139,7 +139,6 @@ impl Contract {
         account_id: AccountId,
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
-        orchard_bundle: Option<Vec<u8>>,
         #[callback_unwrap] last_block_height: u32,
     ) {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
@@ -149,7 +148,7 @@ impl Contract {
         let mut psbt = PsbtWrapper::new(
             input,
             output,
-            orchard_bundle,
+            None,
             expiry_height,
             last_block_height,
             self.internal_config(),
@@ -223,12 +222,11 @@ impl Contract {
         account_id: AccountId,
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
-        orchard_bundle: Option<Vec<u8>>,
     ) {
         self.get_last_block_height_promise().then(
             Self::ext(env::current_account_id())
                 .with_static_gas(GAS_FOR_ACTIVE_UTXO_MANAGMENT_CALLBACK)
-                .active_utxo_management_callback(account_id, input, output, orchard_bundle),
+                .active_utxo_management_callback(account_id, input, output),
         );
     }
 

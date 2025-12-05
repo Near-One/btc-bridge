@@ -36,7 +36,7 @@ macro_rules! define_rbf_method {
 }
 
 impl Contract {
-    pub(crate) fn check_psbt_chain_specific(&self, _psbt: &PsbtWrapper, _gas_fee: u128) {}
+    pub(crate) fn check_psbt_chain_specific(&self, _psbt: &PsbtWrapper, _gas_fee: u128, _target_btc_address: String) {}
 
     pub(crate) fn check_withdraw_chain_specific(
         original_tx_btc_pending_info: &BTCPendingInfo,
@@ -56,7 +56,11 @@ impl Contract {
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
+        orchard_bundle_bytes: Option<Vec<u8>>,
+        expiry_height: Option<u32>,
     ) -> PromiseOrValue<U128> {
+        require!(orchard_bundle_bytes.is_none(), "Orchard bundle bytes are not supported.");
+        require!(expiry_height.is_none(), "Expiry Height are not supported.");
         let mut psbt = PsbtWrapper::new(input, output);
         self.create_btc_pending_info(
             sender_id,
