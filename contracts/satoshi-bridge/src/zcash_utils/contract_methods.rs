@@ -109,22 +109,12 @@ impl Contract {
             self.internal_config(),
         );
 
-        // Calculate actual gas fee using ZIP-317 formula based on transaction structure
-        let computed_gas_fee = psbt.get_min_fee().into_u64() as u128;
-
-        // If max_gas_fee is provided, use it as upper bound, otherwise use computed fee
-        let gas_fee = if let Some(max_fee) = max_gas_fee {
-            std::cmp::min(max_fee.0, computed_gas_fee)
-        } else {
-            computed_gas_fee
-        };
-
         self.create_btc_pending_info(
             sender_id,
             amount.0,
             target_btc_address,
             &mut psbt,
-            Some(U128(gas_fee)),
+            max_gas_fee,
         );
 
         U128(0)
