@@ -130,7 +130,7 @@ impl PsbtWrapper {
             &self.orchard_bundle.clone().unwrap(),
             &expected_addr,
             &chain,
-            self.orchard_output.clone().unwrap(),
+            self.orchard_output.unwrap(),
         );
     }
 
@@ -211,12 +211,12 @@ impl PsbtWrapper {
     }
 
     pub fn add_extra_outputs(&self, actual_received_amounts: &mut Vec<u128>) -> u128 {
-        if let Some((amount, _addr)) = self.orchard_output.clone() {
+        if let Some((amount, _addr)) = self.orchard_output {
             actual_received_amounts.push(amount as u128);
             return amount as u128;
         }
 
-        return 0;
+        0
     }
 
     pub fn get_output(&self) -> Vec<TxOut> {
@@ -334,8 +334,8 @@ impl PsbtWrapper {
         let orchard_output = if is_some == 1 {
             let amount = read_u64_le(&mut rdr).unwrap();
             let mut addr = [0u8; 43];
-            for i in 0..43 {
-                addr[i] = read_u8(&mut rdr).unwrap();
+            for addr_byte in &mut addr {
+                *addr_byte = read_u8(&mut rdr).unwrap();
             }
 
             Some((amount, addr))

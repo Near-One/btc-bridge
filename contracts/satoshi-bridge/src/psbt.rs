@@ -168,7 +168,7 @@ impl Contract {
         let mut actual_received_amounts = vec![];
         let mut change_amounts = vec![];
 
-        if psbt.get_output().len() > 0 {
+        if !psbt.get_output().is_empty() {
             let target_address_script_pubkey = self
                 .internal_config()
                 .string_to_script_pubkey(&target_btc_address);

@@ -83,7 +83,6 @@ define_rbf_callback!(
     internal_cancel_active_utxo_management
 );
 
-#[allow(clippy::too_many_arguments)]
 #[near]
 impl Contract {
     #[private]
