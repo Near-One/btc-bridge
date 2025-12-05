@@ -35,6 +35,7 @@ impl PsbtWrapper {
         output: Vec<TxOut>,
         orchard_bundle_bytes: Option<Vec<u8>>,
         expiry_height: u32,
+        current_height: u32,
         config: &Config,
     ) -> Self {
         require!(!input.is_empty(), "empty input");
@@ -115,7 +116,7 @@ impl PsbtWrapper {
         };
 
         Self {
-            branch_id: get_branch_id(expiry_height, config),
+            branch_id: get_branch_id(current_height, config),
             expiry_height,
             vout,
             vin,
@@ -138,6 +139,7 @@ impl PsbtWrapper {
         original_psbt: PsbtWrapper,
         output: Vec<TxOut>,
         expiry_height: u32,
+        current_height: u32,
         config: &Config,
     ) -> Self {
         let vout = if output.is_empty() {
@@ -154,7 +156,7 @@ impl PsbtWrapper {
         };
 
         Self {
-            branch_id: get_branch_id(expiry_height, config),
+            branch_id: get_branch_id(current_height, config),
             expiry_height,
             vin: original_psbt.vin,
             vout,
@@ -448,8 +450,8 @@ impl PsbtWrapper {
     }
 }
 
-fn get_branch_id(expiry_height: u32, config: &Config) -> BranchId {
-    BranchId::Nu6_1
+fn get_branch_id(current_height: u32, config: &Config) -> BranchId {
+    config.chain.get_branch_id(current_height)
 }
 
 fn read_u32_le<R: Read>(r: &mut R) -> io::Result<u32> {

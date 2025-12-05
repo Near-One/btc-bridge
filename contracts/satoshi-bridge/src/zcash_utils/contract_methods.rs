@@ -44,6 +44,7 @@ macro_rules! define_rbf_callback {
                     original_tx_btc_pending_info,
                     output,
                     expiry_height,
+                    last_block_height
                 );
 
                 let btc_pending_id =
@@ -118,6 +119,7 @@ impl Contract {
             output.clone(),
             orchard_bundle.clone(),
             expiry_height,
+            last_block_height,
             self.internal_config(),
         );
 
@@ -151,6 +153,7 @@ impl Contract {
             output,
             orchard_bundle,
             expiry_height,
+            last_block_height,
             self.internal_config(),
         );
 
@@ -236,12 +239,14 @@ impl Contract {
         original_tx_btc_pending_info: &BTCPendingInfo,
         output: Vec<TxOut>,
         expiry_height: u32,
+        current_height: u32,
     ) -> PsbtWrapper {
         let original_psbt = original_tx_btc_pending_info.get_psbt();
         PsbtWrapper::from_original_psbt(
             original_psbt,
             output,
             expiry_height,
+            current_height,
             self.internal_config(),
         )
     }
