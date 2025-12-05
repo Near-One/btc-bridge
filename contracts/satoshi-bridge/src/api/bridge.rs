@@ -207,11 +207,7 @@ impl Contract {
     #[payable]
     #[access_control_any(roles(Role::DAO, Role::Operator))]
     #[pause(except(roles(Role::DAO)))]
-    pub fn active_utxo_management(
-        &mut self,
-        input: Vec<OutPoint>,
-        output: Vec<TxOut>,
-    ) {
+    pub fn active_utxo_management(&mut self, input: Vec<OutPoint>, output: Vec<TxOut>) {
         assert_one_yocto();
         let account_id = env::predecessor_account_id();
         self.active_utxo_management_chain_specific(account_id, input, output);

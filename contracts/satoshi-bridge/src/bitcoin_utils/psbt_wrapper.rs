@@ -105,7 +105,7 @@ impl PsbtWrapper {
             })
             .collect()
     }
-    
+
     pub fn add_extra_outputs(&self, _actual_received_amounts: &mut Vec<u128>) -> u128 {
         0
     }
