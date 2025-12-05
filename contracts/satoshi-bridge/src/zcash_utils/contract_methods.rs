@@ -121,18 +121,9 @@ impl Contract {
 
         // For withdrawals with Orchard bundle, calculate the expected net amount after fees
         if orchard_bundle.is_some() {
-            let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount.0);
-            let orchard_amount = amount
-                .0
-                .saturating_sub(withdraw_fee)
-                .saturating_sub(gas_fee);
-
             let expected_recipient = target_btc_address.clone();
-            let expected_amount = orchard_amount;
             psbt.validate_orchard_bundle(
                 expected_recipient,
-                expected_amount as u64,
-                self.internal_config().min_change_amount as u64,
                 self.internal_config().chain.clone(),
             );
         }

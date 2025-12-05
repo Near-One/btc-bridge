@@ -128,15 +128,11 @@ impl PsbtWrapper {
     pub fn validate_orchard_bundle(
         &self,
         expected_addr: String,
-        expected_amt: u64,
-        min_change_amount: u64,
         chain: network::Chain,
     ) {
         orchard_policy::validate_orchard_bundle(
             &self.orchard_bundle.clone().unwrap(),
             &expected_addr,
-            expected_amt,
-            min_change_amount,
             &chain,
             self.orchard_output.clone().unwrap(),
         );

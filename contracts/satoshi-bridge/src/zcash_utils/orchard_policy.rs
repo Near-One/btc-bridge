@@ -89,25 +89,11 @@ pub fn extract_orchard_receiver_from_unified(
 pub fn validate_orchard_bundle(
     bundle: &Bundle<orchard::bundle::Authorized, ZatBalance>,
     expected_recipient: &str,
-    expected_amount: u64,
-    min_change_amount: u64,
     chain: &network::Chain,
     orchard_output: (u64, [u8; 43]),
 ) {
     let (recovered_amount, recovered_addr_bytes) = orchard_output;
-
-    // Validate amount is within range (allow dust adjustment like transparent validation)
-    let expected_max = expected_amount;
-    let expected_min = expected_amount.saturating_sub(min_change_amount);
-
-    require!(
-        recovered_amount >= expected_min && recovered_amount <= expected_max,
-        format!(
-            "Orchard amount {} out of valid range ({}, {})",
-            recovered_amount, expected_min, expected_max
-        )
-    );
-
+    
     // Validate recipient
     let expected_addr_bytes = extract_orchard_receiver_from_unified(expected_recipient, chain);
     require!(
