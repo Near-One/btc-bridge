@@ -69,55 +69,6 @@ impl FungibleTokenReceiver for Contract {
 }
 
 impl Contract {
-    /// Validate transparent change outputs for Orchard withdrawals.
-    /// For Orchard withdrawals, transparent outputs must only be change back to the bridge.
-    /// Validates exact accounting: input = orchard_amount + change + gas_fee
-    fn check_orchard_with_transparent_change(
-        &self,
-        psbt: &PsbtWrapper,
-        vutxos: &[VUTXO],
-        withdraw_change_address_script_pubkey: &ScriptBuf,
-        orchard_amount: u128,
-        gas_fee: u128,
-    ) {
-        let config = self.internal_config();
-        let input_amount = vutxos
-            .iter()
-            .map(|vutxo| vutxo.get_amount() as u128)
-            .sum::<u128>();
-
-        let mut total_change_amount = 0u128;
-
-        // All transparent outputs must be change outputs to bridge address
-        for output in psbt.get_output() {
-            let output_value = output.value.to_sat() as u128;
-            require!(
-                &output.script_pubkey == withdraw_change_address_script_pubkey,
-                "For Orchard withdrawals, all transparent outputs must be change to bridge address"
-            );
-            require!(
-                output_value >= config.min_change_amount,
-                "Change amount is too small"
-            );
-            require!(
-                output_value <= config.max_change_amount,
-                "Change amount exceeds maximum"
-            );
-            total_change_amount += output_value;
-        }
-
-        // Validate exact accounting: transparent_input = orchard_amount + change + gas_fee
-        // This ensures the value balance is correct and no value is missing or extra
-        let expected_input = orchard_amount + total_change_amount + gas_fee;
-        require!(
-            input_amount == expected_input,
-            format!(
-                "Transparent accounting mismatch: input ({}) != orchard ({}) + change ({}) + fee ({})",
-                input_amount, orchard_amount, total_change_amount, gas_fee
-            )
-        );
-    }
-
     pub(crate) fn create_btc_pending_info(
         &mut self,
         sender_id: AccountId,
