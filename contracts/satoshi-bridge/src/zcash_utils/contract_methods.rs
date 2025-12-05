@@ -119,15 +119,6 @@ impl Contract {
             computed_gas_fee
         };
 
-        // For withdrawals with Orchard bundle, calculate the expected net amount after fees
-        if orchard_bundle.is_some() {
-            let expected_recipient = target_btc_address.clone();
-            psbt.validate_orchard_bundle(
-                expected_recipient,
-                self.internal_config().chain.clone(),
-            );
-        }
-
         self.create_btc_pending_info(
             sender_id,
             amount.0,
@@ -166,7 +157,7 @@ impl Contract {
 }
 
 impl Contract {
-    pub(crate) fn check_psbt_chain_specific(&self, psbt: &PsbtWrapper, gas_fee: u128) {
+    pub(crate) fn check_psbt_chain_specific(&self, psbt: &PsbtWrapper, gas_fee: u128, target_btc_address: String) {
         let min_fee = psbt.get_min_fee();
         require!(
             gas_fee >= min_fee.into_u64() as u128,
@@ -176,6 +167,14 @@ impl Contract {
                 min_fee.into_u64()
             )
         );
+        
+        // For withdrawals with Orchard bundle, calculate the expected net amount after fees
+        if psbt.has_orchard_bundle() {
+            psbt.validate_orchard_bundle(
+                target_btc_address,
+                self.internal_config().chain.clone(),
+            );
+        }
     }
 
     pub(crate) fn check_withdraw_chain_specific(

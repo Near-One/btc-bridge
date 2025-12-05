@@ -1,5 +1,6 @@
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
+use crate::network::Address;
 
 impl Contract {
     pub fn check_withdraw_rbf_psbt_valid(
@@ -18,13 +19,17 @@ impl Contract {
             .cloned()
             .expect("The original tx is not a user withdraw tx.")
             .script_pubkey;
+            
+        let target_address_pubkey = target_address_script_pubkey.as_script().p2pk_public_key().unwrap();
+        let target_address = Address::from_pubkey(self.internal_config().chain.clone(), target_address_pubkey).unwrap().to_string();
+        
         require!(
             original_tx.output().len() == withdraw_rbf_psbt.get_output_num(),
             "Invalid output num"
         );
         let (_, _, actual_received_amount, gas_fee) = self.check_withdraw_psbt(
             withdraw_rbf_psbt,
-            &target_address_script_pubkey,
+            target_address,
             &withdraw_change_address_script_pubkey,
             &original_tx_btc_pending_info.vutxos,
             original_tx_btc_pending_info.transfer_amount,
