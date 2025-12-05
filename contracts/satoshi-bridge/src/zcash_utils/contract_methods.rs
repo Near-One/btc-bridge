@@ -35,7 +35,7 @@ macro_rules! define_rbf_callback {
                 output: Vec<TxOut>,
                 #[callback_unwrap] last_block_height: u32,
             ) {
-                let expiry_height = 0; //last_block_height + self.get_config().expiry_height_gap;
+                let expiry_height = last_block_height + self.get_config().expiry_height_gap;
 
                 let original_tx_btc_pending_info =
                     self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
@@ -97,9 +97,21 @@ impl Contract {
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
         orchard_bundle: Option<Vec<u8>>,
+        expiry_height: Option<u32>,
         #[callback_unwrap] last_block_height: u32,
     ) -> U128 {
-        let expiry_height = 0; //last_block_height + self.get_config().expiry_height_gap;
+        let expiry_height =
+            expiry_height.unwrap_or(last_block_height + self.get_config().expiry_height_gap);
+        require!(
+            expiry_height >= last_block_height + self.get_config().expiry_height_gap
+                && expiry_height <= last_block_height + 2 * self.get_config().expiry_height_gap,
+            format!(
+                "Invalid expiry height: {}. Expected value between {} and {}.",
+                expiry_height,
+                last_block_height + self.get_config().expiry_height_gap,
+                last_block_height + 2 * self.get_config().expiry_height_gap
+            )
+        );
 
         let mut psbt = PsbtWrapper::new(
             input.clone(),
@@ -130,7 +142,7 @@ impl Contract {
         orchard_bundle: Option<Vec<u8>>,
         #[callback_unwrap] last_block_height: u32,
     ) {
-        let expiry_height = 0; //last_block_height + self.get_config().expiry_height_gap;
+        let expiry_height = last_block_height + self.get_config().expiry_height_gap;
 
         // For active UTXO management, we don't validate orchard recipient/amount
         // as this is internal bridge operations, not user withdrawals
@@ -147,7 +159,12 @@ impl Contract {
 }
 
 impl Contract {
-    pub(crate) fn check_psbt_chain_specific(&self, psbt: &PsbtWrapper, gas_fee: u128, target_btc_address: String) {
+    pub(crate) fn check_psbt_chain_specific(
+        &self,
+        psbt: &PsbtWrapper,
+        gas_fee: u128,
+        target_btc_address: String,
+    ) {
         let min_fee = psbt.get_min_fee();
         require!(
             gas_fee >= min_fee.into_u64() as u128,
@@ -157,13 +174,10 @@ impl Contract {
                 min_fee.into_u64()
             )
         );
-        
+
         // For withdrawals with Orchard bundle, calculate the expected net amount after fees
         if psbt.has_orchard_bundle() {
-            psbt.validate_orchard_bundle(
-                target_btc_address,
-                self.internal_config().chain.clone(),
-            );
+            psbt.validate_orchard_bundle(target_btc_address, self.internal_config().chain.clone());
         }
     }
 
@@ -183,6 +197,7 @@ impl Contract {
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
         orchard_bundle: Option<Vec<u8>>,
+        expiry_height: Option<u32>,
     ) -> PromiseOrValue<U128> {
         PromiseOrValue::Promise(
             self.get_last_block_height_promise().then(
@@ -196,6 +211,7 @@ impl Contract {
                         output,
                         max_gas_fee,
                         orchard_bundle,
+                        expiry_height,
                     ),
             ),
         )

@@ -58,7 +58,7 @@ pub fn validate_orchard_bundle(
     orchard_output: (u64, [u8; 43]),
 ) {
     let (recovered_amount, recovered_addr_bytes) = orchard_output;
-    
+
     // Validate recipient
     let expected_addr_bytes = extract_orchard_receiver_from_unified(expected_recipient, chain);
     require!(

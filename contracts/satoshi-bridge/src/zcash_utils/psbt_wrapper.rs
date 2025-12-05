@@ -125,11 +125,7 @@ impl PsbtWrapper {
         }
     }
 
-    pub fn validate_orchard_bundle(
-        &self,
-        expected_addr: String,
-        chain: network::Chain,
-    ) {
+    pub fn validate_orchard_bundle(&self, expected_addr: String, chain: network::Chain) {
         orchard_policy::validate_orchard_bundle(
             &self.orchard_bundle.clone().unwrap(),
             &expected_addr,
