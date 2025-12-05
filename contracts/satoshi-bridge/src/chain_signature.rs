@@ -136,8 +136,6 @@ impl Contract {
         if let Some(result_bytes) = promise_result_as_success() {
             let signature = serde_json::from_slice::<SignatureResponse>(&result_bytes)
                 .expect("Invalid signature");
-            // Get chain before mutable borrow (needed for encoding selection later)
-            let chain = self.internal_config().chain.clone();
 
             let public_key = self
                 .generate_btc_public_key(
@@ -184,7 +182,7 @@ impl Contract {
                     #[cfg(not(feature = "zcash"))]
                     tx_bytes: &tx_bytes_with_sign,
                     #[cfg(feature = "zcash")]
-                    tx_bytes_base64
+                    tx_bytes_base64,
                 }
                 .emit();
 

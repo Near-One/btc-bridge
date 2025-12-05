@@ -7,7 +7,6 @@ use bitcoin::{OutPoint, TxOut};
 use near_sdk::require;
 use std::io;
 use std::io::{Cursor, Read, Write};
-use std::ops::Add;
 use zcash_primitives::transaction::components::orchard::read_v5_bundle;
 use zcash_primitives::transaction::fees::transparent::{InputSize, OutputView};
 use zcash_primitives::transaction::fees::FeeRule;

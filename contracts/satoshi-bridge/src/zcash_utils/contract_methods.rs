@@ -1,5 +1,4 @@
 use crate::psbt_wrapper::PsbtWrapper;
-use crate::zcash_utils::orchard_policy;
 use crate::*;
 use bitcoin::{OutPoint, TxOut};
 use near_sdk::json_types::U128;
@@ -44,7 +43,7 @@ macro_rules! define_rbf_callback {
                     original_tx_btc_pending_info,
                     output,
                     expiry_height,
-                    last_block_height
+                    last_block_height,
                 );
 
                 let btc_pending_id =
