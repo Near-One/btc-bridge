@@ -192,7 +192,7 @@ impl Contract {
             }
         });
 
-        psbt.add_extra_outputs(&mut actual_received_amounts);
+        total_output_amount += psbt.add_extra_outputs(&mut actual_received_amounts);
 
         require!(
             actual_received_amounts.len() <= 1,

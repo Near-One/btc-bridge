@@ -1,7 +1,7 @@
 use crate::*;
 use std::io;
 use std::io::{Cursor, Read, Write};
-
+use std::ops::Add;
 use crate::zcash_utils::orchard_policy;
 use crate::zcash_utils::orchard_policy::BRIDGE_OVK;
 use crate::zcash_utils::transaction::Transaction;
@@ -217,10 +217,13 @@ impl PsbtWrapper {
             .collect()
     }
 
-    pub fn add_extra_outputs(&self, actual_received_amounts: &mut Vec<u128>) {
+    pub fn add_extra_outputs(&self, actual_received_amounts: &mut Vec<u128>) -> u128 {
         if let Some((amount, _addr)) = self.orchard_output.clone() {
             actual_received_amounts.push(amount as u128);
+            return amount as u128;
         }
+        
+        return 0;
     }
 
     pub fn get_output(&self) -> Vec<TxOut> {
