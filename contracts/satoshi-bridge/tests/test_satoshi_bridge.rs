@@ -333,6 +333,7 @@ async fn test_base() {
         }],
         max_gas_fee: None,
         orchard_bundle_bytes: None,
+        expiry_height: None,
     }));
 
     assert_eq!(
@@ -525,6 +526,7 @@ async fn test_fix_bridge_fee_and_relayer() {
         }],
         max_gas_fee: None,
         orchard_bundle_bytes: None,
+        expiry_height: None,
     }));
     let btc_pending_sign_txs = context
         .get_btc_pending_infos_paged()
@@ -663,6 +665,7 @@ async fn test_ratio_bridge_fee_and_relayer() {
         }],
         max_gas_fee: None,
         orchard_bundle_bytes: None,
+        expiry_height: None,
     }));
     let btc_pending_sign_txs = context
         .get_btc_pending_infos_paged()
@@ -810,6 +813,7 @@ async fn test_directly_withdraw() {
         }],
         max_gas_fee: None,
         orchard_bundle_bytes: None,
+        expiry_height: None,
     }));
     let btc_pending_sign_txs = context
         .get_btc_pending_infos_paged()
@@ -1467,6 +1471,7 @@ async fn test_utxo_passive_management() {
                 ],
                 max_gas_fee: None,
                 orchard_bundle_bytes: None,
+                expiry_height: None,
             }
         ),
         "require input_num < change_num"
@@ -1511,6 +1516,7 @@ async fn test_utxo_passive_management() {
                 ],
                 max_gas_fee: None,
                 orchard_bundle_bytes: None,
+                expiry_height: None,
             }
         ),
         "require input_num > change_num"
@@ -1554,6 +1560,7 @@ async fn test_utxo_passive_management() {
                 ],
                 max_gas_fee: None,
                 orchard_bundle_bytes: None,
+                expiry_height: None,
             }
         ),
         "The change amount must be less than all inputs"
@@ -1640,6 +1647,7 @@ async fn test_cancel_withdraw() {
         }],
         max_gas_fee: None,
         orchard_bundle_bytes: None,
+        expiry_height: None,
     }));
 
     let btc_pending_sign_txs = context
@@ -1869,6 +1877,7 @@ async fn test_cancel_withdraw2() {
         }],
         max_gas_fee: None,
         orchard_bundle_bytes: None,
+        expiry_height: None,
     }));
 
     let btc_pending_sign_txs = context

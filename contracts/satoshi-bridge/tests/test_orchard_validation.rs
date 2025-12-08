@@ -97,6 +97,7 @@ async fn test_orchard_wrong_recipient() {
                 output: vec![],
                 max_gas_fee: None,
                 orchard_bundle_bytes: Some(bundle_a), // Bundle for recipient A
+                expiry_height: None,
             },
         )
         .await;
@@ -191,6 +192,7 @@ async fn test_orchard_missing_bundle() {
                 output: vec![],
                 max_gas_fee: None,
                 orchard_bundle_bytes: None, // But NO bundle!
+                expiry_height: None,
             },
         )
         .await;
@@ -284,6 +286,7 @@ async fn test_orchard_bundle_in_zcash_tx() {
             output: vec![], // Orchard-only withdrawal (no transparent output)
             max_gas_fee: None,
             orchard_bundle_bytes: Some(bundle_hex.clone()),
+            expiry_height: None,
         }
     ));
 

@@ -118,6 +118,7 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
             output: vec![],
             max_gas_fee: None,
             orchard_bundle_bytes: Some(bundle_hex),
+            expiry_height: None,
         }
     ));
 
@@ -216,6 +217,7 @@ async fn test_orchard_withdrawal_amount_mismatch() {
                 output: vec![],
                 max_gas_fee: None,
                 orchard_bundle_bytes: Some(bundle_hex),
+                expiry_height: None,
             },
         )
         .await;
