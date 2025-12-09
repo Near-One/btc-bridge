@@ -92,7 +92,7 @@ impl Contract {
             self.internal_config().get_change_script_pubkey();
         let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount);
         let (actual_received_amount, gas_fee) = self.check_withdraw_psbt_valid(
-            target_btc_address,
+            target_btc_address.clone(),
             &withdraw_change_address_script_pubkey,
             psbt,
             &vutxos,
@@ -124,6 +124,7 @@ impl Contract {
                 last_rbf_time_sec: None,
                 cancel_rbf_reserved: None,
             }),
+            recipient_address: Some(target_btc_address),
         };
         require!(
             self.data_mut()
