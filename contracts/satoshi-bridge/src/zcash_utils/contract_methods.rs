@@ -15,11 +15,19 @@ macro_rules! define_rbf_callback {
                 user_account_id: AccountId,
                 original_btc_pending_verify_id: String,
                 output: Vec<TxOut>,
+                orchard_bundle_bytes: Option<String>,
+                expiry_height: Option<u32>,
             ) {
                 self.get_last_block_height_promise().then(
                     Self::ext(env::current_account_id())
                         .with_static_gas(GAS_RBF_CALL_BACK)
-                        .$callback_name(user_account_id, original_btc_pending_verify_id, output),
+                        .$callback_name(
+                            user_account_id,
+                            original_btc_pending_verify_id,
+                            output,
+                            orchard_bundle_bytes,
+                            expiry_height,
+                        ),
                 );
             }
         }
@@ -32,9 +40,23 @@ macro_rules! define_rbf_callback {
                 account_id: AccountId,
                 original_btc_pending_verify_id: String,
                 output: Vec<TxOut>,
+                orchard_bundle_bytes: Option<String>,
+                expiry_height: Option<u32>,
                 #[callback_unwrap] last_block_height: u32,
             ) {
-                let expiry_height = last_block_height + self.get_config().expiry_height_gap;
+                let expiry_height = expiry_height
+                    .unwrap_or(last_block_height + self.get_config().expiry_height_gap);
+                require!(
+                    expiry_height >= last_block_height + self.get_config().expiry_height_gap
+                        && expiry_height
+                            <= last_block_height + 2 * self.get_config().expiry_height_gap,
+                    format!(
+                        "Invalid expiry height: {}. Expected value between {} and {}.",
+                        expiry_height,
+                        last_block_height + self.get_config().expiry_height_gap,
+                        last_block_height + 2 * self.get_config().expiry_height_gap
+                    )
+                );
 
                 let original_tx_btc_pending_info =
                     self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
@@ -42,6 +64,7 @@ macro_rules! define_rbf_callback {
                 let new_psbt = self.generate_psbt_from_original_psbt_and_new_output(
                     original_tx_btc_pending_info,
                     output,
+                    orchard_bundle_bytes.map(|b| hex::decode(b).unwrap()),
                     expiry_height,
                     last_block_height,
                 );
@@ -234,6 +257,7 @@ impl Contract {
         &self,
         original_tx_btc_pending_info: &BTCPendingInfo,
         output: Vec<TxOut>,
+        orchard_bundle_bytes: Option<Vec<u8>>,
         expiry_height: u32,
         current_height: u32,
     ) -> PsbtWrapper {
@@ -241,6 +265,7 @@ impl Contract {
         PsbtWrapper::from_original_psbt(
             original_psbt,
             output,
+            orchard_bundle_bytes,
             expiry_height,
             current_height,
             self.internal_config(),

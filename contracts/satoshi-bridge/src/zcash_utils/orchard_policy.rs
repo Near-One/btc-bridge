@@ -1,6 +1,8 @@
 use near_sdk::require;
 use orchard::Bundle;
+use std::io::Cursor;
 use zcash_address::unified::Container;
+use zcash_primitives::transaction::components::orchard::read_v5_bundle;
 use zcash_protocol::value::ZatBalance;
 
 use crate::network;
@@ -43,6 +45,54 @@ pub fn extract_orchard_receiver_from_unified(
         }
     }
     near_sdk::env::panic_str("Unified address missing Orchard receiver")
+}
+
+pub fn extract_orchard_bundle(
+    orchard_bundle_bytes: Option<Vec<u8>>,
+) -> (
+    Option<orchard::Bundle<orchard::bundle::Authorized, ZatBalance>>,
+    Option<(u64, [u8; 43])>,
+) {
+    if let Some(orchard_bundle_bytes) = orchard_bundle_bytes {
+        let mut real_outputs = Vec::new();
+        let mut reader = Cursor::new(orchard_bundle_bytes);
+        let bundle = read_v5_bundle(&mut reader)
+            .expect("Failed to read orchard bundle")
+            .expect("Orchard bundle is empty");
+
+        let ovk = orchard::keys::OutgoingViewingKey::from(BRIDGE_OVK);
+
+        for action_idx in 0..bundle.actions().len() {
+            if let Some((note, addr, _memo)) = bundle.recover_output_with_ovk(action_idx, &ovk) {
+                let value = note.value().inner();
+                if value > 0 {
+                    real_outputs.push((value, addr.to_raw_address_bytes()));
+                }
+            }
+        }
+
+        require!(
+            real_outputs.len() == 1,
+            format!(
+                "Expected exactly 1 non-zero Orchard output, found {}",
+                real_outputs.len()
+            )
+        );
+
+        // If no expected values provided, enforce minimum actions per Orchard protocol
+        require!(
+            bundle.actions().len() >= MIN_ACTIONS,
+            format!(
+                "Orchard bundle must have at least {} actions, got {}",
+                MIN_ACTIONS,
+                bundle.actions().len()
+            )
+        );
+
+        (Some(bundle), real_outputs.pop())
+    } else {
+        (None, None)
+    }
 }
 
 /// Validate Orchard bundle against policy:

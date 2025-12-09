@@ -116,7 +116,13 @@ impl Contract {
     /// * `original_btc_pending_verify_id` - Pending verify ID of the original transaction.
     /// * `output` - Modified output.
     #[pause(except(roles(Role::DAO)))]
-    pub fn withdraw_rbf(&mut self, original_btc_pending_verify_id: String, output: Vec<TxOut>) {
+    pub fn withdraw_rbf(
+        &mut self,
+        original_btc_pending_verify_id: String,
+        output: Vec<TxOut>,
+        orchard_bundle_bytes: Option<String>,
+        expiry_height: Option<u32>,
+    ) {
         let account_id = env::predecessor_account_id();
         require!(
             self.internal_unwrap_account(&account_id)
@@ -125,7 +131,13 @@ impl Contract {
             "Previous btc tx has not been signed"
         );
 
-        self.withdraw_rbf_chain_specific(account_id, original_btc_pending_verify_id, output);
+        self.withdraw_rbf_chain_specific(
+            account_id,
+            original_btc_pending_verify_id,
+            output,
+            orchard_bundle_bytes,
+            expiry_height,
+        );
     }
 
     /// If the user's Withdraw is not verified within a certain time, the protocol can actively cancel the Withdraw through RBF, with the gas fee borne by the user.
@@ -154,6 +166,8 @@ impl Contract {
             user_account_id,
             original_btc_pending_verify_id,
             output,
+            None,
+            None,
         );
     }
 
@@ -239,6 +253,8 @@ impl Contract {
             account_id,
             original_btc_pending_verify_id,
             output,
+            None, 
+            None
         );
     }
 
@@ -271,6 +287,8 @@ impl Contract {
             user_account_id,
             original_btc_pending_verify_id,
             output,
+            None,
+            None,
         );
     }
 

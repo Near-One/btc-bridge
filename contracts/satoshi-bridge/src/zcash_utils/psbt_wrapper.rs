@@ -1,5 +1,4 @@
 use crate::zcash_utils::orchard_policy;
-use crate::zcash_utils::orchard_policy::BRIDGE_OVK;
 use crate::zcash_utils::transaction::Transaction;
 use crate::*;
 use bitcoin::hashes::Hash;
@@ -71,48 +70,8 @@ impl PsbtWrapper {
             vin.len()
         ];
 
-        let mut real_outputs = Vec::new();
-        // Parse and validate orchard bundle if present
-        let orchard_bundle = if let Some(orchard_bundle_bytes) = orchard_bundle_bytes {
-            let mut reader = Cursor::new(orchard_bundle_bytes);
-            let bundle = read_v5_bundle(&mut reader)
-                .expect("Failed to read orchard bundle")
-                .expect("Orchard bundle is empty");
-
-            let ovk = orchard::keys::OutgoingViewingKey::from(BRIDGE_OVK);
-
-            for action_idx in 0..bundle.actions().len() {
-                if let Some((note, addr, _memo)) = bundle.recover_output_with_ovk(action_idx, &ovk)
-                {
-                    let value = note.value().inner();
-                    if value > 0 {
-                        real_outputs.push((value, addr.to_raw_address_bytes()));
-                    }
-                }
-            }
-
-            require!(
-                real_outputs.len() == 1,
-                format!(
-                    "Expected exactly 1 non-zero Orchard output, found {}",
-                    real_outputs.len()
-                )
-            );
-
-            // If no expected values provided, enforce minimum actions per Orchard protocol
-            require!(
-                bundle.actions().len() >= orchard_policy::MIN_ACTIONS,
-                format!(
-                    "Orchard bundle must have at least {} actions, got {}",
-                    orchard_policy::MIN_ACTIONS,
-                    bundle.actions().len()
-                )
-            );
-
-            Some(bundle)
-        } else {
-            None
-        };
+        let (orchard_bundle, orchard_output) =
+            orchard_policy::extract_orchard_bundle(orchard_bundle_bytes);
 
         Self {
             branch_id: get_branch_id(current_height, config),
@@ -121,7 +80,7 @@ impl PsbtWrapper {
             vin,
             inputs_utxo: inputs,
             orchard_bundle,
-            orchard_output: real_outputs.pop(),
+            orchard_output,
         }
     }
 
@@ -137,6 +96,7 @@ impl PsbtWrapper {
     pub fn from_original_psbt(
         original_psbt: PsbtWrapper,
         output: Vec<TxOut>,
+        orchard_bundle_bytes: Option<Vec<u8>>,
         expiry_height: u32,
         current_height: u32,
         config: &Config,
@@ -154,14 +114,17 @@ impl PsbtWrapper {
                 .collect()
         };
 
+        let (orchard_bundle, orchard_output) =
+            orchard_policy::extract_orchard_bundle(orchard_bundle_bytes);
+
         Self {
             branch_id: get_branch_id(current_height, config),
             expiry_height,
             vin: original_psbt.vin,
             vout,
             inputs_utxo: original_psbt.inputs_utxo,
-            orchard_bundle: original_psbt.orchard_bundle,
-            orchard_output: original_psbt.orchard_output,
+            orchard_bundle: orchard_bundle,
+            orchard_output: orchard_output,
         }
     }
 

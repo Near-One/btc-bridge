@@ -12,14 +12,14 @@ impl Contract {
             self.internal_config().get_change_script_pubkey();
         let original_tx =
             original_tx_btc_pending_info.get_transaction(&self.internal_config().chain);
-        
+
         require!(
             original_tx.output().len() == withdraw_rbf_psbt.get_output_num(),
             "Invalid output num"
         );
-        
+
         let target_address = self.extract_recipient_address(original_tx_btc_pending_info);
-        
+
         let (_, _, actual_received_amount, gas_fee) = self.check_withdraw_psbt(
             withdraw_rbf_psbt,
             target_address,
@@ -76,7 +76,7 @@ impl Contract {
         if let Some(recipient) = original_tx_btc_pending_info.recipient_address.clone() {
             return recipient;
         }
-        
+
         let withdraw_change_address_script_pubkey =
             self.internal_config().get_change_script_pubkey();
         let original_tx =
@@ -88,11 +88,13 @@ impl Contract {
             .cloned()
             .expect("The original tx is not a user withdraw tx.")
             .script_pubkey;
-            
-        let target_address =
-            Address::from_script(target_address_script_pubkey.as_script(), self.internal_config().chain.clone())
-                .unwrap()
-                .to_string();
+
+        let target_address = Address::from_script(
+            target_address_script_pubkey.as_script(),
+            self.internal_config().chain.clone(),
+        )
+        .unwrap()
+        .to_string();
 
         target_address
     }
