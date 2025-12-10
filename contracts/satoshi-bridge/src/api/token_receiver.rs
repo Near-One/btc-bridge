@@ -67,7 +67,7 @@ impl FungibleTokenReceiver for Contract {
                 input,
                 output,
                 max_gas_fee,
-                chain_specific_data
+                chain_specific_data,
             ),
         }
     }

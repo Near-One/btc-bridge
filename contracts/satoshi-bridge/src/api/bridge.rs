@@ -253,8 +253,8 @@ impl Contract {
             account_id,
             original_btc_pending_verify_id,
             output,
-            None, 
-            None
+            None,
+            None,
         );
     }
 

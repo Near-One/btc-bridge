@@ -1,12 +1,10 @@
+use crate::network;
+use crate::network::Address;
 use near_sdk::require;
 use orchard::Bundle;
 use std::io::Cursor;
-use zcash_address::unified::Container;
 use zcash_primitives::transaction::components::orchard::read_v5_bundle;
 use zcash_protocol::value::ZatBalance;
-
-use crate::network;
-
 /// Bridge OVK used to recover outputs for policy checks.
 /// Hardcoded to all zeroes for now; can be made configurable later.
 pub const BRIDGE_OVK: [u8; 32] = [0u8; 32];
@@ -15,37 +13,6 @@ pub const BRIDGE_OVK: [u8; 32] = [0u8; 32];
 /// The Orchard builder automatically pads bundles to meet this minimum for privacy.
 /// See: https://github.com/zcash/orchard/blob/main/src/builder.rs#L36
 pub const MIN_ACTIONS: usize = 1;
-
-/// Extract the Orchard receiver raw bytes from a Unified Address string for the given chain.
-pub fn extract_orchard_receiver_from_unified(
-    target_addr: &str,
-    chain: &network::Chain,
-) -> [u8; 43] {
-    let zaddr = zcash_address::ZcashAddress::try_from_encoded(target_addr)
-        .expect("Invalid Zcash address encoding");
-
-    let net = match chain {
-        network::Chain::ZcashMainnet => zcash_protocol::consensus::NetworkType::Main,
-        network::Chain::ZcashTestnet => zcash_protocol::consensus::NetworkType::Test,
-        _ => near_sdk::env::panic_str("Unsupported chain for Orchard withdraw"),
-    };
-
-    let local_addr: network::Address = zaddr
-        .convert_if_network::<network::Address>(net)
-        .expect("Address network mismatch");
-
-    let ua = match local_addr {
-        network::Address::Unified { address, .. } => address,
-        _ => near_sdk::env::panic_str("Expected Unified Zcash address for Orchard withdraw"),
-    };
-
-    for recv in ua.items_as_parsed() {
-        if let zcash_address::unified::Receiver::Orchard(bytes) = recv {
-            return *bytes;
-        }
-    }
-    near_sdk::env::panic_str("Unified address missing Orchard receiver")
-}
 
 pub fn extract_orchard_bundle(
     orchard_bundle_bytes: Option<Vec<u8>>,
@@ -109,8 +76,13 @@ pub fn validate_orchard_bundle(
 ) {
     let (recovered_amount, recovered_addr_bytes) = orchard_output;
 
+    let recipient_address = Address::parse(expected_recipient, chain.clone())
+        .expect("Invalid recipient address provided to validate_orchard_bundle");
+
     // Validate recipient
-    let expected_addr_bytes = extract_orchard_receiver_from_unified(expected_recipient, chain);
+    let expected_addr_bytes = recipient_address
+        .extract_orchard_receiver()
+        .expect("No orchard receiver found in address");
     require!(
         recovered_addr_bytes == expected_addr_bytes,
         format!(

@@ -1,9 +1,9 @@
 use crate::psbt_wrapper::PsbtWrapper;
+use crate::zcash_utils::types::ChainSpecificData;
 use crate::*;
 use bitcoin::{OutPoint, TxOut};
 use near_sdk::json_types::U128;
 use near_sdk::{near, require, AccountId};
-use crate::zcash_utils::types::ChainSpecificData;
 
 pub const GAS_RBF_CALL_BACK: Gas = Gas::from_tgas(100);
 pub const GAS_FOR_ACTIVE_UTXO_MANAGMENT_CALLBACK: Gas = Gas::from_tgas(100);
@@ -222,8 +222,12 @@ impl Contract {
         max_gas_fee: Option<U128>,
         chain_specific_data: Option<ChainSpecificData>,
     ) -> PromiseOrValue<U128> {
-        let (orchard_bundle, expiry_height) = if let Some(chain_specific_data) = chain_specific_data {
-            (chain_specific_data.orchard_bundle_bytes.map(|b| b.0), chain_specific_data.expiry_height)
+        let (orchard_bundle, expiry_height) = if let Some(chain_specific_data) = chain_specific_data
+        {
+            (
+                chain_specific_data.orchard_bundle_bytes.map(|b| b.0),
+                chain_specific_data.expiry_height,
+            )
         } else {
             (None, None)
         };
