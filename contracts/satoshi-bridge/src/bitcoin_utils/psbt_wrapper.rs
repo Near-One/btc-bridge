@@ -162,7 +162,7 @@ impl PsbtWrapper {
         self.psbt.inputs[sign_index].final_script_witness =
             Some(Witness::p2wpkh(&signature.to_btc_signature(), &public_key));
     }
-    
+
     pub fn get_recipient_address(&self) -> Option<String> {
         None
     }

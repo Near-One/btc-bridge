@@ -303,22 +303,30 @@ impl PsbtWrapper {
             None
         };
 
-        let is_some = read_u8(&mut rdr).unwrap();
-        let orchard_output = if is_some == 1 {
-            let amount = read_u64_le(&mut rdr).unwrap();
-            let mut addr = [0u8; 43];
-            for addr_byte in &mut addr {
-                *addr_byte = read_u8(&mut rdr).unwrap();
-            }
+        let orchard_output = if version >= 3 {
+            let is_some = read_u8(&mut rdr).unwrap();
+            if is_some == 1 {
+                let amount = read_u64_le(&mut rdr).unwrap();
+                let mut addr = [0u8; 43];
+                for addr_byte in &mut addr {
+                    *addr_byte = read_u8(&mut rdr).unwrap();
+                }
 
-            Some((amount, addr))
+                Some((amount, addr))
+            } else {
+                None
+            }
         } else {
             None
         };
 
-        let is_some = read_u8(&mut rdr).unwrap();
-        let recipient_address = if is_some == 1 {
-            Some(read_string(&mut rdr).unwrap())
+        let recipient_address = if version >= 3 {
+            let is_some = read_u8(&mut rdr).unwrap();
+            if is_some == 1 {
+                Some(read_string(&mut rdr).unwrap())
+            } else {
+                None
+            }
         } else {
             None
         };

@@ -77,8 +77,8 @@ impl Contract {
 
         if let Some(recipient) = psbt.get_recipient_address().clone() {
             return recipient;
-        }        
-        
+        }
+
         let withdraw_change_address_script_pubkey =
             self.internal_config().get_change_script_pubkey();
         let original_tx =
