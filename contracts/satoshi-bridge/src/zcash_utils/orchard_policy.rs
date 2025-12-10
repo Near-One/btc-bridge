@@ -11,7 +11,7 @@ pub const BRIDGE_OVK: [u8; 32] = [0u8; 32];
 /// Minimum number of actions required in an Orchard bundle per the Orchard protocol.
 /// The Orchard builder automatically pads bundles to meet this minimum for privacy.
 /// See: https://github.com/zcash/orchard/blob/main/src/builder.rs#L36
-pub const MIN_ACTIONS: usize = 1;
+pub const EXPECTED_ACTIONS_NUMBER: usize = 1;
 
 pub fn extract_orchard_bundle(
     orchard_bundle_bytes: Option<Vec<u8>>,
@@ -47,10 +47,10 @@ pub fn extract_orchard_bundle(
         }
 
         // If no expected values provided, enforce minimum actions per Orchard protocol
-        if bundle.actions().len() < MIN_ACTIONS {
+        if bundle.actions().len() != EXPECTED_ACTIONS_NUMBER {
             return Err(format!(
-                "Orchard bundle must have at least {} actions, got {}",
-                MIN_ACTIONS,
+                "Orchard bundle must have {} actions, got {}",
+                EXPECTED_ACTIONS_NUMBER,
                 bundle.actions().len()
             ));
         }
