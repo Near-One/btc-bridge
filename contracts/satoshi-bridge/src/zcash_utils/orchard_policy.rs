@@ -26,7 +26,8 @@ pub fn extract_orchard_bundle(
         let mut real_outputs = Vec::new();
         let mut reader = Cursor::new(orchard_bundle_bytes);
         let bundle = read_v5_bundle(&mut reader)
-            .map_err(|_| "Failed to read orchard bundle".to_string())?.ok_or_else(|| "Orchard bundle is empty".to_string())?;
+            .map_err(|_| "Failed to read orchard bundle".to_string())?
+            .ok_or_else(|| "Orchard bundle is empty".to_string())?;
 
         let ovk = orchard::keys::OutgoingViewingKey::from(BRIDGE_OVK);
 

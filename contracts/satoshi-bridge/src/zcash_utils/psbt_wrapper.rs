@@ -90,7 +90,8 @@ impl PsbtWrapper {
             &expected_addr,
             &chain,
             self.orchard_output.unwrap(),
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     pub fn from_original_psbt(
@@ -225,18 +226,11 @@ impl PsbtWrapper {
             t.write(&mut buf).unwrap();
         }
 
-        // Serialize orchard bundle if present
-        if let Some(ref bundle) = self.orchard_bundle {
-            zcash_primitives::transaction::components::orchard::write_v5_bundle(
-                Some(bundle),
-                &mut buf,
-            )
-            .unwrap();
-        } else {
-            // Write empty bundle marker
-            zcash_primitives::transaction::components::orchard::write_v5_bundle(None, &mut buf)
-                .unwrap();
-        }
+        zcash_primitives::transaction::components::orchard::write_v5_bundle(
+            self.orchard_bundle.as_ref(),
+            &mut buf,
+        )
+        .unwrap();
 
         if let Some(orchard_output) = self.orchard_output {
             buf.write_all(&[1u8; 1]).unwrap();
