@@ -5,6 +5,11 @@ use near_plugins::pause;
 
 pub const GAS_FOR_FT_ON_TRANSFER_CALL_BACK: Gas = Gas::from_tgas(100);
 
+#[cfg(not(feature = "zcash"))]
+use crate::bitcoin_utils::types::ChainSpecificData;
+#[cfg(feature = "zcash")]
+use crate::zcash_utils::types::ChainSpecificData;
+
 #[near(serializers = [json])]
 pub enum TokenReceiverMessage {
     DepositProtocolFee,
@@ -14,8 +19,7 @@ pub enum TokenReceiverMessage {
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
-        orchard_bundle_bytes: Option<String>,
-        expiry_height: Option<u32>,
+        chain_specific_data: Option<ChainSpecificData>,
     },
 }
 
@@ -55,8 +59,7 @@ impl FungibleTokenReceiver for Contract {
                 input,
                 output,
                 max_gas_fee,
-                orchard_bundle_bytes,
-                expiry_height,
+                chain_specific_data,
             } => self.ft_on_transfer_withdraw_chain_specific(
                 sender_id,
                 amount,
@@ -64,8 +67,7 @@ impl FungibleTokenReceiver for Contract {
                 input,
                 output,
                 max_gas_fee,
-                orchard_bundle_bytes.map(|b| hex::decode(b).unwrap()),
-                expiry_height,
+                chain_specific_data
             ),
         }
     }

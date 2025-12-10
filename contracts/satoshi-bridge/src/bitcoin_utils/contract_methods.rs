@@ -3,6 +3,7 @@ use crate::{BTCPendingInfo, Contract, Event};
 use bitcoin::{OutPoint, TxOut};
 use near_sdk::json_types::U128;
 use near_sdk::{require, AccountId, PromiseOrValue};
+use crate::bitcoin_utils::types::ChainSpecificData;
 
 macro_rules! define_rbf_method {
     ($method:ident, $internal_fn:ident) => {
@@ -69,14 +70,8 @@ impl Contract {
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
-        orchard_bundle_bytes: Option<Vec<u8>>,
-        expiry_height: Option<u32>,
+        _chain_specific_data: Option<ChainSpecificData>,
     ) -> PromiseOrValue<U128> {
-        require!(
-            orchard_bundle_bytes.is_none(),
-            "Orchard bundle bytes are not supported."
-        );
-        require!(expiry_height.is_none(), "Expiry Height are not supported.");
         let mut psbt = PsbtWrapper::new(input, output);
         self.create_btc_pending_info(
             sender_id,
