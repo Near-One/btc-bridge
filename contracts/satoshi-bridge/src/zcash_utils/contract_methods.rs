@@ -223,7 +223,7 @@ impl Contract {
         chain_specific_data: Option<ChainSpecificData>,
     ) -> PromiseOrValue<U128> {
         let (orchard_bundle, expiry_height) = if let Some(chain_specific_data) = chain_specific_data {
-            (chain_specific_data.orchard_bundle_bytes.map(|b| hex::decode(b).unwrap()), chain_specific_data.expiry_height) 
+            (chain_specific_data.orchard_bundle_bytes.map(|b| b.0), chain_specific_data.expiry_height)
         } else {
             (None, None)
         };
