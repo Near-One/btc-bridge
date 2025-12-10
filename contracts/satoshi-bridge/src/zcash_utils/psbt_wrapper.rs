@@ -71,7 +71,7 @@ impl PsbtWrapper {
         ];
 
         let (orchard_bundle, orchard_output) =
-            orchard_policy::extract_orchard_bundle(orchard_bundle_bytes);
+            orchard_policy::extract_orchard_bundle(orchard_bundle_bytes).unwrap();
 
         Self {
             branch_id: get_branch_id(current_height, config),
@@ -90,7 +90,7 @@ impl PsbtWrapper {
             &expected_addr,
             &chain,
             self.orchard_output.unwrap(),
-        );
+        ).unwrap();
     }
 
     pub fn from_original_psbt(
@@ -115,7 +115,7 @@ impl PsbtWrapper {
         };
 
         let (orchard_bundle, orchard_output) =
-            orchard_policy::extract_orchard_bundle(orchard_bundle_bytes);
+            orchard_policy::extract_orchard_bundle(orchard_bundle_bytes).unwrap();
 
         Self {
             branch_id: get_branch_id(current_height, config),

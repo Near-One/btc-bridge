@@ -1,6 +1,5 @@
 use crate::network;
 use crate::network::Address;
-use near_sdk::require;
 use orchard::Bundle;
 use std::io::Cursor;
 use zcash_primitives::transaction::components::orchard::read_v5_bundle;
@@ -16,16 +15,18 @@ pub const MIN_ACTIONS: usize = 1;
 
 pub fn extract_orchard_bundle(
     orchard_bundle_bytes: Option<Vec<u8>>,
-) -> (
-    Option<orchard::Bundle<orchard::bundle::Authorized, ZatBalance>>,
-    Option<(u64, [u8; 43])>,
-) {
+) -> Result<
+    (
+        Option<orchard::Bundle<orchard::bundle::Authorized, ZatBalance>>,
+        Option<(u64, [u8; 43])>,
+    ),
+    String,
+> {
     if let Some(orchard_bundle_bytes) = orchard_bundle_bytes {
         let mut real_outputs = Vec::new();
         let mut reader = Cursor::new(orchard_bundle_bytes);
         let bundle = read_v5_bundle(&mut reader)
-            .expect("Failed to read orchard bundle")
-            .expect("Orchard bundle is empty");
+            .map_err(|_| "Failed to read orchard bundle".to_string())?.ok_or_else(|| "Orchard bundle is empty".to_string())?;
 
         let ovk = orchard::keys::OutgoingViewingKey::from(BRIDGE_OVK);
 
@@ -38,27 +39,25 @@ pub fn extract_orchard_bundle(
             }
         }
 
-        require!(
-            real_outputs.len() == 1,
-            format!(
+        if real_outputs.len() != 1 {
+            return Err(format!(
                 "Expected exactly 1 non-zero Orchard output, found {}",
                 real_outputs.len()
-            )
-        );
+            ));
+        }
 
         // If no expected values provided, enforce minimum actions per Orchard protocol
-        require!(
-            bundle.actions().len() >= MIN_ACTIONS,
-            format!(
+        if bundle.actions().len() < MIN_ACTIONS {
+            return Err(format!(
                 "Orchard bundle must have at least {} actions, got {}",
                 MIN_ACTIONS,
                 bundle.actions().len()
-            )
-        );
+            ));
+        }
 
-        (Some(bundle), real_outputs.pop())
+        Ok((Some(bundle), real_outputs.pop()))
     } else {
-        (None, None)
+        Ok((None, None))
     }
 }
 
@@ -73,37 +72,34 @@ pub fn validate_orchard_bundle(
     expected_recipient: &str,
     chain: &network::Chain,
     orchard_output: (u64, [u8; 43]),
-) {
+) -> Result<(), String> {
     let (recovered_amount, recovered_addr_bytes) = orchard_output;
 
-    let recipient_address = Address::parse(expected_recipient, chain.clone())
-        .expect("Invalid recipient address provided to validate_orchard_bundle");
+    let recipient_address = Address::parse(expected_recipient, chain.clone())?;
 
     // Validate recipient
-    let expected_addr_bytes = recipient_address
-        .extract_orchard_receiver()
-        .expect("No orchard receiver found in address");
-    require!(
-        recovered_addr_bytes == expected_addr_bytes,
-        format!(
+    let expected_addr_bytes = recipient_address.extract_orchard_receiver()?;
+    if recovered_addr_bytes != expected_addr_bytes {
+        return Err(format!(
             "Orchard recipient mismatch: expected {} does not match recovered output",
             expected_recipient
-        )
-    );
+        ));
+    }
 
     // Validate value balance: for withdrawal, value flows FROM transparent TO Orchard
     // So value_balance should be negative and equal to the output amount
     let value_balance = bundle.value_balance();
     let expected_value_balance =
-        -i64::try_from(recovered_amount).expect("Orchard amount too large for i64");
+        -i64::try_from(recovered_amount).map_err(|_| "Orchard amount too large for i64")?;
 
     let actual_value_balance: i64 = (*value_balance).into();
-    require!(
-        actual_value_balance == expected_value_balance,
-        format!(
+    if actual_value_balance != expected_value_balance {
+        return Err(format!(
             "Orchard value balance mismatch: expected {}, got {}. \
              Value balance must equal negative output amount for withdrawals",
             expected_value_balance, actual_value_balance
-        )
-    );
+        ));
+    }
+
+    Ok(())
 }
