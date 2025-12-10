@@ -1,6 +1,4 @@
 mod setup;
-use bitcoin::OutPoint;
-use satoshi_bridge::{DepositMsg, TokenReceiverMessage};
 use setup::*;
 
 #[tokio::test]
