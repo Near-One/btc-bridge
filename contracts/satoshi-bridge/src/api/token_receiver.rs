@@ -126,7 +126,6 @@ impl Contract {
                 last_rbf_time_sec: None,
                 cancel_rbf_reserved: None,
             }),
-            recipient_address: Some(target_btc_address),
         };
         require!(
             self.data_mut()

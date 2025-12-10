@@ -142,6 +142,7 @@ impl Contract {
             orchard_bundle.clone(),
             expiry_height,
             last_block_height,
+            Some(target_btc_address.clone()),
             self.internal_config(),
         );
 
@@ -175,6 +176,7 @@ impl Contract {
             None,
             expiry_height,
             last_block_height,
+            None,
             self.internal_config(),
         );
 

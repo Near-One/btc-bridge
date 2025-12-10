@@ -387,7 +387,6 @@ impl Contract {
                 last_rbf_time_sec: None,
                 cancel_rbf_reserved: None,
             }),
-            recipient_address: None,
         };
         require!(
             self.data_mut()

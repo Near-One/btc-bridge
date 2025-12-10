@@ -73,10 +73,12 @@ impl Contract {
 
 impl Contract {
     fn extract_recipient_address(&self, original_tx_btc_pending_info: &BTCPendingInfo) -> String {
-        if let Some(recipient) = original_tx_btc_pending_info.recipient_address.clone() {
-            return recipient;
-        }
+        let psbt = original_tx_btc_pending_info.get_psbt();
 
+        if let Some(recipient) = psbt.get_recipient_address().clone() {
+            return recipient;
+        }        
+        
         let withdraw_change_address_script_pubkey =
             self.internal_config().get_change_script_pubkey();
         let original_tx =

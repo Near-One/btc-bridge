@@ -25,6 +25,7 @@ pub struct PsbtWrapper {
     inputs_utxo: Vec<ZcashTxOut>,
     orchard_bundle: Option<orchard::Bundle<orchard::bundle::Authorized, ZatBalance>>,
     orchard_output: Option<(u64, [u8; 43])>,
+    recipient_address: Option<String>,
 }
 
 impl PsbtWrapper {
@@ -34,6 +35,7 @@ impl PsbtWrapper {
         orchard_bundle_bytes: Option<Vec<u8>>,
         expiry_height: u32,
         current_height: u32,
+        recipient_address: Option<String>,
         config: &Config,
     ) -> Self {
         require!(!input.is_empty(), "empty input");
@@ -81,6 +83,7 @@ impl PsbtWrapper {
             inputs_utxo: inputs,
             orchard_bundle,
             orchard_output,
+            recipient_address,
         }
     }
 
@@ -126,6 +129,7 @@ impl PsbtWrapper {
             inputs_utxo: original_psbt.inputs_utxo,
             orchard_bundle: orchard_bundle,
             orchard_output: orchard_output,
+            recipient_address: original_psbt.recipient_address,
         }
     }
 
@@ -240,6 +244,18 @@ impl PsbtWrapper {
             buf.write_all(&[0u8; 1]).unwrap();
         }
 
+        if let Some(recipient_address) = &self.recipient_address {
+            buf.write_all(&[1u8; 1]).unwrap();
+            let recipient_address_bytes = recipient_address.as_bytes();
+
+            let len = recipient_address_bytes.len() as u64;
+            buf.write_all(&len.to_le_bytes()).unwrap();
+
+            buf.write_all(recipient_address_bytes).unwrap();
+        } else {
+            buf.write_all(&[0u8; 1]).unwrap();
+        }
+
         buf
     }
     pub fn serialize(&self) -> String {
@@ -300,6 +316,13 @@ impl PsbtWrapper {
             None
         };
 
+        let is_some = read_u8(&mut rdr).unwrap();
+        let recipient_address = if is_some == 1 {
+            Some(read_string(&mut rdr).unwrap())
+        } else {
+            None
+        };
+
         Self {
             branch_id,
             expiry_height,
@@ -308,6 +331,7 @@ impl PsbtWrapper {
             inputs_utxo: inputs,
             orchard_bundle,
             orchard_output,
+            recipient_address,
         }
     }
 
@@ -404,6 +428,10 @@ impl PsbtWrapper {
             )
             .unwrap()
     }
+
+    pub fn get_recipient_address(&self) -> Option<String> {
+        self.recipient_address.clone()
+    }
 }
 
 fn get_branch_id(current_height: u32, config: &Config) -> BranchId {
@@ -420,6 +448,17 @@ fn read_u8<R: Read>(r: &mut R) -> io::Result<u8> {
     let mut b = [0u8; 1];
     r.read_exact(&mut b)?;
     Ok(b[0])
+}
+
+fn read_string<R: Read>(r: &mut R) -> io::Result<String> {
+    let len = read_u64_le(r)? as usize;
+    let mut recipient_address_bytes = vec![];
+
+    for _ in 0..len {
+        recipient_address_bytes.push(read_u8(r)?);
+    }
+
+    Ok(String::from_utf8(recipient_address_bytes.to_vec()).unwrap())
 }
 
 fn read_u64_le<R: Read>(r: &mut R) -> io::Result<u64> {

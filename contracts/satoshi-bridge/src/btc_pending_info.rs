@@ -119,7 +119,6 @@ pub struct BTCPendingInfo {
     pub create_time_sec: u32,
     pub last_sign_time_sec: u32,
     pub state: PendingInfoState,
-    pub recipient_address: Option<String>,
 }
 
 impl BTCPendingInfo {
@@ -294,14 +293,12 @@ impl BTCPendingInfo {
 
 #[near(serializers = [borsh])]
 pub enum VBTCPendingInfo {
-    V0(BTCPendingInfoV0),
     Current(BTCPendingInfo),
 }
 
 impl From<VBTCPendingInfo> for BTCPendingInfo {
     fn from(v: VBTCPendingInfo) -> Self {
         match v {
-            VBTCPendingInfo::V0(c) => c.into(),
             VBTCPendingInfo::Current(c) => c,
         }
     }
@@ -310,7 +307,6 @@ impl From<VBTCPendingInfo> for BTCPendingInfo {
 impl From<&VBTCPendingInfo> for BTCPendingInfo {
     fn from(v: &VBTCPendingInfo) -> Self {
         match v {
-            VBTCPendingInfo::V0(c) => c.clone().into(),
             VBTCPendingInfo::Current(c) => c.clone(),
         }
     }
@@ -319,7 +315,6 @@ impl From<&VBTCPendingInfo> for BTCPendingInfo {
 impl<'a> From<&'a VBTCPendingInfo> for &'a BTCPendingInfo {
     fn from(v: &'a VBTCPendingInfo) -> Self {
         match v {
-            VBTCPendingInfo::V0(_) => unreachable!(),
             VBTCPendingInfo::Current(c) => c,
         }
     }
@@ -328,7 +323,6 @@ impl<'a> From<&'a VBTCPendingInfo> for &'a BTCPendingInfo {
 impl<'a> From<&'a mut VBTCPendingInfo> for &'a mut BTCPendingInfo {
     fn from(v: &'a mut VBTCPendingInfo) -> Self {
         match v {
-            VBTCPendingInfo::V0(_) => unreachable!(),
             VBTCPendingInfo::Current(c) => c,
         }
     }
