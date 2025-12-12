@@ -55,10 +55,20 @@ pub fn gen_ua_and_orchard_bundle_hex_with_key(
         .finalize()
         .expect("finalize proof");
 
-    // Produce Unified Address string containing the Orchard receiver
+    // Produce Unified Address string containing BOTH Orchard and transparent (P2PKH) receivers
+    // The transparent receiver is derived from the spending key for consistency
     let orchard_raw = recipient.to_raw_address_bytes();
-    let ua = zcash_address::unified::Address::try_from_items(vec![Receiver::Orchard(orchard_raw)])
-        .expect("UA from orchard receiver");
+
+    // Generate a deterministic P2PKH hash from the spending key
+    // This allows the contract to extract a script_pubkey for validation
+    let mut p2pkh_hash = [0u8; 20];
+    p2pkh_hash.copy_from_slice(&sk_bytes[0..20]);
+
+    let ua = zcash_address::unified::Address::try_from_items(vec![
+        Receiver::Orchard(orchard_raw),
+        Receiver::P2pkh(p2pkh_hash),
+    ])
+    .expect("UA from orchard and p2pkh receivers");
 
     let network_type = match network {
         "main" | "mainnet" => zcash_protocol::consensus::NetworkType::Main,

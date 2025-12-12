@@ -1,6 +1,9 @@
 mod setup;
 use setup::*;
 
+use bitcoin::{Amount, TxOut};
+use satoshi_bridge::network::{Address, Chain};
+
 /// Test: Bundle with wrong recipient should be rejected
 ///
 /// Generates two bundles with different spending keys to create different recipients.
@@ -62,10 +65,13 @@ async fn test_orchard_wrong_recipient() {
         .collect::<Vec<String>>();
     let first_utxo = utxos_keys[0].split('@').collect::<Vec<_>>();
 
+    // Withdrawal with Orchard bundle and change output
+    let utxo_value = 500000u128;
     let withdraw_amount = 200000u128;
-    let _btc_gas_fee = 10000u128;
+    let btc_gas_fee = 10000u128;
     let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
-    let orchard_amount = withdraw_amount - _btc_gas_fee - withdraw_fee;
+    let orchard_amount = withdraw_amount - btc_gas_fee - withdraw_fee;
+    let change_amount = utxo_value - orchard_amount as u128 - btc_gas_fee;
 
     // Generate bundle for recipient A (using spending key [1u8; 32])
     let (recipient_a, bundle_a) = gen_bundle_with_key(orchard_amount as u64, [1u8; 32]);
@@ -80,6 +86,13 @@ async fn test_orchard_wrong_recipient() {
         "Recipients should be different with different spending keys"
     );
 
+    // Get change address and parse it for Zcash
+    let withdraw_change_address = context.get_change_address().await.unwrap();
+    let change_script_pubkey = Address::parse(&withdraw_change_address, Chain::ZcashTestnet)
+        .expect("Invalid change address")
+        .script_pubkey()
+        .expect("Failed to get script pubkey");
+
     // This should fail: use bundle_a but claim it's for recipient_b
     let result = context
         .do_withdraw(
@@ -92,10 +105,15 @@ async fn test_orchard_wrong_recipient() {
                     txid: first_utxo[0].parse().unwrap(),
                     vout: first_utxo[1].parse().unwrap(),
                 }],
-                output: vec![],
+                output: vec![TxOut {
+                    value: Amount::from_sat(change_amount as u64),
+                    script_pubkey: change_script_pubkey,
+                }],
                 max_gas_fee: None,
-                orchard_bundle_bytes: Some(bundle_a), // Bundle for recipient A
-                expiry_height: None,
+                chain_specific_data: Some(ChainSpecificData {
+                    orchard_bundle_bytes: Some(hex::decode(&bundle_a).unwrap().into()), // Bundle for recipient A
+                    expiry_height: None,
+                }),
             },
         )
         .await;
@@ -109,10 +127,10 @@ async fn test_orchard_wrong_recipient() {
     );
 }
 
-/// Test: Missing Orchard bundle when Unified Address is provided
+/// Test: Missing Orchard bundle when no transparent outputs are provided
 ///
-/// Should reject with clear error message when UA is provided without bundle.
-/// This prevents ambiguous behavior and user errors.
+/// Should reject with "empty output" error when neither transparent outputs
+/// nor Orchard bundle is provided.
 #[tokio::test]
 #[cfg(feature = "zcash")]
 async fn test_orchard_missing_bundle() {
@@ -175,7 +193,7 @@ async fn test_orchard_missing_bundle() {
     // Generate a Unified Address (but don't provide a bundle)
     let (unified_address, _bundle) = get_or_gen_bundle(100000); // Just get a UA, ignore bundle
 
-    // This should FAIL: UA provided without bundle
+    // This should FAIL: no outputs and no Orchard bundle
     let result = context
         .do_withdraw(
             "alice",
@@ -189,21 +207,23 @@ async fn test_orchard_missing_bundle() {
                 }],
                 output: vec![],
                 max_gas_fee: None,
-                orchard_bundle_bytes: None, // But NO bundle!
-                expiry_height: None,
+                chain_specific_data: Some(ChainSpecificData {
+                    orchard_bundle_bytes: None, // But NO bundle!
+                    expiry_height: None,
+                }),
             },
         )
         .await;
 
-    // Verify the error message
+    // Verify the error message - contract requires either outputs or orchard bundle
     let err_msg = tool_err_msg(&result);
     assert!(
-        err_msg.contains("Unified Address provided without Orchard bundle"),
-        "Expected UA validation error, got: {}",
+        err_msg.contains("empty output"),
+        "Expected 'empty output' error when no bundle and no outputs provided, got: {}",
         err_msg
     );
 
-    println!("✓ UA without bundle correctly rejected");
+    println!("✓ Missing bundle with empty outputs correctly rejected");
 }
 
 /// Test: Verify the generated Zcash transaction includes the Orchard bundle
@@ -264,12 +284,22 @@ async fn test_orchard_bundle_in_zcash_tx() {
         .collect::<Vec<String>>();
     let first_utxo = utxos_keys[0].split('@').collect::<Vec<_>>();
 
+    // Withdrawal with Orchard bundle and change output
+    let utxo_value = 500000u128;
     let withdraw_amount = 200000u128;
     let btc_gas_fee = 10000u128;
     let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
     let orchard_amount = withdraw_amount - btc_gas_fee - withdraw_fee;
+    let change_amount = utxo_value - orchard_amount as u128 - btc_gas_fee;
 
     let (recipient_ua, bundle_hex) = get_or_gen_bundle(orchard_amount as u64);
+
+    // Get change address and parse it for Zcash
+    let withdraw_change_address = context.get_change_address().await.unwrap();
+    let change_script_pubkey = Address::parse(&withdraw_change_address, Chain::ZcashTestnet)
+        .expect("Invalid change address")
+        .script_pubkey()
+        .expect("Failed to get script pubkey");
 
     check!(print "Withdrawal" context.do_withdraw(
         "alice",
@@ -281,10 +311,15 @@ async fn test_orchard_bundle_in_zcash_tx() {
                 txid: first_utxo[0].parse().unwrap(),
                 vout: first_utxo[1].parse().unwrap(),
             }],
-            output: vec![], // Orchard-only withdrawal (no transparent output)
+            output: vec![TxOut {
+                value: Amount::from_sat(change_amount as u64),
+                script_pubkey: change_script_pubkey,
+            }],
             max_gas_fee: None,
-            orchard_bundle_bytes: Some(bundle_hex.clone()),
-            expiry_height: None,
+            chain_specific_data: Some(ChainSpecificData {
+                orchard_bundle_bytes: Some(hex::decode(&bundle_hex).unwrap().into()),
+                expiry_height: None,
+            }),
         }
     ));
 

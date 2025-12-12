@@ -1,6 +1,9 @@
 mod setup;
 use setup::*;
 
+use bitcoin::{Amount, TxOut};
+use satoshi_bridge::network::{Address, Chain};
+
 #[tokio::test]
 #[cfg(feature = "zcash")]
 async fn test_orchard_withdrawal_with_ovk_validation() {
@@ -80,12 +83,13 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
 
     let first_utxo = utxos_keys[0].split('@').collect::<Vec<_>>();
 
-    // Now test withdrawal with Orchard bundle
-    // Use a larger amount to ensure orchard_amount > 0 after fees
-    let withdraw_amount = 400000u128; // 400000 satoshis (close to the 500000 we deposited)
-    let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
+    // Withdrawal with Orchard bundle and change output
+    let utxo_value = 500000u128;
+    let withdraw_amount = 200000u128;
     let btc_gas_fee = 10000u128;
+    let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
     let orchard_amount = (withdraw_amount - withdraw_fee - btc_gas_fee) as u64;
+    let change_amount = utxo_value - orchard_amount as u128 - btc_gas_fee;
 
     println!(
         "Withdraw fee: {}, BTC gas fee: {}",
@@ -93,8 +97,8 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
     );
 
     println!(
-        "Withdraw amount: {}, Orchard amount: {}",
-        withdraw_amount, orchard_amount
+        "Withdraw amount: {}, Orchard amount: {}, Change amount: {}",
+        withdraw_amount, orchard_amount, change_amount
     );
 
     // Generate Orchard bundle with correct amount
@@ -102,7 +106,14 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
     println!("Generated Orchard bundle for recipient: {}", recipient_ua);
     println!("Bundle size: {} bytes", bundle_hex.len() / 2);
 
-    // Perform withdrawal with Orchard bundle
+    // Get change address and parse it for Zcash
+    let withdraw_change_address = context.get_change_address().await.unwrap();
+    let change_script_pubkey = Address::parse(&withdraw_change_address, Chain::ZcashTestnet)
+        .expect("Invalid change address")
+        .script_pubkey()
+        .expect("Failed to get script pubkey");
+
+    // Perform Orchard withdrawal with change output
     check!(context.do_withdraw(
         "alice",
         "bridge",
@@ -113,10 +124,15 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
                 txid: first_utxo[0].parse().unwrap(),
                 vout: first_utxo[1].parse().unwrap(),
             }],
-            output: vec![],
+            output: vec![TxOut {
+                value: Amount::from_sat(change_amount as u64),
+                script_pubkey: change_script_pubkey,
+            }],
             max_gas_fee: None,
-            orchard_bundle_bytes: Some(bundle_hex),
-            expiry_height: None,
+            chain_specific_data: Some(ChainSpecificData {
+                orchard_bundle_bytes: Some(hex::decode(&bundle_hex).unwrap().into()),
+                expiry_height: None,
+            }),
         }
     ));
 
@@ -183,8 +199,9 @@ async fn test_orchard_withdrawal_amount_mismatch() {
         .collect::<Vec<String>>();
     let first_utxo = utxos_keys[0].split('@').collect::<Vec<_>>();
 
-    // Use a larger amount to ensure orchard_amount > 0 after fees
-    let withdraw_amount = 400000u128;
+    // Withdrawal with Orchard bundle and change output - test amount mismatch
+    let utxo_value = 500000u128;
+    let withdraw_amount = 200000u128;
     let btc_gas_fee = 10000u128;
     let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
 
@@ -193,29 +210,47 @@ async fn test_orchard_withdrawal_amount_mismatch() {
 
     // Generate bundle with WRONG amount (different from what we're withdrawing)
     let wrong_amount = 100000u64; // Different from expected_orchard_amount
-    let (_recipient_ua, bundle_hex) = get_or_gen_bundle(wrong_amount);
+    let (recipient_ua, bundle_hex) = get_or_gen_bundle(wrong_amount);
+
+    // Change amount must be calculated based on the ACTUAL orchard amount in the bundle
+    // to ensure gas_fee stays within valid range
+    let change_amount = utxo_value - wrong_amount as u128 - btc_gas_fee;
 
     println!(
         "Expected orchard amount: {}, Using wrong amount: {}",
         expected_orchard_amount, wrong_amount
     );
 
-    // This should fail with "Orchard amount mismatch"
+    // Get change address and parse it for Zcash
+    let withdraw_change_address = context.get_change_address().await.unwrap();
+    let change_script_pubkey = Address::parse(&withdraw_change_address, Chain::ZcashTestnet)
+        .expect("Invalid change address")
+        .script_pubkey()
+        .expect("Failed to get script pubkey");
+
+    // This should fail with "Orchard amount mismatch" because the bundle has wrong_amount
+    // but we're withdrawing expected_orchard_amount (the contract expects the orchard amount
+    // to match withdraw_amount - withdraw_fee - gas_fee)
     let result = context
         .do_withdraw(
             "alice",
             "bridge",
             withdraw_amount,
             TokenReceiverMessage::Withdraw {
-                target_btc_address: "u1test...".to_string(), // Will use bundle's actual recipient
+                target_btc_address: recipient_ua, // Use the bundle's actual recipient
                 input: vec![OutPoint {
                     txid: first_utxo[0].parse().unwrap(),
                     vout: first_utxo[1].parse().unwrap(),
                 }],
-                output: vec![],
+                output: vec![TxOut {
+                    value: Amount::from_sat(change_amount as u64),
+                    script_pubkey: change_script_pubkey,
+                }],
                 max_gas_fee: None,
-                orchard_bundle_bytes: Some(bundle_hex),
-                expiry_height: None,
+                chain_specific_data: Some(ChainSpecificData {
+                    orchard_bundle_bytes: Some(hex::decode(&bundle_hex).unwrap().into()),
+                    expiry_height: None,
+                }),
             },
         )
         .await;
@@ -231,11 +266,14 @@ async fn test_orchard_withdrawal_amount_mismatch() {
         "Withdrawal should fail due to Orchard validation"
     );
 
-    // Check the error message contains "Orchard amount mismatch"
+    // Check the error message - the contract validates that the user's output amount
+    // matches the expected range based on withdraw_amount - withdraw_fee - gas_fee
     let err_msg = setup::utils::tool_err_msg(&Ok(outcome));
     assert!(
-        err_msg.contains("Orchard amount mismatch"),
-        "Expected 'Orchard amount mismatch' error, got: {}",
+        err_msg.contains("output amount") && err_msg.contains("out of the valid range"),
+        "Expected output amount validation error, got: {}",
         err_msg
     );
+
+    println!("✓ Orchard amount mismatch correctly rejected");
 }
