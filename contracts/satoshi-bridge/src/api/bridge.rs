@@ -120,8 +120,7 @@ impl Contract {
         &mut self,
         original_btc_pending_verify_id: String,
         output: Vec<TxOut>,
-        orchard_bundle_bytes: Option<String>,
-        expiry_height: Option<u32>,
+        chain_specific_data: Option<ChainSpecificData>,
     ) {
         let account_id = env::predecessor_account_id();
         require!(
@@ -135,8 +134,7 @@ impl Contract {
             account_id,
             original_btc_pending_verify_id,
             output,
-            orchard_bundle_bytes,
-            expiry_height,
+            chain_specific_data
         );
     }
 
@@ -166,7 +164,6 @@ impl Contract {
             user_account_id,
             original_btc_pending_verify_id,
             output,
-            None,
             None,
         );
     }
@@ -254,7 +251,6 @@ impl Contract {
             original_btc_pending_verify_id,
             output,
             None,
-            None,
         );
     }
 
@@ -287,7 +283,6 @@ impl Contract {
             user_account_id,
             original_btc_pending_verify_id,
             output,
-            None,
             None,
         );
     }

@@ -16,8 +16,7 @@ macro_rules! define_rbf_callback {
                 user_account_id: AccountId,
                 original_btc_pending_verify_id: String,
                 output: Vec<TxOut>,
-                orchard_bundle_bytes: Option<String>,
-                expiry_height: Option<u32>,
+                chain_specific_data: Option<ChainSpecificData>,
             ) {
                 self.get_last_block_height_promise().then(
                     Self::ext(env::current_account_id())
@@ -26,8 +25,7 @@ macro_rules! define_rbf_callback {
                             user_account_id,
                             original_btc_pending_verify_id,
                             output,
-                            orchard_bundle_bytes,
-                            expiry_height,
+                            chain_specific_data
                         ),
                 );
             }
@@ -41,12 +39,14 @@ macro_rules! define_rbf_callback {
                 account_id: AccountId,
                 original_btc_pending_verify_id: String,
                 output: Vec<TxOut>,
-                orchard_bundle_bytes: Option<String>,
-                expiry_height: Option<u32>,
+                chain_specific_data: Option<ChainSpecificData>,
                 #[callback_unwrap] last_block_height: u32,
             ) {
-                let expiry_height = expiry_height
-                    .unwrap_or(last_block_height + self.get_config().expiry_height_gap);
+                let (orchard_bundle_bytes, expiry_height) = if let Some(chain_specific_data) = chain_specific_data {
+                    (Some(chain_specific_data.orchard_bundle_bytes), chain_specific_data.expiry_height)
+                } else {
+                    (None, last_block_height + self.get_config().expiry_height_gap)
+                };
                 require!(
                     expiry_height >= last_block_height + self.get_config().expiry_height_gap
                         && expiry_height
@@ -65,7 +65,7 @@ macro_rules! define_rbf_callback {
                 let new_psbt = self.generate_psbt_from_original_psbt_and_new_output(
                     original_tx_btc_pending_info,
                     output,
-                    orchard_bundle_bytes.map(|b| hex::decode(b).unwrap()),
+                    orchard_bundle_bytes.map(|b| b.0),
                     expiry_height,
                     last_block_height,
                 );
@@ -119,12 +119,19 @@ impl Contract {
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
-        orchard_bundle: Option<Vec<u8>>,
-        expiry_height: Option<u32>,
+        chain_specific_data: Option<ChainSpecificData>,
         #[callback_unwrap] last_block_height: u32,
     ) -> U128 {
-        let expiry_height =
-            expiry_height.unwrap_or(last_block_height + self.get_config().expiry_height_gap);
+        let (orchard_bundle, expiry_height) = if let Some(chain_specific_data) = chain_specific_data
+        {
+            (
+                Some(chain_specific_data.orchard_bundle_bytes.0),
+                chain_specific_data.expiry_height,
+            )
+        } else {
+            (None, last_block_height + self.get_config().expiry_height_gap)
+        };
+        
         require!(
             expiry_height >= last_block_height + self.get_config().expiry_height_gap
                 && expiry_height <= last_block_height + 2 * self.get_config().expiry_height_gap,
@@ -224,16 +231,6 @@ impl Contract {
         max_gas_fee: Option<U128>,
         chain_specific_data: Option<ChainSpecificData>,
     ) -> PromiseOrValue<U128> {
-        let (orchard_bundle, expiry_height) = if let Some(chain_specific_data) = chain_specific_data
-        {
-            (
-                chain_specific_data.orchard_bundle_bytes.map(|b| b.0),
-                chain_specific_data.expiry_height,
-            )
-        } else {
-            (None, None)
-        };
-
         PromiseOrValue::Promise(
             self.get_last_block_height_promise().then(
                 Self::ext(env::current_account_id())
@@ -245,8 +242,7 @@ impl Contract {
                         input,
                         output,
                         max_gas_fee,
-                        orchard_bundle,
-                        expiry_height,
+                        chain_specific_data
                     ),
             ),
         )

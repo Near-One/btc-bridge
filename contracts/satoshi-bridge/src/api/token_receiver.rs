@@ -5,11 +5,6 @@ use near_plugins::pause;
 
 pub const GAS_FOR_FT_ON_TRANSFER_CALL_BACK: Gas = Gas::from_tgas(100);
 
-#[cfg(not(feature = "zcash"))]
-use crate::bitcoin_utils::types::ChainSpecificData;
-#[cfg(feature = "zcash")]
-use crate::zcash_utils::types::ChainSpecificData;
-
 #[near(serializers = [json])]
 pub enum TokenReceiverMessage {
     DepositProtocolFee,

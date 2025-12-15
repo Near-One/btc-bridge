@@ -12,14 +12,8 @@ macro_rules! define_rbf_method {
             account_id: AccountId,
             original_btc_pending_verify_id: String,
             output: Vec<TxOut>,
-            orchard_bundle_bytes: Option<String>,
-            expiry_height: Option<u32>,
+            _chain_specific_data: Option<ChainSpecificData>,
         ) {
-            require!(
-                orchard_bundle_bytes.is_none(),
-                "Orchard bundle bytes are not supported."
-            );
-            require!(expiry_height.is_none(), "Expiry height are not supported.");
             let original_tx_btc_pending_info =
                 self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
 
