@@ -8,6 +8,8 @@ use zcash_address::{ConversionError, ToAddress, ZcashAddress};
 #[cfg(feature = "zcash")]
 use zcash_protocol::consensus::BranchId;
 
+use crate::zcash_utils::orchard_policy::OrchardRawAddress;
+
 #[near(serializers = [borsh, json])]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Chain {
