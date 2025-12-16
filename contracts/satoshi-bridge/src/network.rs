@@ -201,7 +201,7 @@ impl Address {
     }
 
     /// Extract the Orchard receiver raw bytes from a Unified Address string for the given chain.
-    pub fn extract_orchard_receiver(&self) -> Result<[u8; 43], String> {
+    pub fn extract_orchard_receiver(&self) -> Result<OrchardRawAddress, String> {
         match self {
             Address::Unified { address, .. } => {
                 let receiver_list = address.items_as_parsed();
