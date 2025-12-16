@@ -4,6 +4,13 @@ use orchard::Bundle;
 use std::io::Cursor;
 use zcash_primitives::transaction::components::orchard::read_v5_bundle;
 use zcash_protocol::value::ZatBalance;
+
+/// Size of Orchard raw address bytes (diversifier + pk_d).
+pub const ORCHARD_RAW_ADDRESS_SIZE: usize = 43;
+
+/// Type alias for Orchard raw address bytes to avoid magic numbers.
+pub type OrchardRawAddress = [u8; ORCHARD_RAW_ADDRESS_SIZE];
+
 /// Bridge OVK used to recover outputs for policy checks.
 /// Hardcoded to all zeroes for now; can be made configurable later.
 pub const BRIDGE_OVK: [u8; 32] = [0u8; 32];
@@ -18,36 +25,17 @@ pub fn extract_orchard_bundle(
 ) -> Result<
     (
         Option<orchard::Bundle<orchard::bundle::Authorized, ZatBalance>>,
-        Option<(u64, [u8; 43])>,
+        Option<(u64, OrchardRawAddress)>,
     ),
     String,
 > {
     if let Some(orchard_bundle_bytes) = orchard_bundle_bytes {
-        let mut real_outputs = Vec::new();
         let mut reader = Cursor::new(orchard_bundle_bytes);
         let bundle = read_v5_bundle(&mut reader)
             .map_err(|_| "Failed to read orchard bundle".to_string())?
             .ok_or_else(|| "Orchard bundle is empty".to_string())?;
 
-        let ovk = orchard::keys::OutgoingViewingKey::from(BRIDGE_OVK);
-
-        for action_idx in 0..bundle.actions().len() {
-            if let Some((note, addr, _memo)) = bundle.recover_output_with_ovk(action_idx, &ovk) {
-                let value = note.value().inner();
-                if value > 0 {
-                    real_outputs.push((value, addr.to_raw_address_bytes()));
-                }
-            }
-        }
-
-        if real_outputs.len() != 1 {
-            return Err(format!(
-                "Expected exactly 1 non-zero Orchard output, found {}",
-                real_outputs.len()
-            ));
-        }
-
-        // If no expected values provided, enforce minimum actions per Orchard protocol
+        // Check action count first per Orchard protocol requirements
         if bundle.actions().len() != EXPECTED_ACTIONS_NUMBER {
             return Err(format!(
                 "Orchard bundle must have {} actions, got {}",
@@ -56,7 +44,18 @@ pub fn extract_orchard_bundle(
             ));
         }
 
-        Ok((Some(bundle), real_outputs.pop()))
+        // Since we require exactly 1 action, directly recover the single output
+        let ovk = orchard::keys::OutgoingViewingKey::from(BRIDGE_OVK);
+        let (note, addr, _memo) = bundle
+            .recover_output_with_ovk(0, &ovk)
+            .ok_or_else(|| "Failed to recover Orchard output with bridge OVK".to_string())?;
+
+        let value = note.value().inner();
+        if value == 0 {
+            return Err("Orchard output value must be non-zero".to_string());
+        }
+
+        Ok((Some(bundle), Some((value, addr.to_raw_address_bytes()))))
     } else {
         Ok((None, None))
     }
@@ -72,7 +71,7 @@ pub fn validate_orchard_bundle(
     bundle: &Bundle<orchard::bundle::Authorized, ZatBalance>,
     expected_recipient: &str,
     chain: &network::Chain,
-    orchard_output: (u64, [u8; 43]),
+    orchard_output: (u64, OrchardRawAddress),
 ) -> Result<(), String> {
     let (recovered_amount, recovered_addr_bytes) = orchard_output;
 

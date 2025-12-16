@@ -1,4 +1,4 @@
-use crate::zcash_utils::orchard_policy;
+use crate::zcash_utils::orchard_policy::{self, OrchardRawAddress, ORCHARD_RAW_ADDRESS_SIZE};
 use crate::zcash_utils::transaction::Transaction;
 use crate::*;
 use bitcoin::hashes::Hash;
@@ -24,7 +24,7 @@ pub struct PsbtWrapper {
     vout: Vec<ZcashTxOut>,
     inputs_utxo: Vec<ZcashTxOut>,
     orchard_bundle: Option<orchard::Bundle<orchard::bundle::Authorized, ZatBalance>>,
-    orchard_output: Option<(u64, [u8; 43])>,
+    orchard_output: Option<(u64, OrchardRawAddress)>,
     recipient_address: Option<String>,
 }
 
@@ -310,7 +310,7 @@ impl PsbtWrapper {
             let is_some = read_u8(&mut rdr).expect("ERR_INVALID_PSBT: failed to read orchard_output flag");
             if is_some == 1 {
                 let amount = read_u64_le(&mut rdr).expect("ERR_INVALID_PSBT: failed to read orchard amount");
-                let mut addr = [0u8; 43];
+                let mut addr = [0u8; ORCHARD_RAW_ADDRESS_SIZE];
                 for addr_byte in &mut addr {
                     *addr_byte = read_u8(&mut rdr).expect("ERR_INVALID_PSBT: failed to read orchard address");
                 }
