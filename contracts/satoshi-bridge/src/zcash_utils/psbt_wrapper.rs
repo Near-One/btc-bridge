@@ -3,7 +3,7 @@ use crate::zcash_utils::transaction::Transaction;
 use crate::*;
 use bitcoin::hashes::Hash;
 use bitcoin::{OutPoint, TxOut};
-use near_sdk::require;
+use near_sdk::{env, require};
 use std::io;
 use std::io::{Cursor, Read, Write};
 use zcash_primitives::transaction::components::orchard::read_v5_bundle;
@@ -73,7 +73,7 @@ impl PsbtWrapper {
         ];
 
         let (orchard_bundle, orchard_output) = orchard_policy::extract_orchard_bundle(orchard_bundle_bytes)
-            .expect("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle");
+            .unwrap_or_else(|_| env::panic_str("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle"));
 
         Self {
             branch_id: get_branch_id(current_height, config),
@@ -91,13 +91,13 @@ impl PsbtWrapper {
         orchard_policy::validate_orchard_bundle(
             self.orchard_bundle
                 .as_ref()
-                .expect("ERR_NO_ORCHARD_BUNDLE: Orchard bundle is required for validation"),
+                .unwrap_or_else(|| env::panic_str("ERR_NO_ORCHARD_BUNDLE: Orchard bundle is required for validation")),
             &expected_addr,
             &chain,
             self.orchard_output
-                .expect("ERR_NO_ORCHARD_OUTPUT: Orchard output data is required for validation"),
+                .unwrap_or_else(|| env::panic_str("ERR_NO_ORCHARD_OUTPUT: Orchard output data is required for validation")),
         )
-        .expect("ERR_ORCHARD_VALIDATION: Orchard bundle validation failed");
+        .unwrap_or_else(|_| env::panic_str("ERR_ORCHARD_VALIDATION: Orchard bundle validation failed"));
     }
 
     pub fn from_original_psbt(
@@ -122,7 +122,7 @@ impl PsbtWrapper {
         };
 
         let (orchard_bundle, orchard_output) = orchard_policy::extract_orchard_bundle(orchard_bundle_bytes)
-            .expect("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle");
+            .unwrap_or_else(|_| env::panic_str("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle"));
 
         Self {
             branch_id: get_branch_id(current_height, config),
@@ -164,7 +164,7 @@ impl PsbtWrapper {
         let (amount, _addr) = self
             .orchard_output
             .as_ref()
-            .expect("No Orchard bundle present");
+            .unwrap_or_else(|| env::panic_str("No Orchard bundle present"));
         *amount as u128
     }
 
@@ -266,53 +266,53 @@ impl PsbtWrapper {
     }
 
     pub fn deserialize(psbt_hex: &String) -> Self {
-        let bytes = hex::decode(psbt_hex).expect("ERR_INVALID_PSBT_HEX: failed to decode hex");
+        let bytes = hex::decode(psbt_hex).unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT_HEX: failed to decode hex"));
         let mut rdr = Cursor::new(bytes);
-        let version = read_u8(&mut rdr).expect("ERR_INVALID_PSBT: failed to read version");
+        let version = read_u8(&mut rdr).unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read version"));
         let branch_id = if version >= 2 {
-            let branch_id_u8 = read_u8(&mut rdr).expect("ERR_INVALID_PSBT: failed to read branch_id");
+            let branch_id_u8 = read_u8(&mut rdr).unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read branch_id"));
             match branch_id_u8 {
                 7 => BranchId::Nu6,
                 8 => BranchId::Nu6_1,
-                _ => panic!("ERR_INVALID_PSBT: unsupported branch_id {}", branch_id_u8),
+                _ => env::panic_str("ERR_INVALID_PSBT: unsupported branch_id"),
             }
         } else {
             BranchId::Nu6_1
         };
 
-        let expiry_height = read_u32_le(&mut rdr).expect("ERR_INVALID_PSBT: failed to read expiry_height");
+        let expiry_height = read_u32_le(&mut rdr).unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read expiry_height"));
 
-        let vin_len = read_u64_le(&mut rdr).expect("ERR_INVALID_PSBT: failed to read vin length") as usize;
+        let vin_len = read_u64_le(&mut rdr).unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read vin length")) as usize;
         let mut vin = Vec::with_capacity(vin_len);
         for _ in 0..vin_len {
-            vin.push(ZcashTxIn::<Authorized>::read(&mut rdr).expect("ERR_INVALID_PSBT: failed to read vin"));
+            vin.push(ZcashTxIn::<Authorized>::read(&mut rdr).unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read vin")));
         }
 
-        let vout_len = read_u64_le(&mut rdr).expect("ERR_INVALID_PSBT: failed to read vout length") as usize;
+        let vout_len = read_u64_le(&mut rdr).unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read vout length")) as usize;
         let mut vout = Vec::with_capacity(vout_len);
         for _ in 0..vout_len {
-            vout.push(ZcashTxOut::read(&mut rdr).expect("ERR_INVALID_PSBT: failed to read vout"));
+            vout.push(ZcashTxOut::read(&mut rdr).unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read vout")));
         }
 
-        let inputs_len = read_u64_le(&mut rdr).expect("ERR_INVALID_PSBT: failed to read inputs length") as usize;
+        let inputs_len = read_u64_le(&mut rdr).unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read inputs length")) as usize;
         let mut inputs = Vec::with_capacity(inputs_len);
         for _ in 0..inputs_len {
-            inputs.push(ZcashTxOut::read(&mut rdr).expect("ERR_INVALID_PSBT: failed to read input utxo"));
+            inputs.push(ZcashTxOut::read(&mut rdr).unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read input utxo")));
         }
 
         let orchard_bundle = if version >= 3 {
-            read_v5_bundle(&mut rdr).expect("ERR_INVALID_PSBT: failed to read Orchard bundle")
+            read_v5_bundle(&mut rdr).unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read Orchard bundle"))
         } else {
             None
         };
 
         let orchard_output = if version >= 3 {
-            let is_some = read_u8(&mut rdr).expect("ERR_INVALID_PSBT: failed to read orchard_output flag");
+            let is_some = read_u8(&mut rdr).unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read orchard_output flag"));
             if is_some == 1 {
-                let amount = read_u64_le(&mut rdr).expect("ERR_INVALID_PSBT: failed to read orchard amount");
+                let amount = read_u64_le(&mut rdr).unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read orchard amount"));
                 let mut addr = [0u8; ORCHARD_RAW_ADDRESS_SIZE];
                 for addr_byte in &mut addr {
-                    *addr_byte = read_u8(&mut rdr).expect("ERR_INVALID_PSBT: failed to read orchard address");
+                    *addr_byte = read_u8(&mut rdr).unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read orchard address"));
                 }
 
                 Some((amount, addr))
@@ -324,9 +324,9 @@ impl PsbtWrapper {
         };
 
         let recipient_address = if version >= 3 {
-            let is_some = read_u8(&mut rdr).expect("ERR_INVALID_PSBT: failed to read recipient_address flag");
+            let is_some = read_u8(&mut rdr).unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read recipient_address flag"));
             if is_some == 1 {
-                Some(read_string(&mut rdr).expect("ERR_INVALID_PSBT: failed to read recipient_address"))
+                Some(read_string(&mut rdr).unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read recipient_address")))
             } else {
                 None
             }
@@ -349,7 +349,7 @@ impl PsbtWrapper {
     pub fn extract_tx_bytes_with_sign(&self) -> Vec<u8> {
         self.get_zcash_tx()
             .encode()
-            .expect("ERR_TX_ENCODE: failed to encode Zcash transaction")
+            .unwrap_or_else(|_| env::panic_str("ERR_TX_ENCODE: failed to encode Zcash transaction"))
     }
 
     pub fn get_zcash_tx(&self) -> Transaction {
@@ -371,7 +371,7 @@ impl PsbtWrapper {
             self.orchard_bundle.clone(),
         )
         .freeze()
-        .expect("ERR_TX_FREEZE: failed to freeze Zcash transaction data");
+        .unwrap_or_else(|_| env::panic_str("ERR_TX_FREEZE: failed to freeze Zcash transaction data"));
 
         Transaction { inner_tx }
     }
