@@ -144,9 +144,9 @@ impl Contract {
         );
 
         let mut psbt = PsbtWrapper::new(
-            input.clone(),
-            output.clone(),
-            orchard_bundle.clone(),
+            input,
+            output,
+            orchard_bundle,
             expiry_height,
             last_block_height,
             Some(target_btc_address.clone()),
