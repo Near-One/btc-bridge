@@ -91,7 +91,6 @@ impl Transaction {
         expiry_height: u32,
         public_key: &bitcoin::PublicKey,
         branch_id: BranchId,
-        orchard_bundle: Option<orchard::Bundle<orchard::bundle::Authorized, ZatBalance>>,
     ) -> TransactionData<TransparentUnauthorized> {
         let transparent_bundle = Self::get_transparent_builder(vin, vout, input, public_key)
             .build()
@@ -100,9 +99,6 @@ impl Transaction {
         let lock_time = 0;
         let expiry_height = BlockHeight::from_u32(expiry_height);
 
-        // The Orchard bundle is included in TransactionData, which binds it into the
-        // ZIP-244 sighash. This ensures any change to the Orchard bytes invalidates
-        // transparent signatures.
         TransactionData::from_parts(
             TxVersion::V5,
             branch_id,
@@ -111,7 +107,7 @@ impl Transaction {
             Some(transparent_bundle),
             None,
             None,
-            orchard_bundle,
+            None,
         )
     }
 }
