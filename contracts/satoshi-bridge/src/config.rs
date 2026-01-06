@@ -140,7 +140,11 @@ impl Config {
     }
 
     pub fn get_change_script_pubkey(&self) -> ScriptBuf {
-        self.string_to_script_pubkey(self.change_address.as_ref().unwrap())
+        self.string_to_script_pubkey(
+            self.change_address
+                .as_ref()
+                .expect("ERR_CONFIG: change_address not configured"),
+        )
     }
 
     pub fn string_to_script_pubkey(&self, address_string: &str) -> ScriptBuf {
@@ -187,11 +191,19 @@ impl Config {
 
 impl Contract {
     pub fn internal_mut_config(&mut self) -> &mut Config {
-        self.data_mut().config.get_mut().as_mut().unwrap()
+        self.data_mut()
+            .config
+            .get_mut()
+            .as_mut()
+            .expect("ERR_CONFIG: contract not initialized")
     }
 
     pub fn internal_config(&self) -> &Config {
-        self.data().config.get().as_ref().unwrap()
+        self.data()
+            .config
+            .get()
+            .as_ref()
+            .expect("ERR_CONFIG: contract not initialized")
     }
 
     pub fn get_confirmations(&self, config: &Config, satoshi_amount: u128) -> u64 {

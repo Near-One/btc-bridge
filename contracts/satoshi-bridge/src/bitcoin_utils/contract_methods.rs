@@ -1,3 +1,4 @@
+use crate::bitcoin_utils::types::ChainSpecificData;
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::{BTCPendingInfo, Contract, Event};
 use bitcoin::{OutPoint, TxOut};
@@ -11,6 +12,7 @@ macro_rules! define_rbf_method {
             account_id: AccountId,
             original_btc_pending_verify_id: String,
             output: Vec<TxOut>,
+            _chain_specific_data: Option<ChainSpecificData>,
         ) {
             let original_tx_btc_pending_info =
                 self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
@@ -36,7 +38,13 @@ macro_rules! define_rbf_method {
 }
 
 impl Contract {
-    pub(crate) fn check_psbt_chain_specific(&self, _psbt: &PsbtWrapper, _gas_fee: u128) {}
+    pub(crate) fn check_psbt_chain_specific(
+        &self,
+        _psbt: &PsbtWrapper,
+        _gas_fee: u128,
+        _target_btc_address: String,
+    ) {
+    }
 
     pub(crate) fn check_withdraw_chain_specific(
         original_tx_btc_pending_info: &BTCPendingInfo,
@@ -56,6 +64,7 @@ impl Contract {
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
+        _chain_specific_data: Option<ChainSpecificData>,
     ) -> PromiseOrValue<U128> {
         let mut psbt = PsbtWrapper::new(input, output);
         self.create_btc_pending_info(

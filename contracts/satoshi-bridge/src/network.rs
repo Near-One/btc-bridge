@@ -8,6 +8,8 @@ use zcash_address::{ConversionError, ToAddress, ZcashAddress};
 #[cfg(feature = "zcash")]
 use zcash_protocol::consensus::BranchId;
 
+use crate::zcash_utils::orchard_policy::OrchardRawAddress;
+
 #[near(serializers = [borsh, json])]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Chain {
@@ -197,6 +199,24 @@ impl Address {
 
                 Err("No receiver found in address".to_string())
             }
+        }
+    }
+
+    /// Extract the Orchard receiver raw bytes from a Unified Address string for the given chain.
+    pub fn extract_orchard_receiver(&self) -> Result<OrchardRawAddress, String> {
+        match self {
+            Address::Unified { address, .. } => {
+                let receiver_list = address.items_as_parsed();
+                for receiver in receiver_list {
+                    match receiver {
+                        Receiver::Orchard(bytes) => return Ok(*bytes),
+                        _ => continue,
+                    }
+                }
+
+                Err("Unified address missing Orchard receiver".to_string())
+            }
+            _ => Err("No Orchard address found".to_string()),
         }
     }
 

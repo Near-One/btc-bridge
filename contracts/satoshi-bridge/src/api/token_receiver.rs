@@ -14,7 +14,7 @@ pub enum TokenReceiverMessage {
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
-        orchard_bundle_bytes: Option<String>,
+        chain_specific_data: Option<ChainSpecificData>,
     },
 }
 
@@ -54,7 +54,7 @@ impl FungibleTokenReceiver for Contract {
                 input,
                 output,
                 max_gas_fee,
-                orchard_bundle_bytes,
+                chain_specific_data,
             } => self.ft_on_transfer_withdraw_chain_specific(
                 sender_id,
                 amount,
@@ -62,7 +62,7 @@ impl FungibleTokenReceiver for Contract {
                 input,
                 output,
                 max_gas_fee,
-                orchard_bundle_bytes.map(|b| hex::decode(b).unwrap()),
+                chain_specific_data,
             ),
         }
     }
@@ -84,15 +84,12 @@ impl Contract {
                 .is_none(),
             "Previous btc tx has not been signed"
         );
-        let target_address_script_pubkey = self
-            .internal_config()
-            .string_to_script_pubkey(&target_btc_address);
 
         let withdraw_change_address_script_pubkey =
             self.internal_config().get_change_script_pubkey();
         let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount);
         let (actual_received_amount, gas_fee) = self.check_withdraw_psbt_valid(
-            &target_address_script_pubkey,
+            target_btc_address.clone(),
             &withdraw_change_address_script_pubkey,
             psbt,
             &vutxos,

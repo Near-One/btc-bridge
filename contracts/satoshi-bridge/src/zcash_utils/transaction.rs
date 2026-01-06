@@ -58,9 +58,9 @@ impl Transaction {
     }
 
     pub fn get_transparent_builder(
-        vin: &Vec<zcash_transparent::bundle::TxIn<Authorized>>,
-        vout: &Vec<zcash_transparent::bundle::TxOut>,
-        input: &Vec<zcash_transparent::bundle::TxOut>,
+        vin: &[zcash_transparent::bundle::TxIn<Authorized>],
+        vout: &[zcash_transparent::bundle::TxOut],
+        input: &[zcash_transparent::bundle::TxOut],
         public_key: &bitcoin::PublicKey,
     ) -> TransparentBuilder {
         let mut builder = zcash_transparent::builder::TransparentBuilder::empty();
@@ -85,9 +85,9 @@ impl Transaction {
     }
 
     pub fn to_zcash_tx(
-        vin: &Vec<zcash_transparent::bundle::TxIn<Authorized>>,
-        vout: &Vec<zcash_transparent::bundle::TxOut>,
-        input: &Vec<zcash_transparent::bundle::TxOut>,
+        vin: &[zcash_transparent::bundle::TxIn<Authorized>],
+        vout: &[zcash_transparent::bundle::TxOut],
+        input: &[zcash_transparent::bundle::TxOut],
         expiry_height: u32,
         public_key: &bitcoin::PublicKey,
         branch_id: BranchId,
@@ -100,6 +100,9 @@ impl Transaction {
         let lock_time = 0;
         let expiry_height = BlockHeight::from_u32(expiry_height);
 
+        // The Orchard bundle is included in TransactionData, which binds it into the
+        // ZIP-244 sighash. This ensures any change to the Orchard bytes invalidates
+        // transparent signatures.
         TransactionData::from_parts(
             TxVersion::V5,
             branch_id,

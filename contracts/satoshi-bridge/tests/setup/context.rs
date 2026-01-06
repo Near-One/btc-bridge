@@ -145,6 +145,7 @@ impl Context {
                 "name": "Near WTC".to_string(),
                 "symbol": "NBTC".to_string(),
                 "icon": Some(DATA_IMAGE_SVG_NEAR_ICON.to_string()),
+                "decimals": 8,
             }))
             .transact()
             .await
@@ -161,10 +162,12 @@ impl Context {
             .unwrap()
             .unwrap();
 
+        let chain = std::env::var("TEST_CHAIN").unwrap_or_else(|_| "BitcoinMainnet".to_string());
+
         root.call(bridge_contract.id(), "new")
             .args_json(json!({
                 "config": {
-                    "chain": "BitcoinMainnet",
+                    "chain": chain,
                     "chain_signatures_account_id": chain_signatures_contract.id(),
                     "nbtc_account_id": nbtc_contract.id(),
                     "btc_light_client_account_id": btc_light_client_contract.id(),
@@ -200,6 +203,7 @@ impl Context {
                     "rbf_num_limit": 99,
                     "max_btc_tx_pending_sec": 3600 * 24,
                     "unhealthy_utxo_amount": 1000,
+                    "expiry_height_gap": 1000,
                 }
             }))
             .transact()
@@ -1124,6 +1128,7 @@ impl UpgradeContext {
                     "rbf_num_limit": 99,
                     "max_btc_tx_pending_sec": 3600 * 24,
                     "unhealthy_utxo_amount": 1000,
+                    "expiry_height_gap": 1000,
                 }
             }))
             .transact()
@@ -1145,6 +1150,10 @@ impl UpgradeContext {
             .args_json(json!({
                 "controller": root.id(),
                 "bridge_id": previous_satoshi_bridge_contract.id(),
+                "name": "nBTC",
+                "symbol": "nBTC",
+                "icon": Option::<String>::None,
+                "decimals": 8,
             }))
             .transact()
             .await

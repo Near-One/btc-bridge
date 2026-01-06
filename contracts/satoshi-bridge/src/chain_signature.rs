@@ -136,6 +136,7 @@ impl Contract {
         if let Some(result_bytes) = promise_result_as_success() {
             let signature = serde_json::from_slice::<SignatureResponse>(&result_bytes)
                 .expect("Invalid signature");
+
             let public_key = self
                 .generate_btc_public_key(
                     &self
@@ -164,12 +165,27 @@ impl Contract {
             btc_pending_info.psbt_hex = psbt.serialize();
             if btc_pending_info.is_all_signed() {
                 let tx_bytes_with_sign = psbt.extract_tx_bytes_with_sign();
+
+                // For ZCash chains, use base64 encoding to save space (1.33x vs 2x overhead for hex)
+                // ZCash transactions with Orchard bundles are larger and benefit from compact encoding
+                // For Bitcoin chains, keep hex encoding for backward compatibility
+
+                #[cfg(feature = "zcash")]
+                let tx_bytes_base64 = {
+                    use near_sdk::base64::{engine::general_purpose::STANDARD, Engine};
+                    STANDARD.encode(&tx_bytes_with_sign)
+                };
+
                 Event::SignedBtcTransaction {
                     account_id: &account_id,
                     tx_id: btc_pending_sign_id.clone(),
+                    #[cfg(not(feature = "zcash"))]
                     tx_bytes: &tx_bytes_with_sign,
+                    #[cfg(feature = "zcash")]
+                    tx_bytes_base64,
                 }
                 .emit();
+
                 btc_pending_info.tx_bytes_with_sign = Some(tx_bytes_with_sign);
                 btc_pending_info.to_pending_verify_stage();
 

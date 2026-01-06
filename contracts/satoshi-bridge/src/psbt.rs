@@ -2,9 +2,10 @@ use crate::network::Address;
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 impl Contract {
+    #[allow(clippy::too_many_arguments)]
     pub fn check_withdraw_psbt_valid(
         &self,
-        target_address_script_pubkey: &ScriptBuf,
+        target_btc_address: String,
         withdraw_change_address_script_pubkey: &ScriptBuf,
         withdraw_psbt: &PsbtWrapper,
         vutxos: &[VUTXO],
@@ -16,15 +17,21 @@ impl Contract {
         let utxo_num = self.data().utxos.len() + vutxos.len() as u32;
         let (input_num, change_num, actual_received_amount, gas_fee) = self.check_withdraw_psbt(
             withdraw_psbt,
-            target_address_script_pubkey,
+            target_btc_address,
             withdraw_change_address_script_pubkey,
             vutxos,
             amount,
             withdraw_fee,
         );
-        
+
         if let Some(max_gas_fee) = max_gas_fee {
-            require!(gas_fee <= max_gas_fee.0, format!("Gas fee does not match the provided max fee (gas fee = {}; max gas fee = {})", gas_fee, max_gas_fee.0));
+            require!(
+                gas_fee <= max_gas_fee.0,
+                format!(
+                    "Gas fee does not match the provided max fee (gas fee = {}; max gas fee = {})",
+                    gas_fee, max_gas_fee.0
+                )
+            );
         }
 
         require!(
@@ -147,7 +154,7 @@ impl Contract {
     pub fn check_withdraw_psbt(
         &self,
         psbt: &PsbtWrapper,
-        target_address_script_pubkey: &ScriptBuf,
+        target_btc_address: String,
         withdraw_change_address_script_pubkey: &ScriptBuf,
         vutxos: &[VUTXO],
         amount: u128,
@@ -160,30 +167,40 @@ impl Contract {
         let mut total_output_amount = 0;
         let mut actual_received_amounts = vec![];
         let mut change_amounts = vec![];
-        psbt.get_output().iter().for_each(|output| {
-            let output_value = output.value.to_sat() as u128;
-            total_output_amount += output_value;
-            if &output.script_pubkey == target_address_script_pubkey {
-                actual_received_amounts.push(output_value);
-            } else if &output.script_pubkey == withdraw_change_address_script_pubkey {
-                require!(
-                    output_value >= config.min_change_amount,
-                    "The change amount is too small"
-                );
-                require!(
-                    output_value < min_input_amount,
-                    "The change amount must be less than all inputs"
-                );
-                change_amounts.push(output_value);
-            } else {
-                let output_address =
-                    Address::from_script(&output.script_pubkey, config.chain.clone())
-                        .expect("Unsupported btc address type");
-                env::panic_str(
-                    format!("Invalid transaction output address: {}", output_address).as_str(),
-                );
-            }
-        });
+
+        if !psbt.get_output().is_empty() {
+            let target_address_script_pubkey = self
+                .internal_config()
+                .string_to_script_pubkey(&target_btc_address);
+
+            psbt.get_output().iter().for_each(|output| {
+                let output_value = output.value.to_sat() as u128;
+                total_output_amount += output_value;
+                if output.script_pubkey == target_address_script_pubkey {
+                    actual_received_amounts.push(output_value);
+                } else if &output.script_pubkey == withdraw_change_address_script_pubkey {
+                    require!(
+                        output_value >= config.min_change_amount,
+                        "The change amount is too small"
+                    );
+                    require!(
+                        output_value < min_input_amount,
+                        "The change amount must be less than all inputs"
+                    );
+                    change_amounts.push(output_value);
+                } else {
+                    let output_address =
+                        Address::from_script(&output.script_pubkey, config.chain.clone())
+                            .expect("Unsupported btc address type");
+                    env::panic_str(
+                        format!("Invalid transaction output address: {}", output_address).as_str(),
+                    );
+                }
+            });
+        }
+
+        total_output_amount += psbt.add_extra_outputs(&mut actual_received_amounts);
+
         require!(
             actual_received_amounts.len() <= 1,
             "only one user output is allowed."
@@ -224,7 +241,7 @@ impl Contract {
             )
         );
 
-        self.check_psbt_chain_specific(psbt, gas_fee);
+        self.check_psbt_chain_specific(psbt, gas_fee, target_btc_address);
         (input_num, change_num, actual_received_amount, gas_fee)
     }
 }

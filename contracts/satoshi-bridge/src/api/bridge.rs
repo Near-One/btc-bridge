@@ -116,7 +116,12 @@ impl Contract {
     /// * `original_btc_pending_verify_id` - Pending verify ID of the original transaction.
     /// * `output` - Modified output.
     #[pause(except(roles(Role::DAO)))]
-    pub fn withdraw_rbf(&mut self, original_btc_pending_verify_id: String, output: Vec<TxOut>) {
+    pub fn withdraw_rbf(
+        &mut self,
+        original_btc_pending_verify_id: String,
+        output: Vec<TxOut>,
+        chain_specific_data: Option<ChainSpecificData>,
+    ) {
         let account_id = env::predecessor_account_id();
         require!(
             self.internal_unwrap_account(&account_id)
@@ -125,7 +130,12 @@ impl Contract {
             "Previous btc tx has not been signed"
         );
 
-        self.withdraw_rbf_chain_specific(account_id, original_btc_pending_verify_id, output);
+        self.withdraw_rbf_chain_specific(
+            account_id,
+            original_btc_pending_verify_id,
+            output,
+            chain_specific_data
+        );
     }
 
     /// If the user's Withdraw is not verified within a certain time, the protocol can actively cancel the Withdraw through RBF, with the gas fee borne by the user.
@@ -154,6 +164,7 @@ impl Contract {
             user_account_id,
             original_btc_pending_verify_id,
             output,
+            None,
         );
     }
 
@@ -207,15 +218,10 @@ impl Contract {
     #[payable]
     #[access_control_any(roles(Role::DAO, Role::Operator))]
     #[pause(except(roles(Role::DAO)))]
-    pub fn active_utxo_management(
-        &mut self,
-        input: Vec<OutPoint>,
-        output: Vec<TxOut>,
-        orchard_bundle: Option<Vec<u8>>,
-    ) {
+    pub fn active_utxo_management(&mut self, input: Vec<OutPoint>, output: Vec<TxOut>) {
         assert_one_yocto();
         let account_id = env::predecessor_account_id();
-        self.active_utxo_management_chain_specific(account_id, input, output, orchard_bundle);
+        self.active_utxo_management_chain_specific(account_id, input, output);
     }
 
     /// The initiator of active UTXO management accelerates the transaction by increasing the gas fee.
@@ -244,6 +250,7 @@ impl Contract {
             account_id,
             original_btc_pending_verify_id,
             output,
+            None,
         );
     }
 
@@ -276,6 +283,7 @@ impl Contract {
             user_account_id,
             original_btc_pending_verify_id,
             output,
+            None,
         );
     }
 
