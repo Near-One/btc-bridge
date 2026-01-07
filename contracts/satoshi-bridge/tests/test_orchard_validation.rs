@@ -1,6 +1,11 @@
 mod setup;
 use setup::*;
 
+#[cfg(feature = "zcash")]
+use bitcoin::{Amount, TxOut};
+#[cfg(feature = "zcash")]
+use satoshi_bridge::network::{Address, Chain};
+
 /// Test: Bundle with wrong recipient should be rejected
 ///
 /// Generates two bundles with different spending keys to create different recipients.
