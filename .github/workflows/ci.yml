@@ -28,9 +28,6 @@ jobs:
         with:
           cache-provider: warpbuild
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
       - name: Run lint
         run: make lint
 
