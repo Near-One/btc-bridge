@@ -21,18 +21,11 @@ container_build_command = [
     "--no-abi",
 ]
 
+[package.metadata.near.reproducible_build.variant.bitcoin]
+container_build_command = ["cargo", "near", "build", "non-reproducible-wasm", "--locked", "--no-abi", "--no-default-features", "--features", "bitcoin"]
+
 [package.metadata.near.reproducible_build.variant.zcash]
-container_build_command = [
-    "cargo",
-    "near",
-    "build",
-    "non-reproducible-wasm",
-    "--locked",
-    "--no-abi",
-    "--no-default-features",
-    "--features",
-    "zcash"
-]
+container_build_command = ["cargo", "near", "build", "non-reproducible-wasm", "--locked", "--no-abi", "--no-default-features", "--features", "zcash"]
 
 [dependencies]
 near-sdk.workspace = true
