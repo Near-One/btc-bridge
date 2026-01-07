@@ -6,7 +6,7 @@ async fn test_btc_bridge_upgrade() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let upgrade_context = UpgradeContext::new(
         &worker,
-        "../../res/satoshi_bridge.wasm",
+        "../../res/bitcoin_bridge.wasm",
         "../../res/nbtc.wasm",
     )
     .await;
@@ -25,7 +25,7 @@ async fn test_btc_bridge_upgrade_from_v0_5_1() {
     )
     .await;
     check!(view upgrade_context.get_satoshi_bridge_version());
-    check!(upgrade_context.upgrade_satoshi_bridge("../../res/satoshi_bridge.wasm"));
+    check!(upgrade_context.upgrade_satoshi_bridge("../../res/bitcoin_bridge.wasm"));
     check!(view upgrade_context.get_satoshi_bridge_version());
 }
 
@@ -39,7 +39,7 @@ async fn test_zcash_bridge_upgrade_from_v0_6_0() {
     )
     .await;
     check!(view upgrade_context.get_satoshi_bridge_version());
-    check!(upgrade_context.upgrade_satoshi_bridge("../../res/zcash.wasm"));
+    check!(upgrade_context.upgrade_satoshi_bridge("../../res/zcash_bridge.wasm"));
     check!(view upgrade_context.get_satoshi_bridge_version());
 }
 
@@ -48,7 +48,7 @@ async fn test_nbtc_upgrade() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let upgrade_context = UpgradeContext::new(
         &worker,
-        "../../res/satoshi_bridge.wasm",
+        "../../res/bitcoin_bridge.wasm",
         "../../res/nbtc.wasm",
     )
     .await;

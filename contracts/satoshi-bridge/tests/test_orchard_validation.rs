@@ -1,9 +1,6 @@
 mod setup;
 use setup::*;
 
-use bitcoin::{Amount, TxOut};
-use satoshi_bridge::network::{Address, Chain};
-
 /// Test: Bundle with wrong recipient should be rejected
 ///
 /// Generates two bundles with different spending keys to create different recipients.

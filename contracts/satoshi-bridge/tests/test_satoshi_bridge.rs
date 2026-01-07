@@ -302,7 +302,6 @@ async fn test_base() {
     let total_change_amount = 250000 - (withdraw_amount - withdraw_fee) as u64;
     check!(print context.do_withdraw("alice", "bridge", withdraw_amount, TokenReceiverMessage::Withdraw {
         target_btc_address: "1PAGsaT5vDz6hjzvuenSw33hWzESTR3ZHQ".to_string(),
-        max_gas_fee: None,
         input: vec![
             OutPoint {
             txid: first_utxo[0].parse().unwrap(),
@@ -517,7 +516,6 @@ async fn test_fix_bridge_fee_and_relayer() {
     let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
     check!(print "do_withdraw" context.do_withdraw("alice", "bridge", withdraw_amount, TokenReceiverMessage::Withdraw {
         target_btc_address: "1PAGsaT5vDz6hjzvuenSw33hWzESTR3ZHQ".to_string(),
-        max_gas_fee: None,
         input: vec![OutPoint {
             txid: first_utxo[0].parse().unwrap(),
             vout: first_utxo[1].parse().unwrap(),
@@ -658,7 +656,6 @@ async fn test_ratio_bridge_fee_and_relayer() {
     let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
     check!(print "do_withdraw" context.do_withdraw("alice", "bridge", withdraw_amount, TokenReceiverMessage::Withdraw {
         target_btc_address: "1PAGsaT5vDz6hjzvuenSw33hWzESTR3ZHQ".to_string(),
-        max_gas_fee: None,
         input: vec![OutPoint {
             txid: first_utxo[0].parse().unwrap(),
             vout: first_utxo[1].parse().unwrap(),
@@ -808,7 +805,6 @@ async fn test_directly_withdraw() {
     let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
     check!(print "do_withdraw" context.do_withdraw("bob", "bridge", withdraw_amount, TokenReceiverMessage::Withdraw {
         target_btc_address: "1PAGsaT5vDz6hjzvuenSw33hWzESTR3ZHQ".to_string(),
-        max_gas_fee: None,
         input: vec![OutPoint {
             txid: first_utxo[0].parse().unwrap(),
             vout: first_utxo[1].parse().unwrap(),
@@ -1470,7 +1466,6 @@ async fn test_utxo_passive_management() {
             withdraw_amount,
             TokenReceiverMessage::Withdraw {
                 target_btc_address: "1PAGsaT5vDz6hjzvuenSw33hWzESTR3ZHQ".to_string(),
-                max_gas_fee: None,
                 input: vec![OutPoint {
                     txid: utxo500000[0].parse().unwrap(),
                     vout: utxo500000[1].parse().unwrap(),
@@ -1508,7 +1503,6 @@ async fn test_utxo_passive_management() {
             withdraw_amount,
             TokenReceiverMessage::Withdraw {
                 target_btc_address: "1PAGsaT5vDz6hjzvuenSw33hWzESTR3ZHQ".to_string(),
-                max_gas_fee: None,
                 input: vec![OutPoint {
                     txid: utxo500000[0].parse().unwrap(),
                     vout: utxo500000[1].parse().unwrap(),
@@ -1553,7 +1547,6 @@ async fn test_utxo_passive_management() {
             withdraw_amount,
             TokenReceiverMessage::Withdraw {
                 target_btc_address: "1PAGsaT5vDz6hjzvuenSw33hWzESTR3ZHQ".to_string(),
-                max_gas_fee: None,
                 input: vec![
                     OutPoint {
                         txid: utxo500000[0].parse().unwrap(),
@@ -1655,7 +1648,6 @@ async fn test_cancel_withdraw() {
     let change_amount = 500000 - (withdraw_amount - withdraw_fee) as u64;
     check!(print "do_withdraw" context.do_withdraw("alice", "bridge", withdraw_amount, TokenReceiverMessage::Withdraw {
         target_btc_address: "1PAGsaT5vDz6hjzvuenSw33hWzESTR3ZHQ".to_string(),
-        max_gas_fee: None,
         input: vec![OutPoint {
             txid: first_utxo[0].parse().unwrap(),
             vout: first_utxo[1].parse().unwrap(),
@@ -1887,7 +1879,6 @@ async fn test_cancel_withdraw2() {
     let change_amount = 500000 - (withdraw_amount - withdraw_fee) as u64;
     check!(print "do_withdraw" context.do_withdraw("alice", "bridge", withdraw_amount, TokenReceiverMessage::Withdraw {
         target_btc_address: "1PAGsaT5vDz6hjzvuenSw33hWzESTR3ZHQ".to_string(),
-        max_gas_fee: None,
         input: vec![OutPoint {
             txid: first_utxo[0].parse().unwrap(),
             vout: first_utxo[1].parse().unwrap(),
