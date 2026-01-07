@@ -56,7 +56,7 @@ impl Context {
                     .unwrap()
                     .unwrap();
                 bridge
-                    .deploy(&std::fs::read("../../res/satoshi_bridge.wasm").unwrap())
+                    .deploy(&std::fs::read("../../res/bitcoin_bridge.wasm").unwrap())
                     .await
                     .unwrap()
                     .unwrap()
@@ -1058,7 +1058,7 @@ impl UpgradeContext {
         ) = tokio::join!(
             async {
                 worker
-                    .dev_deploy(&std::fs::read("../../res/satoshi_bridge.wasm").unwrap())
+                    .dev_deploy(&std::fs::read("../../res/bitcoin_bridge.wasm").unwrap())
                     .await
                     .unwrap()
             },

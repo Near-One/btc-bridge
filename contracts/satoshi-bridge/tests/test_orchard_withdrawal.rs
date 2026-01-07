@@ -130,8 +130,8 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
             }],
             max_gas_fee: None,
             chain_specific_data: Some(ChainSpecificData {
-                orchard_bundle_bytes: Some(hex::decode(&bundle_hex).unwrap().into()),
-                expiry_height: None,
+                orchard_bundle_bytes: hex::decode(&bundle_hex).unwrap().into(),
+                expiry_height: 10000,
             }),
         }
     ));
@@ -248,8 +248,8 @@ async fn test_orchard_withdrawal_amount_mismatch() {
                 }],
                 max_gas_fee: None,
                 chain_specific_data: Some(ChainSpecificData {
-                    orchard_bundle_bytes: Some(hex::decode(&bundle_hex).unwrap().into()),
-                    expiry_height: None,
+                    orchard_bundle_bytes: hex::decode(&bundle_hex).unwrap().into(),
+                    expiry_height: 10000,
                 }),
             },
         )

@@ -6,7 +6,7 @@ async fn test_satoshi_bridge_upgrade() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let upgrade_context = UpgradeContext::new(&worker).await;
     check!(view upgrade_context.get_satoshi_bridge_version());
-    check!(upgrade_context.upgrade_satoshi_bridge("../../res/satoshi_bridge.wasm"));
+    check!(upgrade_context.upgrade_satoshi_bridge("../../res/bitcoin_bridge.wasm"));
     check!(view upgrade_context.get_satoshi_bridge_version());
 }
 

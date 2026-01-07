@@ -111,8 +111,8 @@ async fn test_orchard_wrong_recipient() {
                 }],
                 max_gas_fee: None,
                 chain_specific_data: Some(ChainSpecificData {
-                    orchard_bundle_bytes: Some(hex::decode(&bundle_a).unwrap().into()), // Bundle for recipient A
-                    expiry_height: None,
+                    orchard_bundle_bytes: hex::decode(&bundle_a).unwrap().into(), // Bundle for recipient A
+                    expiry_height: 10000,
                 }),
             },
         )
@@ -207,10 +207,7 @@ async fn test_orchard_missing_bundle() {
                 }],
                 output: vec![],
                 max_gas_fee: None,
-                chain_specific_data: Some(ChainSpecificData {
-                    orchard_bundle_bytes: None, // But NO bundle!
-                    expiry_height: None,
-                }),
+                chain_specific_data: None, // No bundle provided
             },
         )
         .await;
@@ -317,8 +314,8 @@ async fn test_orchard_bundle_in_zcash_tx() {
             }],
             max_gas_fee: None,
             chain_specific_data: Some(ChainSpecificData {
-                orchard_bundle_bytes: Some(hex::decode(&bundle_hex).unwrap().into()),
-                expiry_height: None,
+                orchard_bundle_bytes: hex::decode(&bundle_hex).unwrap().into(),
+                expiry_height: 10000,
             }),
         }
     ));
