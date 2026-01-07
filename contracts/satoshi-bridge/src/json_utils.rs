@@ -1,4 +1,4 @@
-use crate::*;
+use crate::Value;
 
 /// Recursively checks whether the structure of `input` matches the structure of `template`.
 /// Values can differ, but keys and value types must conform to the `template`.
@@ -15,15 +15,9 @@ pub fn is_structure_equal(template: &Value, input: &Value) -> bool {
     match (template, input) {
         (Value::Object(t_obj), Value::Object(i_obj)) => {
             for (key, t_val) in t_obj {
-                match i_obj.get(key) {
-                    Some(i_val) => {
-                        if !is_structure_equal(t_val, i_val) {
-                            return false;
-                        }
-                    }
-                    None => {
-                        // Input is allowed to omit fields defined in the template; these are treated as optional fields.
-                        continue;
+                if let Some(i_val) = i_obj.get(key) {
+                    if !is_structure_equal(t_val, i_val) {
+                        return false;
                     }
                 }
             }

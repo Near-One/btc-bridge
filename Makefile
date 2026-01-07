@@ -75,3 +75,17 @@ define build_release_wasm
 	@cargo near build reproducible-wasm --manifest-path ./contracts/${PACKAGE_NAME}/Cargo.toml
 	@cp target/near/${WASM_NAME}/$(WASM_NAME).wasm ./res/$(WASM_NAME)_release.wasm
 endef
+
+define build_release_zcash_wasm
+	@mkdir -p res
+	@rustup target add wasm32-unknown-unknown
+	@cargo near build reproducible-wasm --manifest-path ./contracts/satoshi-bridge/Cargo.toml --variant zcash
+	@cp target/near/satoshi_bridge/satoshi_bridge.wasm ./res/zcash_connector_release.wasm
+endef
+
+define local_build_zcash_wasm
+    @mkdir -p res
+    @rustup target add wasm32-unknown-unknown
+    @cargo near build non-reproducible-wasm --manifest-path ./contracts/satoshi-bridge/Cargo.toml --locked --no-abi --no-default-features --features zcash
+    @cp target/near/satoshi_bridge/satoshi_bridge.wasm ./res/zcash.wasm
+endef

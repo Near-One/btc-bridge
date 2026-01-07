@@ -1,4 +1,7 @@
-use crate::*;
+use crate::{
+    env, near, promise_result_as_success, require, serde_json, BTCPendingInfo, Contract,
+    ContractExt, Gas, Promise, PromiseOrValue,
+};
 
 pub const GAS_FOR_VERIFY_ACTIVE_UTXO_MANAGEMENT_CALL_BACK: Gas = Gas::from_tgas(50);
 

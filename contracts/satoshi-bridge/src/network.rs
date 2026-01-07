@@ -28,16 +28,18 @@ pub enum Chain {
 }
 #[cfg(feature = "zcash")]
 pub struct BranchIdUpdateBlockHeight {
-    pub bu6_1_update: u32,
+    pub nu6_1_update: u32,
 }
 
 #[cfg(feature = "zcash")]
 impl BranchIdUpdateBlockHeight {
     pub fn new(chain: &Chain) -> Self {
         match chain {
-            Chain::ZcashMainnet => Self { bu6_1_update: 0 },
+            Chain::ZcashMainnet => Self {
+                nu6_1_update: 3146400,
+            },
             Chain::ZcashTestnet => Self {
-                bu6_1_update: 3536500,
+                nu6_1_update: 3536500,
             },
             _ => unreachable!(),
         }
@@ -47,7 +49,7 @@ impl Chain {
     #[cfg(feature = "zcash")]
     pub fn get_branch_id(&self, block_height: u32) -> BranchId {
         let block_height_update = BranchIdUpdateBlockHeight::new(self);
-        if block_height_update.bu6_1_update != 0 && block_height >= block_height_update.bu6_1_update
+        if block_height_update.nu6_1_update != 0 && block_height >= block_height_update.nu6_1_update
         {
             return BranchId::Nu6_1;
         }
@@ -118,7 +120,7 @@ impl zcash_address::TryFromAddress for Address {
 }
 
 impl Address {
-    /// Parse an address string + chain into AddressInner
+    /// Parse an address string + chain into `AddressInner`
     pub fn parse(address: &str, chain: Chain) -> Result<Self, String> {
         if chain == Chain::ZcashMainnet || chain == Chain::ZcashTestnet {
             let addr = ZcashAddress::try_from_encoded(address)
@@ -197,8 +199,8 @@ impl Address {
                                 })?,
                             ))
                         }
-                        _ => continue,
-                    };
+                        _ => {}
+                    }
                 }
 
                 Err("No receiver found in address".to_string())
@@ -274,7 +276,7 @@ impl Address {
 /// Formats bech32 as upper case if alternate formatting is chosen (`{:#}`).
 impl fmt::Display for Address {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        use Address::*;
+        use Address::{P2pkh, P2sh, Segwit, Unified};
         match self {
             P2pkh { hash, chain } => {
                 let prefix = get_pubkey_address_prefix(chain);
@@ -310,7 +312,7 @@ impl fmt::Display for Address {
                 };
 
                 let str_address = ZcashAddress::from_unified(network, address.clone()).encode();
-                write!(fmt, "{}", str_address)
+                write!(fmt, "{str_address}")
             }
         }
     }

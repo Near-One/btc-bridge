@@ -1,5 +1,4 @@
-use crate::psbt_wrapper::PsbtWrapper;
-use crate::*;
+use crate::{psbt_wrapper::PsbtWrapper, *};
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_plugins::pause;
 

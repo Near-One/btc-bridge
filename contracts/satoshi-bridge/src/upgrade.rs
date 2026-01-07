@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{env, near, Contract, ContractExt, VersionedContractData};
 
 #[near]
 impl Contract {
@@ -11,6 +11,7 @@ impl Contract {
         contract.data = match contract.data {
             VersionedContractData::V0(data) => VersionedContractData::Current(data.into()),
             VersionedContractData::V1(data) => VersionedContractData::Current(data.into()),
+            VersionedContractData::V2(data) => VersionedContractData::Current(data.into()),
             VersionedContractData::Current(data) => VersionedContractData::Current(data),
         };
         contract

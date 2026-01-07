@@ -142,7 +142,7 @@ impl Context {
             .args_json(json!({
                 "controller": root.id(),
                 "bridge_id": bridge_contract.id(),
-                "name": "Near WTC".to_string(),
+                "name": "Near BTC".to_string(),
                 "symbol": "NBTC".to_string(),
                 "icon": Some(DATA_IMAGE_SVG_NEAR_ICON.to_string()),
                 "decimals": 8,
@@ -1048,7 +1048,11 @@ pub struct UpgradeContext {
 }
 
 impl UpgradeContext {
-    pub async fn new(worker: &Worker<Sandbox>) -> Self {
+    pub async fn new(
+        worker: &Worker<Sandbox>,
+        previous_satoshi_bridge_contract_path: &str,
+        previous_nbtc_contract_path: &str,
+    ) -> Self {
         let root = worker.root_account().unwrap();
         let (
             previous_satoshi_bridge_contract,
@@ -1058,7 +1062,7 @@ impl UpgradeContext {
         ) = tokio::join!(
             async {
                 worker
-                    .dev_deploy(&std::fs::read("../../res/bitcoin_bridge.wasm").unwrap())
+                    .dev_deploy(&std::fs::read(previous_satoshi_bridge_contract_path).unwrap())
                     .await
                     .unwrap()
             },
@@ -1070,7 +1074,7 @@ impl UpgradeContext {
                     .await
                     .unwrap()
                     .unwrap();
-                nbtc.deploy(&std::fs::read("../../res/nbtc.wasm").unwrap())
+                nbtc.deploy(&std::fs::read(previous_nbtc_contract_path).unwrap())
                     .await
                     .unwrap()
                     .unwrap()

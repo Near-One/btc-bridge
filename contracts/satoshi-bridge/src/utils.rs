@@ -1,6 +1,6 @@
 use bitcoin::hashes::Hash;
 
-use crate::*;
+use crate::{env, Timestamp};
 
 pub const UTXO_STORAGE_KEY_TAG: &str = "@";
 
@@ -18,7 +18,8 @@ pub fn to_nano(sec: u32) -> Timestamp {
 }
 
 pub fn nano_to_sec(nano: u64) -> u32 {
-    (nano / 10u64.pow(9)) as u32
+    u32::try_from(nano / 10u64.pow(9))
+        .unwrap_or_else(|_| env::panic_str("Timestamp overflow when converting nano to sec"))
 }
 
 pub mod u64_dec_format {

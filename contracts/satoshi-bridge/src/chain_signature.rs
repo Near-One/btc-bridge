@@ -1,5 +1,9 @@
-use crate::*;
+use crate::{
+    env, ext_contract, nano_to_sec, near, promise_result_as_success, require, serde_json,
+    AccountId, Contract, ContractExt, Event, Gas, Promise, PublicKey,
+};
 use bitcoin::ecdsa::Signature;
+
 pub const GAS_FOR_SIGN_CALL: Gas = Gas::from_tgas(50);
 pub const GAS_FOR_SIGN_BTC_TRANSACTION_CALL_BACK: Gas = Gas::from_tgas(30);
 

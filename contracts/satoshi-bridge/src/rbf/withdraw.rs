@@ -1,6 +1,7 @@
-use crate::network::Address;
-use crate::psbt_wrapper::PsbtWrapper;
-use crate::*;
+use crate::{
+    init_rbf_btc_pending_info, network::Address, psbt_wrapper::PsbtWrapper, require, AccountId,
+    BTCPendingInfo, Contract, PendingInfoStage, PendingInfoState, RbfState,
+};
 
 impl Contract {
     pub fn check_withdraw_rbf_psbt_valid(
@@ -12,7 +13,6 @@ impl Contract {
             self.internal_config().get_change_script_pubkey();
         let original_tx =
             original_tx_btc_pending_info.get_transaction(&self.internal_config().chain);
-
         require!(
             original_tx.output().len() == withdraw_rbf_psbt.get_output_num(),
             "Invalid output num"

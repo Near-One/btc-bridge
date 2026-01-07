@@ -1,4 +1,5 @@
-use crate::*;
+use crate::{near, u128_dec_format, AccountId, Contract};
+use near_sdk::env;
 use std::collections::HashSet;
 
 #[near(serializers = [borsh, json])]
@@ -78,7 +79,7 @@ impl Contract {
     }
 
     pub fn internal_get_account(&self, account_id: &AccountId) -> Option<&Account> {
-        self.data().accounts.get(account_id).map(|o| o.into())
+        self.data().accounts.get(account_id).map(Into::into)
     }
 
     pub fn internal_unwrap_account(&self, account_id: &AccountId) -> &Account {

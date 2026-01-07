@@ -7,7 +7,7 @@ mod account;
 mod fungible_token;
 mod storage;
 
-use account::*;
+use account::Account;
 
 #[derive(PanicOnDefault)]
 #[near(contract_state)]

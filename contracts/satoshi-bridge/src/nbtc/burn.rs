@@ -1,6 +1,9 @@
-use crate::*;
+use crate::{
+    env, ext_nbtc, generate_utxo_storage_key, is_promise_success, near, Contract, ContractExt,
+    Event, Gas, Promise, WrappedTransaction, U128, UTXO,
+};
 
-pub const GAS_FOR_BURN_CALL: Gas = Gas::from_tgas(10);
+pub const GAS_FOR_BURN_CALL: Gas = Gas::from_tgas(5);
 pub const GAS_FOR_WITHDRAW_BURN_CALL_BACK: Gas = Gas::from_tgas(20);
 pub const GAS_FOR_ACTIVE_UTXO_MANAGEMENT_BURN_CALL_BACK: Gas = Gas::from_tgas(20);
 
@@ -86,7 +89,10 @@ impl Contract {
                         vout: index,
                         balance: output.value.to_sat(),
                     };
-                    let utxo_storage_key = generate_utxo_storage_key(tx_id.clone(), index as u32);
+                    let utxo_storage_key = generate_utxo_storage_key(
+                        tx_id.clone(),
+                        u32::try_from(index).unwrap_or_else(|_| env::panic_str("Index overflow")),
+                    );
                     self.internal_set_utxo(&utxo_storage_key, utxo);
                     utxo_storage_keys.push(utxo_storage_key);
                 }
@@ -165,7 +171,10 @@ impl Contract {
                         vout: index,
                         balance: output.value.to_sat(),
                     };
-                    let utxo_storage_key = generate_utxo_storage_key(tx_id.clone(), index as u32);
+                    let utxo_storage_key = generate_utxo_storage_key(
+                        tx_id.clone(),
+                        u32::try_from(index).unwrap_or_else(|_| env::panic_str("Index overflow")),
+                    );
                     self.internal_set_utxo(&utxo_storage_key, utxo);
                     utxo_storage_keys.push(utxo_storage_key);
                 }
