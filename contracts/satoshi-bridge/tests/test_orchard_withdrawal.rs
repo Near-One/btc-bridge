@@ -1,7 +1,9 @@
 mod setup;
 use setup::*;
 
+#[cfg(feature = "zcash")]
 use bitcoin::{Amount, TxOut};
+#[cfg(feature = "zcash")]
 use satoshi_bridge::network::{Address, Chain};
 
 #[tokio::test]
@@ -29,6 +31,7 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
             recipient_id: context.get_account_by_name("alice").id().clone(),
             post_actions: None,
             extra_msg: None,
+            safe_deposit: None,
         })
         .await
         .unwrap();
@@ -60,6 +63,7 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
             recipient_id: context.get_account_by_name("alice").id().clone(),
             post_actions: None,
             extra_msg: None,
+            safe_deposit: None,
         },
         zcash_tx_bytes,
         1,
@@ -159,6 +163,7 @@ async fn test_orchard_withdrawal_amount_mismatch() {
             recipient_id: context.get_account_by_name("alice").id().clone(),
             post_actions: None,
             extra_msg: None,
+            safe_deposit: None,
         })
         .await
         .unwrap();
@@ -182,6 +187,7 @@ async fn test_orchard_withdrawal_amount_mismatch() {
             recipient_id: context.get_account_by_name("alice").id().clone(),
             post_actions: None,
             extra_msg: None,
+            safe_deposit: None,
         },
         zcash_tx_bytes,
         1,

@@ -30,6 +30,7 @@ async fn test_orchard_wrong_recipient() {
             recipient_id: context.get_account_by_name("alice").id().clone(),
             post_actions: None,
             extra_msg: None,
+            safe_deposit: None,
         })
         .await
         .unwrap();
@@ -40,6 +41,7 @@ async fn test_orchard_wrong_recipient() {
             recipient_id: context.get_account_by_name("alice").id().clone(),
             post_actions: None,
             extra_msg: None,
+            safe_deposit: None,
         },
         generate_zcash_transaction_bytes(
             vec![(
@@ -153,6 +155,7 @@ async fn test_orchard_missing_bundle() {
             recipient_id: context.get_account_by_name("alice").id().clone(),
             post_actions: None,
             extra_msg: None,
+            safe_deposit: None,
         })
         .await
         .unwrap();
@@ -163,6 +166,7 @@ async fn test_orchard_missing_bundle() {
             recipient_id: context.get_account_by_name("alice").id().clone(),
             post_actions: None,
             extra_msg: None,
+            safe_deposit: None,
         },
         generate_zcash_transaction_bytes(
             vec![(
@@ -246,6 +250,7 @@ async fn test_orchard_bundle_in_zcash_tx() {
             recipient_id: context.get_account_by_name("alice").id().clone(),
             post_actions: None,
             extra_msg: None,
+            safe_deposit: None,
         })
         .await
         .unwrap();
@@ -256,6 +261,7 @@ async fn test_orchard_bundle_in_zcash_tx() {
             recipient_id: context.get_account_by_name("alice").id().clone(),
             post_actions: None,
             extra_msg: None,
+            safe_deposit: None,
         },
         generate_zcash_transaction_bytes(
             vec![(
