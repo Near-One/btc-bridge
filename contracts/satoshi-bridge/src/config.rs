@@ -151,7 +151,7 @@ impl Config {
         let chain = self.get_utxo_network();
 
         Address::parse(address_string, chain)
-            .unwrap_or_else(|e| panic!("{address_string}: {e}"))
+            .unwrap_or_else(|e| env::panic_str(&format!("{address_string}: {e}")))
             .script_pubkey()
             .expect("Failed to get script pubkey")
     }

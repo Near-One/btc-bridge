@@ -66,7 +66,9 @@ impl Contract {
                 self.data_mut()
                     .utxos
                     .remove(&utxo_storage_key)
-                    .unwrap_or_else(|| panic!("UTXO {} not exist", utxo_storage_key))
+                    .unwrap_or_else(|| {
+                        env::panic_str(&format!("UTXO {} not exist", utxo_storage_key))
+                    })
             })
             .collect::<Vec<_>>();
         (utxo_storage_keys, vutxos)

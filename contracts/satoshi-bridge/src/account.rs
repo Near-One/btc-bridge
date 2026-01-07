@@ -86,7 +86,9 @@ impl Contract {
             .accounts
             .get(account_id)
             .map(|o| o.into())
-            .unwrap_or_else(|| panic!("ERR_ACCOUNT_NOT_REGISTERED: {}", account_id))
+            .unwrap_or_else(|| {
+                env::panic_str(&format!("ERR_ACCOUNT_NOT_REGISTERED: {}", account_id))
+            })
     }
 
     pub fn internal_unwrap_mut_account(&mut self, account_id: &AccountId) -> &mut Account {
@@ -94,7 +96,9 @@ impl Contract {
             .accounts
             .get_mut(account_id)
             .map(|o| o.into())
-            .unwrap_or_else(|| panic!("ERR_ACCOUNT_NOT_REGISTERED: {}", account_id))
+            .unwrap_or_else(|| {
+                env::panic_str(&format!("ERR_ACCOUNT_NOT_REGISTERED: {}", account_id))
+            })
     }
 
     pub fn internal_unwrap_or_create_mut_account(
