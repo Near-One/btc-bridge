@@ -25,7 +25,7 @@ macro_rules! define_rbf_callback {
                             user_account_id,
                             original_btc_pending_verify_id,
                             output,
-                            chain_specific_data
+                            chain_specific_data,
                         ),
                 );
             }
@@ -42,11 +42,18 @@ macro_rules! define_rbf_callback {
                 chain_specific_data: Option<ChainSpecificData>,
                 #[callback_unwrap] last_block_height: u32,
             ) {
-                let (orchard_bundle_bytes, expiry_height) = if let Some(chain_specific_data) = chain_specific_data {
-                    (Some(chain_specific_data.orchard_bundle_bytes), chain_specific_data.expiry_height)
-                } else {
-                    (None, last_block_height + self.get_config().expiry_height_gap)
-                };
+                let (orchard_bundle_bytes, expiry_height) =
+                    if let Some(chain_specific_data) = chain_specific_data {
+                        (
+                            Some(chain_specific_data.orchard_bundle_bytes),
+                            chain_specific_data.expiry_height,
+                        )
+                    } else {
+                        (
+                            None,
+                            last_block_height + self.get_config().expiry_height_gap,
+                        )
+                    };
                 require!(
                     expiry_height >= last_block_height + self.get_config().expiry_height_gap
                         && expiry_height
@@ -129,9 +136,12 @@ impl Contract {
                 chain_specific_data.expiry_height,
             )
         } else {
-            (None, last_block_height + self.get_config().expiry_height_gap)
+            (
+                None,
+                last_block_height + self.get_config().expiry_height_gap,
+            )
         };
-        
+
         require!(
             expiry_height >= last_block_height + self.get_config().expiry_height_gap
                 && expiry_height <= last_block_height + 2 * self.get_config().expiry_height_gap,
@@ -143,7 +153,7 @@ impl Contract {
             )
         );
 
-        let mut psbt = PsbtWrapper::new(
+        let psbt = PsbtWrapper::new(
             input,
             output,
             orchard_bundle,
@@ -153,13 +163,7 @@ impl Contract {
             self.internal_config(),
         );
 
-        self.create_btc_pending_info(
-            sender_id,
-            amount.0,
-            target_btc_address,
-            &mut psbt,
-            max_gas_fee,
-        );
+        self.create_btc_pending_info(sender_id, amount.0, target_btc_address, psbt, max_gas_fee);
 
         U128(0)
     }
@@ -177,7 +181,7 @@ impl Contract {
 
         // For active UTXO management, we don't validate orchard recipient/amount
         // as this is internal bridge operations, not user withdrawals
-        let mut psbt = PsbtWrapper::new(
+        let psbt = PsbtWrapper::new(
             input,
             output,
             None,
@@ -187,7 +191,7 @@ impl Contract {
             self.internal_config(),
         );
 
-        self.create_active_utxo_management_pending_info(account_id, &mut psbt);
+        self.create_active_utxo_management_pending_info(account_id, psbt);
     }
 }
 
@@ -242,7 +246,7 @@ impl Contract {
                         input,
                         output,
                         max_gas_fee,
-                        chain_specific_data
+                        chain_specific_data,
                     ),
             ),
         )

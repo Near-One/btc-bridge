@@ -11,6 +11,6 @@ pub use utils::*;
 
 // Re-export types used by tests
 pub use bitcoin::OutPoint;
-pub use satoshi_bridge::{DepositMsg, TokenReceiverMessage};
 #[cfg(feature = "zcash")]
 pub use satoshi_bridge::zcash_utils::types::ChainSpecificData;
+pub use satoshi_bridge::{DepositMsg, TokenReceiverMessage};

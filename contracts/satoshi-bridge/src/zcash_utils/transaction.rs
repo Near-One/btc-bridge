@@ -3,7 +3,6 @@ use bitcoin::hashes::Hash;
 use bitcoin::{absolute, ScriptBuf, TxOut, Txid};
 use zcash_primitives::consensus::{BlockHeight, BranchId};
 use zcash_primitives::transaction::{Transaction as ZCashTransaction, TransactionData, TxVersion};
-use zcash_protocol::value::ZatBalance;
 use zcash_transparent::builder::TransparentBuilder;
 use zcash_transparent::bundle::Authorized;
 

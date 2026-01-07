@@ -64,3 +64,4 @@ bs58 = "0.5"
 [features]
 default = []
 zcash = ["zcash_primitives", "zcash_transparent", "orchard", "core2", "sapling-crypto"]
+bitcoin = []

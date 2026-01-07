@@ -1,4 +1,5 @@
-use crate::zcash_utils::orchard_policy::{self, OrchardRawAddress, ORCHARD_RAW_ADDRESS_SIZE};
+use crate::network::ORCHARD_RAW_ADDRESS_SIZE;
+use crate::zcash_utils::orchard_policy::{self, OrchardOutput, ParsedOrchardBundle};
 use crate::zcash_utils::transaction::{Transaction, TransparentUnauthorized};
 use crate::*;
 use bitcoin::hashes::Hash;
@@ -11,7 +12,7 @@ use zcash_primitives::transaction::fees::transparent::{InputSize, OutputView};
 use zcash_primitives::transaction::fees::FeeRule;
 use zcash_primitives::transaction::{TransactionData, TransactionDigest, TxVersion};
 use zcash_protocol::consensus::{BlockHeight, BranchId};
-use zcash_protocol::value::{ZatBalance, Zatoshis};
+use zcash_protocol::value::Zatoshis;
 use zcash_transparent::bundle::Authorized;
 use zcash_transparent::bundle::TxIn as ZcashTxIn;
 use zcash_transparent::bundle::TxOut as ZcashTxOut;
@@ -23,8 +24,7 @@ pub struct PsbtWrapper {
     vin: Vec<ZcashTxIn<Authorized>>,
     vout: Vec<ZcashTxOut>,
     inputs_utxo: Vec<ZcashTxOut>,
-    orchard_bundle: Option<orchard::Bundle<orchard::bundle::Authorized, ZatBalance>>,
-    orchard_output: Option<(u64, OrchardRawAddress)>,
+    orchard: Option<ParsedOrchardBundle>,
     recipient_address: Option<String>,
 }
 
@@ -72,7 +72,7 @@ impl PsbtWrapper {
             vin.len()
         ];
 
-        let (orchard_bundle, orchard_output) =
+        let orchard =
             orchard_policy::extract_orchard_bundle(orchard_bundle_bytes).unwrap_or_else(|_| {
                 env::panic_str("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle")
             });
@@ -83,24 +83,18 @@ impl PsbtWrapper {
             vout,
             vin,
             inputs_utxo: inputs,
-            orchard_bundle,
-            orchard_output,
+            orchard,
             recipient_address,
         }
     }
 
     pub fn validate_orchard_bundle(&self, expected_addr: String, chain: network::Chain) {
         orchard_policy::validate_orchard_bundle(
-            self.orchard_bundle.as_ref().unwrap_or_else(|| {
+            self.orchard.as_ref().unwrap_or_else(|| {
                 env::panic_str("ERR_NO_ORCHARD_BUNDLE: Orchard bundle is required for validation")
             }),
             &expected_addr,
             &chain,
-            self.orchard_output.unwrap_or_else(|| {
-                env::panic_str(
-                    "ERR_NO_ORCHARD_OUTPUT: Orchard output data is required for validation",
-                )
-            }),
         )
         .unwrap_or_else(|_| {
             env::panic_str("ERR_ORCHARD_VALIDATION: Orchard bundle validation failed")
@@ -128,7 +122,7 @@ impl PsbtWrapper {
                 .collect()
         };
 
-        let (orchard_bundle, orchard_output) =
+        let orchard =
             orchard_policy::extract_orchard_bundle(orchard_bundle_bytes).unwrap_or_else(|_| {
                 env::panic_str("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle")
             });
@@ -139,8 +133,7 @@ impl PsbtWrapper {
             vin: original_psbt.vin,
             vout,
             inputs_utxo: original_psbt.inputs_utxo,
-            orchard_bundle,
-            orchard_output,
+            orchard,
             recipient_address: original_psbt.recipient_address,
         }
     }
@@ -163,18 +156,17 @@ impl PsbtWrapper {
     }
 
     pub fn has_orchard_bundle(&self) -> bool {
-        self.orchard_bundle.is_some()
+        self.orchard.is_some()
     }
 
     /// Get the Orchard output amount by recovering it with the bridge OVK.
     /// Returns the amount in zatoshis (satoshis for ZCash).
     /// Panics if there is no Orchard bundle.
     pub fn get_orchard_output_amount(&self) -> u128 {
-        let (amount, _addr) = self
-            .orchard_output
+        self.orchard
             .as_ref()
-            .unwrap_or_else(|| env::panic_str("No Orchard bundle present"));
-        *amount as u128
+            .unwrap_or_else(|| env::panic_str("No Orchard bundle present"))
+            .amount()
     }
 
     pub fn get_utxo_storage_keys(&self) -> Vec<String> {
@@ -191,9 +183,9 @@ impl PsbtWrapper {
     }
 
     pub fn add_extra_outputs(&self, actual_received_amounts: &mut Vec<u128>) -> u128 {
-        if let Some((amount, _addr)) = self.orchard_output {
-            actual_received_amounts.push(amount as u128);
-            return amount as u128;
+        if let Some(orchard) = &self.orchard {
+            actual_received_amounts.push(orchard.amount());
+            return orchard.amount();
         }
 
         0
@@ -242,16 +234,16 @@ impl PsbtWrapper {
             t.write(&mut buf).unwrap();
         }
 
-        zcash_primitives::transaction::components::orchard::write_v5_bundle(
-            self.orchard_bundle.as_ref(),
-            &mut buf,
-        )
-        .unwrap();
+        if let Some(orchard) = &self.orchard {
+            zcash_primitives::transaction::components::orchard::write_v5_bundle(
+                Some(&orchard.bundle),
+                &mut buf,
+            )
+            .unwrap();
 
-        if let Some(orchard_output) = self.orchard_output {
             buf.write_all(&[1u8; 1]).unwrap();
-            buf.write_all(&orchard_output.0.to_le_bytes()).unwrap();
-            buf.write_all(&orchard_output.1).unwrap();
+            buf.write_all(&orchard.output.amount.to_le_bytes()).unwrap();
+            buf.write_all(&orchard.output.recipient_addr).unwrap();
         } else {
             buf.write_all(&[0u8; 1]).unwrap();
         }
@@ -337,7 +329,7 @@ impl PsbtWrapper {
             None
         };
 
-        let orchard_output = if version >= 3 {
+        let orchard = if let Some(orchard_bundle) = orchard_bundle {
             let is_some = read_u8(&mut rdr).unwrap_or_else(|_| {
                 env::panic_str("ERR_INVALID_PSBT: failed to read orchard_output flag")
             });
@@ -352,7 +344,13 @@ impl PsbtWrapper {
                     });
                 }
 
-                Some((amount, addr))
+                Some(ParsedOrchardBundle {
+                    bundle: orchard_bundle,
+                    output: OrchardOutput {
+                        amount,
+                        recipient_addr: addr,
+                    },
+                })
             } else {
                 None
             }
@@ -381,19 +379,18 @@ impl PsbtWrapper {
             vin,
             vout,
             inputs_utxo: inputs,
-            orchard_bundle,
-            orchard_output,
+            orchard,
             recipient_address,
         }
     }
 
-    pub fn extract_tx_bytes_with_sign(&self) -> Vec<u8> {
+    pub fn extract_tx_bytes_with_sign(self) -> Vec<u8> {
         self.get_zcash_tx()
             .encode()
             .unwrap_or_else(|_| env::panic_str("ERR_TX_ENCODE: failed to encode Zcash transaction"))
     }
 
-    pub fn get_zcash_tx(&self) -> Transaction {
+    pub fn get_zcash_tx(self) -> Transaction {
         let transparent_bundle = zcash_transparent::bundle::Bundle {
             vin: self.vin.clone(),
             vout: self.vout.clone(),
@@ -409,7 +406,7 @@ impl PsbtWrapper {
             Some(transparent_bundle),
             None,
             None,
-            self.orchard_bundle.clone(),
+            self.orchard.map(|b| b.bundle),
         )
         .freeze()
         .unwrap_or_else(|_| {
@@ -419,7 +416,7 @@ impl PsbtWrapper {
         Transaction { inner_tx }
     }
 
-    pub fn get_pending_id(&self) -> String {
+    pub fn get_pending_id(self) -> String {
         self.get_zcash_tx().compute_txid().to_string()
     }
 
@@ -437,7 +434,7 @@ impl PsbtWrapper {
             ),
             digester.digest_transparent(tx_data.transparent_bundle()),
             digester.digest_sapling(None),
-            digester.digest_orchard(self.orchard_bundle.as_ref()),
+            digester.digest_orchard(self.orchard.as_ref().map(|b| &b.bundle)),
         )
     }
 
@@ -485,9 +482,9 @@ impl PsbtWrapper {
     pub fn get_min_fee(&self) -> Zatoshis {
         let fee_rule = zcash_primitives::transaction::fees::zip317::FeeRule::standard();
         let orchard_action_count = self
-            .orchard_bundle
+            .orchard
             .as_ref()
-            .map(|bundle| bundle.actions().len())
+            .map(|orchard| orchard.bundle.actions().len())
             .unwrap_or(0);
 
         fee_rule

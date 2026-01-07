@@ -8,7 +8,11 @@ use zcash_address::{ConversionError, ToAddress, ZcashAddress};
 #[cfg(feature = "zcash")]
 use zcash_protocol::consensus::BranchId;
 
-use crate::zcash_utils::orchard_policy::OrchardRawAddress;
+/// Size of Orchard raw address bytes (diversifier + pk_d).
+pub const ORCHARD_RAW_ADDRESS_SIZE: usize = 43;
+
+/// Type alias for Orchard raw address bytes to avoid magic numbers.
+pub type OrchardRawAddress = [u8; ORCHARD_RAW_ADDRESS_SIZE];
 
 #[near(serializers = [borsh, json])]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

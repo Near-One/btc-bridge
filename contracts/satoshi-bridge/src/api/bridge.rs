@@ -134,7 +134,7 @@ impl Contract {
             account_id,
             original_btc_pending_verify_id,
             output,
-            chain_specific_data
+            chain_specific_data,
         );
     }
 
@@ -341,7 +341,7 @@ impl Contract {
     pub fn create_active_utxo_management_pending_info(
         &mut self,
         account_id: AccountId,
-        psbt: &mut PsbtWrapper,
+        mut psbt: PsbtWrapper,
     ) {
         let account = self.internal_unwrap_account(&account_id);
         require!(
@@ -349,9 +349,9 @@ impl Contract {
             "Previous btc tx has not been signed"
         );
 
-        let (utxo_storage_keys, vutxos) = self.generate_vutxos(psbt);
+        let (utxo_storage_keys, vutxos) = self.generate_vutxos(&mut psbt);
         let (actual_received_amount, gas_fee) =
-            self.check_active_management_psbt_valid(psbt, &vutxos);
+            self.check_active_management_psbt_valid(&psbt, &vutxos);
         require!(
             gas_fee <= self.data().cur_available_protocol_fee,
             "Insufficient protocol_fee"

@@ -74,10 +74,10 @@ impl Contract {
         sender_id: AccountId,
         amount: u128,
         target_btc_address: String,
-        psbt: &mut PsbtWrapper,
+        mut psbt: PsbtWrapper,
         max_gas_fee: Option<U128>,
     ) {
-        let (utxo_storage_keys, vutxos) = self.generate_vutxos(psbt);
+        let (utxo_storage_keys, vutxos) = self.generate_vutxos(&mut psbt);
         require!(
             self.internal_unwrap_or_create_mut_account(&sender_id)
                 .btc_pending_sign_id
@@ -91,7 +91,7 @@ impl Contract {
         let (actual_received_amount, gas_fee) = self.check_withdraw_psbt_valid(
             target_btc_address.clone(),
             &withdraw_change_address_script_pubkey,
-            psbt,
+            &psbt,
             &vutxos,
             amount,
             withdraw_fee,

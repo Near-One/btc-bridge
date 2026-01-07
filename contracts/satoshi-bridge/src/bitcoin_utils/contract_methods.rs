@@ -56,6 +56,7 @@ impl Contract {
         require!(additional_gas_amount > 0, "No gas increase.");
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn ft_on_transfer_withdraw_chain_specific(
         &mut self,
         sender_id: AccountId,
@@ -66,12 +67,11 @@ impl Contract {
         max_gas_fee: Option<U128>,
         _chain_specific_data: Option<ChainSpecificData>,
     ) -> PromiseOrValue<U128> {
-        let mut psbt = PsbtWrapper::new(input, output);
         self.create_btc_pending_info(
             sender_id,
             amount,
             target_btc_address,
-            &mut psbt,
+            PsbtWrapper::new(input, output),
             max_gas_fee,
         );
         PromiseOrValue::Value(U128(0))
@@ -94,8 +94,10 @@ impl Contract {
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
     ) {
-        let mut psbt = PsbtWrapper::new(input, output);
-        self.create_active_utxo_management_pending_info(account_id, &mut psbt);
+        self.create_active_utxo_management_pending_info(
+            account_id,
+            PsbtWrapper::new(input, output),
+        );
     }
 
     pub(crate) fn generate_psbt_from_original_psbt_and_new_output(
