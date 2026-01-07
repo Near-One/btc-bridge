@@ -31,16 +31,13 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Run Clippy
-        run: cargo clippy --lib --bins --examples -- -D warnings -D clippy::pedantic -D clippy::as_conversions -A clippy::must_use_candidate -A clippy::needless_pass_by_value -A clippy::missing_panics_doc -A clippy::missing_errors_doc -A clippy::match_same_arms -A clippy::unused_self -A clippy::too_many_lines
+      - name: Run lint
+        run: make lint
 
       - name: Install cargo-near
         run: |
           curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/releases/latest/download/cargo-near-installer.sh | sh
 
-      - name: Build contracts
-        run: make build
-        timeout-minutes: 60
-
       - name: Run tests
-        run: cargo test --all -- --nocapture
+        run: make test
+
