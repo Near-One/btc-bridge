@@ -125,8 +125,8 @@ async fn test_orchard_wrong_recipient() {
     // Verify the error message
     let err_msg = tool_err_msg(&result);
     assert!(
-        err_msg.contains("Orchard recipient mismatch"),
-        "Expected 'Orchard recipient mismatch' error, got: {}",
+        err_msg.contains("Orchard bundle validation failed"),
+        "Expected 'Orchard bundle validation failed' error, got: {}",
         err_msg
     );
 }

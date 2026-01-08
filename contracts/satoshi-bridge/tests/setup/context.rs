@@ -208,7 +208,7 @@ impl Context {
                     "rbf_num_limit": 99,
                     "max_btc_tx_pending_sec": 3600 * 24,
                     "unhealthy_utxo_amount": 1000,
-                    "expiry_height_gap": 1000,
+                    "expiry_height_gap": 5000,
                 }
             }))
             .transact()
