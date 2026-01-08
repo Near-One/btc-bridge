@@ -74,7 +74,7 @@ async fn test_nbtc_upgrade_from_v0_5_1() {
 #[tokio::test]
 async fn test_set_icon() {
     let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker).await;
+    let context = Context::new(&worker, None).await;
     println!("{:?}", context.ft_metadata().await.unwrap().icon);
     check!(context.set_metadata("new icon"));
     println!("{:?}", context.ft_metadata().await.unwrap().icon);

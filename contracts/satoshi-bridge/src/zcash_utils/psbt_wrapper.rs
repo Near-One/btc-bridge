@@ -439,17 +439,18 @@ impl PsbtWrapper {
     }
 
     #[allow(unused_variables)]
-    pub fn get_hash_to_sign(&self, vin: usize, public_key: &bitcoin::PublicKey) -> [u8; 32] {
+    pub fn get_hash_to_sign(&self, vin: usize, public_keys: &[bitcoin::PublicKey]) -> [u8; 32] {
         let tx_data = WrappedTransaction::to_zcash_tx(
             &self.vin,
             &self.vout,
             &self.inputs_utxo,
             self.expiry_height,
-            public_key,
+            public_keys,
             self.branch_id,
         );
         let txid_parts =
             self.tx_digest(&tx_data, zcash_primitives::transaction::txid::TxIdDigester);
+
         let script = &self.inputs_utxo[vin].script_pubkey;
         let sig_input = zcash_primitives::transaction::sighash::SignableInput::Transparent(
             zcash_transparent::sighash::SignableInput::from_parts(

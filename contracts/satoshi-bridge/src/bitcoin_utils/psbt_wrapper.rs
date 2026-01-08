@@ -134,7 +134,7 @@ impl PsbtWrapper {
     }
 
     #[allow(unused_variables)]
-    pub fn get_hash_to_sign(&self, vin: usize, public_key: &bitcoin::PublicKey) -> [u8; 32] {
+    pub fn get_hash_to_sign(&self, vin: usize, public_keys: &[bitcoin::PublicKey]) -> [u8; 32] {
         let tx = self.psbt.unsigned_tx.clone();
         let mut cache = SighashCache::new(tx);
         let witness_utxo = self.psbt.inputs[vin]

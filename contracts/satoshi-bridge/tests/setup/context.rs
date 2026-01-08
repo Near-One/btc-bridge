@@ -43,7 +43,7 @@ pub struct Context {
 }
 
 impl Context {
-    pub async fn new(worker: &Worker<Sandbox>) -> Self {
+    pub async fn new(worker: &Worker<Sandbox>, chain: Option<String>) -> Self {
         let root = worker.root_account().unwrap();
         let (
             bridge_contract,
@@ -167,7 +167,9 @@ impl Context {
             .unwrap()
             .unwrap();
 
-        let chain = std::env::var("TEST_CHAIN").unwrap_or_else(|_| "BitcoinMainnet".to_string());
+        let chain = chain.unwrap_or(
+            std::env::var("TEST_CHAIN").unwrap_or_else(|_| "BitcoinMainnet".to_string()),
+        );
 
         root.call(bridge_contract.id(), "new")
             .args_json(json!({

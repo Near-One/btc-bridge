@@ -1,15 +1,33 @@
 mod setup;
-use std::str::FromStr;
-
-use bitcoin::{Address, Amount, OutPoint, TxOut};
+use bitcoin::{Amount, OutPoint, TxOut};
 use near_sdk::{AccountId, Gas};
+use satoshi_bridge::network::{Address, Chain};
 use satoshi_bridge::{DepositMsg, PendingInfoState, PostAction, TokenReceiverMessage};
 use setup::*;
+use std::str::FromStr;
+use std::string::ToString;
+
+#[cfg(feature = "zcash")]
+const CHAIN: &str = "ZcashTestnet";
+#[cfg(not(feature = "zcash"))]
+const CHAIN: &str = "BitcoinMainnet";
+
+#[cfg(feature = "zcash")]
+const TARGET_ADDRESS: &str = "tmD67UTsZ4iBbhCae4D43k1x8fhFNhwd4Jn";
+#[cfg(not(feature = "zcash"))]
+const TARGET_ADDRESS: &str = "1PAGsaT5vDz6hjzvuenSw33hWzESTR3ZHQ";
+
+fn get_chain() -> Chain {
+    match CHAIN {
+        "ZcashTestnet" => Chain::ZcashTestnet,
+        _ => Chain::BitcoinMainnet,
+    }
+}
 
 #[tokio::test]
 async fn test_role() {
     let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker).await;
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
     assert_eq!(
         context.get_metadata().await.unwrap().super_admins,
         vec!["test.near".parse::<AccountId>().unwrap()]
@@ -88,7 +106,7 @@ async fn test_role() {
 #[tokio::test]
 async fn test_base() {
     let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker).await;
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
     let config = context.get_bridge_config().await.unwrap();
     let withdraw_change_address = context.get_change_address().await.unwrap();
     let alice_btc_deposit_address = context
@@ -126,7 +144,7 @@ async fn test_base() {
             )],
             vec![
                 (alice_btc_deposit_address.as_str(), 10000),
-                ("1MgiBKohM2poApYamQadp21vJrNyh5T19G", 90000)
+                (TARGET_ADDRESS, 90000)
             ],
         ),
         0,
@@ -173,7 +191,7 @@ async fn test_base() {
                 None,
             ),],
             vec![
-                ("1MgiBKohM2poApYamQadp21vJrNyh5T19G", 90000),
+                (TARGET_ADDRESS, 90000),
                 (alice_btc_deposit_address.as_str(), 50000),
             ],
         ),
@@ -222,7 +240,7 @@ async fn test_base() {
                     None,
                 ),],
                 vec![
-                    ("1MgiBKohM2poApYamQadp21vJrNyh5T19G", 90000),
+                    (TARGET_ADDRESS, 90000),
                     (alice_btc_deposit_address.as_str(), 50000),
                 ],
             ),
@@ -256,7 +274,7 @@ async fn test_base() {
             ),],
             vec![
                 (bob_btc_deposit_address.as_str(), 200000),
-                ("1F3HTDzfWnPPbBaUrxg99LJEjHQd4NsisC", 50000),
+                (TARGET_ADDRESS, 50000),
             ],
         ),
         0,
@@ -297,11 +315,11 @@ async fn test_base() {
     let first_utxo = utxos_keys[0].split('@').collect::<Vec<_>>();
     let second_utxo = utxos_keys[1].split('@').collect::<Vec<_>>();
     let withdraw_amount = 110000;
-    let btc_gas_fee = 10000;
+    let btc_gas_fee = 25000;
     let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
     let total_change_amount = 250000 - (withdraw_amount - withdraw_fee) as u64;
     check!(print context.do_withdraw("alice", "bridge", withdraw_amount, TokenReceiverMessage::Withdraw {
-        target_btc_address: "1PAGsaT5vDz6hjzvuenSw33hWzESTR3ZHQ".to_string(),
+        target_btc_address: TARGET_ADDRESS.to_string(),
         input: vec![
             OutPoint {
             txid: first_utxo[0].parse().unwrap(),
@@ -313,29 +331,29 @@ async fn test_base() {
         }],
         output: vec![TxOut {
             value: Amount::from_sat((withdraw_amount - btc_gas_fee - withdraw_fee) as u64),// 50000
-            script_pubkey: Address::from_str("1PAGsaT5vDz6hjzvuenSw33hWzESTR3ZHQ")
+            script_pubkey: Address::parse(TARGET_ADDRESS, get_chain())
             .expect("Invalid btc address")
-            .assume_checked().script_pubkey()
+            .script_pubkey().expect("Failed to get script pubkey")
         },TxOut {
             value: Amount::from_sat(total_change_amount / 4),
-            script_pubkey: Address::from_str(withdraw_change_address.as_str())
+            script_pubkey: Address::parse(withdraw_change_address.as_str(), get_chain())
             .expect("Invalid btc address")
-            .assume_checked().script_pubkey()
+            .script_pubkey().expect("Failed to get script pubkey")
         },TxOut {
             value: Amount::from_sat(total_change_amount / 4),
-            script_pubkey: Address::from_str(withdraw_change_address.as_str())
+            script_pubkey: Address::parse(withdraw_change_address.as_str(), get_chain())
             .expect("Invalid btc address")
-            .assume_checked().script_pubkey()
+            .script_pubkey().expect("Failed to get script pubkey")
         },TxOut {
             value: Amount::from_sat(total_change_amount / 4),
-            script_pubkey: Address::from_str(withdraw_change_address.as_str())
+            script_pubkey: Address::parse(withdraw_change_address.as_str(), get_chain())
             .expect("Invalid btc address")
-            .assume_checked().script_pubkey()
+            .script_pubkey().expect("Failed to get script pubkey")
         },TxOut {
             value: Amount::from_sat(total_change_amount / 4 + total_change_amount % 4),
-            script_pubkey: Address::from_str(withdraw_change_address.as_str())
+            script_pubkey: Address::parse(withdraw_change_address.as_str(), get_chain())
             .expect("Invalid btc address")
-            .assume_checked().script_pubkey()
+            .script_pubkey().expect("Failed to get script pubkey")
         }],
         max_gas_fee: None,
         chain_specific_data: None,
@@ -455,7 +473,7 @@ async fn test_base() {
 #[tokio::test]
 async fn test_fix_bridge_fee_and_relayer() {
     let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker).await;
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
     check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
     let config = context.get_bridge_config().await.unwrap();
@@ -595,7 +613,7 @@ async fn test_fix_bridge_fee_and_relayer() {
 #[tokio::test]
 async fn test_ratio_bridge_fee_and_relayer() {
     let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker).await;
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
     check!(context.set_deposit_bridge_fee(0, 1000, 9000));
     check!(context.set_withdraw_bridge_fee(0, 2000, 9000));
     let config = context.get_bridge_config().await.unwrap();
@@ -738,7 +756,7 @@ async fn test_ratio_bridge_fee_and_relayer() {
 #[tokio::test]
 async fn test_directly_withdraw() {
     let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker).await;
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
     check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
     let config = context.get_bridge_config().await.unwrap();
@@ -862,7 +880,7 @@ async fn test_directly_withdraw() {
 #[tokio::test]
 async fn test_one_click() {
     let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker).await;
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
     let mut times = 0;
     {
@@ -1374,7 +1392,7 @@ async fn test_one_click() {
 #[tokio::test]
 async fn test_utxo_passive_management() {
     let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker).await;
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
     check!(context.set_deposit_bridge_fee(0, 0, 9000));
     check!(context.set_withdraw_bridge_fee(0, 0, 9000));
     // The bridge deposit fee is 0, so the bridge will not be automatically registered with mint
@@ -1586,7 +1604,7 @@ async fn test_utxo_passive_management() {
 #[tokio::test]
 async fn test_cancel_withdraw() {
     let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker).await;
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
     check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
     let config = context.get_bridge_config().await.unwrap();
@@ -1817,7 +1835,7 @@ async fn test_cancel_withdraw() {
 #[tokio::test]
 async fn test_cancel_withdraw2() {
     let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker).await;
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
     check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
     let config = context.get_bridge_config().await.unwrap();
@@ -2001,7 +2019,7 @@ async fn test_cancel_withdraw2() {
 #[tokio::test]
 async fn test_utxo_active_management() {
     let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker).await;
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
     check!(context.set_deposit_bridge_fee(10000, 0, 10000));
     // The bridge deposit fee is 0, so the bridge will not be automatically registered with mint
     check!(context.storage_deposit("nbtc", "bridge"));
@@ -2352,7 +2370,7 @@ async fn test_utxo_active_management() {
 #[tokio::test]
 async fn test_utxo_active_management2() {
     let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker).await;
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
     check!(context.set_deposit_bridge_fee(10000, 0, 10000));
     // The bridge deposit fee is 0, so the bridge will not be automatically registered with mint
     check!(context.storage_deposit("nbtc", "bridge"));

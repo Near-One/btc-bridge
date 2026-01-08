@@ -90,7 +90,7 @@ pub fn generate_tx_out(value: u64, script_addr: &str) -> TxOut {
         script_pubkey: address.script_pubkey(),
     }
 }
-
+#[cfg(not(feature = "zcash"))]
 pub fn generate_transaction_bytes(
     tx_ins: Vec<(&str, u32, Option<&str>)>,
     tx_outs: Vec<(&str, u64)>,
@@ -120,7 +120,7 @@ pub fn generate_input_bytes(
 }
 
 #[cfg(feature = "zcash")]
-pub fn generate_zcash_transaction_bytes(
+pub fn generate_transaction_bytes(
     tx_ins: Vec<(&str, u32, Option<&str>)>,
     tx_outs: Vec<(&str, u64)>,
 ) -> Vec<u8> {

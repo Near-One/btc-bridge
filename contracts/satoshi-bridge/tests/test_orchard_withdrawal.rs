@@ -13,7 +13,7 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
     std::env::set_var("TEST_CHAIN", "ZcashTestnet");
 
     let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker).await;
+    let context = Context::new(&worker, None).await;
 
     // Setup bridge fees
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
@@ -39,7 +39,7 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
     println!("Alice deposit address: {}", alice_btc_deposit_address);
 
     // Generate Zcash v5 transaction for deposit
-    let zcash_tx_bytes = setup::utils::generate_zcash_transaction_bytes(
+    let zcash_tx_bytes = setup::utils::generate_transaction_bytes(
         vec![(
             "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
             1,
@@ -150,7 +150,7 @@ async fn test_orchard_withdrawal_amount_mismatch() {
     std::env::set_var("TEST_CHAIN", "ZcashTestnet");
 
     let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker).await;
+    let context = Context::new(&worker, None).await;
 
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
     check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
@@ -169,7 +169,7 @@ async fn test_orchard_withdrawal_amount_mismatch() {
         .unwrap();
 
     // Generate Zcash v5 transaction for deposit
-    let zcash_tx_bytes = setup::utils::generate_zcash_transaction_bytes(
+    let zcash_tx_bytes = setup::utils::generate_transaction_bytes(
         vec![(
             "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
             1,

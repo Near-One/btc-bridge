@@ -60,14 +60,14 @@ impl Transaction {
         vin: &[zcash_transparent::bundle::TxIn<Authorized>],
         vout: &[zcash_transparent::bundle::TxOut],
         input: &[zcash_transparent::bundle::TxOut],
-        public_key: &bitcoin::PublicKey,
+        public_keys: &[bitcoin::PublicKey],
     ) -> TransparentBuilder {
         let mut builder = zcash_transparent::builder::TransparentBuilder::empty();
 
         for index in 0..vin.len() {
             builder
                 .add_input(
-                    public_key.inner,
+                    public_keys[index].inner,
                     vin[index].prevout.clone(),
                     input[index].clone(),
                 )
@@ -88,10 +88,10 @@ impl Transaction {
         vout: &[zcash_transparent::bundle::TxOut],
         input: &[zcash_transparent::bundle::TxOut],
         expiry_height: u32,
-        public_key: &bitcoin::PublicKey,
+        public_keys: &[bitcoin::PublicKey],
         branch_id: BranchId,
     ) -> TransactionData<TransparentUnauthorized> {
-        let transparent_bundle = Self::get_transparent_builder(vin, vout, input, public_key)
+        let transparent_bundle = Self::get_transparent_builder(vin, vout, input, public_keys)
             .build()
             .unwrap();
 

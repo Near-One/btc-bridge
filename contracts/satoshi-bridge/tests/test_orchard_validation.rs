@@ -17,7 +17,7 @@ async fn test_orchard_wrong_recipient() {
     std::env::set_var("TEST_CHAIN", "ZcashTestnet");
 
     let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker).await;
+    let context = Context::new(&worker, None).await;
 
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
     check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
@@ -43,7 +43,7 @@ async fn test_orchard_wrong_recipient() {
             extra_msg: None,
             safe_deposit: None,
         },
-        generate_zcash_transaction_bytes(
+        generate_transaction_bytes(
             vec![(
                 "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
                 1,
@@ -142,7 +142,7 @@ async fn test_orchard_missing_bundle() {
     std::env::set_var("TEST_CHAIN", "ZcashTestnet");
 
     let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker).await;
+    let context = Context::new(&worker, None).await;
 
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
     check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
@@ -168,7 +168,7 @@ async fn test_orchard_missing_bundle() {
             extra_msg: None,
             safe_deposit: None,
         },
-        generate_zcash_transaction_bytes(
+        generate_transaction_bytes(
             vec![(
                 "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
                 1,
@@ -237,7 +237,7 @@ async fn test_orchard_bundle_in_zcash_tx() {
     std::env::set_var("TEST_CHAIN", "ZcashTestnet");
 
     let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker).await;
+    let context = Context::new(&worker, None).await;
 
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
     check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
@@ -263,7 +263,7 @@ async fn test_orchard_bundle_in_zcash_tx() {
             extra_msg: None,
             safe_deposit: None,
         },
-        generate_zcash_transaction_bytes(
+        generate_transaction_bytes(
             vec![(
                 "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
                 1,
