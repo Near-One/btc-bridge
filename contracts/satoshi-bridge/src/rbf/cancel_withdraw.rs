@@ -3,7 +3,7 @@ use crate::{
     AccessControllable, AccountId, BTCPendingInfo, Contract, PendingInfoStage, PendingInfoState,
     RbfState, Role,
 };
- 
+
 impl Contract {
     pub fn check_cancel_withdraw_rbf_psbt_valid(
         &self,

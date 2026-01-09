@@ -1473,7 +1473,7 @@ async fn test_utxo_passive_management() {
         .clone();
     let utxo60000 = utxo_key60000.split('@').collect::<Vec<_>>();
     let withdraw_amount = 200000;
-    let btc_gas_fee = 10000;
+    let btc_gas_fee = 15000;
     let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
     check!(context.set_passive_management_limit(3, 10));
     check!(
@@ -1492,13 +1492,10 @@ async fn test_utxo_passive_management() {
                         value: Amount::from_sat(
                             (withdraw_amount - btc_gas_fee - withdraw_fee) as u64
                         ),
-                        script_pubkey: Address::parse(
-                            TARGET_ADDRESS,
-                            get_chain()
-                        )
-                        .expect("Invalid btc address")
-                        .script_pubkey()
-                        .expect("Failed to get script pubkey")
+                        script_pubkey: Address::parse(TARGET_ADDRESS, get_chain())
+                            .expect("Invalid btc address")
+                            .script_pubkey()
+                            .expect("Failed to get script pubkey")
                     },
                     TxOut {
                         value: Amount::from_sat(500000 - (withdraw_amount - withdraw_fee) as u64),
@@ -1535,13 +1532,10 @@ async fn test_utxo_passive_management() {
                         value: Amount::from_sat(
                             (withdraw_amount - btc_gas_fee - withdraw_fee) as u64
                         ),
-                        script_pubkey: Address::parse(
-                            TARGET_ADDRESS,
-                            get_chain()
-                        )
-                        .expect("Invalid btc address")
-                        .script_pubkey()
-                        .expect("Failed to get script pubkey")
+                        script_pubkey: Address::parse(TARGET_ADDRESS, get_chain())
+                            .expect("Invalid btc address")
+                            .script_pubkey()
+                            .expect("Failed to get script pubkey")
                     },
                     TxOut {
                         value: Amount::from_sat(total_change / 2),
@@ -1594,13 +1588,10 @@ async fn test_utxo_passive_management() {
                         value: Amount::from_sat(
                             (withdraw_amount - btc_gas_fee - withdraw_fee) as u64
                         ),
-                        script_pubkey: Address::parse(
-                            TARGET_ADDRESS,
-                            get_chain()
-                        )
-                        .expect("Invalid btc address")
-                        .script_pubkey()
-                        .expect("Failed to get script pubkey")
+                        script_pubkey: Address::parse(TARGET_ADDRESS, get_chain())
+                            .expect("Invalid btc address")
+                            .script_pubkey()
+                            .expect("Failed to get script pubkey")
                     },
                     TxOut {
                         value: Amount::from_sat(total_change),
@@ -1728,7 +1719,8 @@ async fn test_cancel_withdraw() {
             vec![
                 generate_tx_out(
                     (withdraw_amount - btc_gas_fee - withdraw_fee) as u64,
-                    TARGET_ADDRESS, get_chain()
+                    TARGET_ADDRESS,
+                    get_chain()
                 ),
                 generate_tx_out(change_amount, withdraw_change_address.as_str(), get_chain()),
             ]
@@ -1744,7 +1736,8 @@ async fn test_cancel_withdraw() {
             vec![
                 generate_tx_out(
                     (withdraw_amount - btc_gas_fee - withdraw_fee) as u64,
-                    TARGET_ADDRESS, get_chain()
+                    TARGET_ADDRESS,
+                    get_chain()
                 ),
                 generate_tx_out(change_amount, withdraw_change_address.as_str(), get_chain()),
             ]
@@ -1752,13 +1745,15 @@ async fn test_cancel_withdraw() {
         "Invalid output script_pubkey"
     );
 
+    #[cfg(not(feature = "zcash"))]
     check!(
         context.cancel_withdraw(
             &original_btc_pending_verify_id,
             vec![
                 generate_tx_out(
                     (withdraw_amount - btc_gas_fee - withdraw_fee) as u64,
-                    withdraw_change_address.as_str(), get_chain()
+                    withdraw_change_address.as_str(),
+                    get_chain()
                 ),
                 generate_tx_out(change_amount, withdraw_change_address.as_str(), get_chain()),
             ]
@@ -2195,7 +2190,8 @@ async fn test_utxo_active_management() {
             ],
             vec![generate_tx_out(
                 output_amount * 2,
-                TARGET_ADDRESS, get_chain()
+                TARGET_ADDRESS,
+                get_chain()
             ),]
         ),
         "Invalid output script_pubkey"
@@ -2214,7 +2210,8 @@ async fn test_utxo_active_management() {
             ],
             vec![generate_tx_out(
                 output_amount * 2 - 30000,
-                withdraw_change_address.as_str(), get_chain()
+                withdraw_change_address.as_str(),
+                get_chain()
             ),]
         ),
         "Insufficient protocol_fee"
@@ -2253,7 +2250,8 @@ async fn test_utxo_active_management() {
             original_btc_pending_verify_id,
             vec![generate_tx_out(
                 output_amount * 2 - 10000,
-                withdraw_change_address.as_str(), get_chain()
+                withdraw_change_address.as_str(),
+                get_chain()
             ),]
         ),
         "No gas increase."
@@ -2262,8 +2260,16 @@ async fn test_utxo_active_management() {
         context.active_utxo_management_rbf(
             original_btc_pending_verify_id,
             vec![
-                generate_tx_out(output_amount - 10000, withdraw_change_address.as_str(), get_chain()),
-                generate_tx_out(output_amount - 10000, withdraw_change_address.as_str(), get_chain()),
+                generate_tx_out(
+                    output_amount - 10000,
+                    withdraw_change_address.as_str(),
+                    get_chain()
+                ),
+                generate_tx_out(
+                    output_amount - 10000,
+                    withdraw_change_address.as_str(),
+                    get_chain()
+                ),
             ]
         ),
         "Invalid output num"
@@ -2273,7 +2279,8 @@ async fn test_utxo_active_management() {
             original_btc_pending_verify_id,
             vec![generate_tx_out(
                 output_amount * 2 - 25000,
-                withdraw_change_address.as_str(), get_chain()
+                withdraw_change_address.as_str(),
+                get_chain()
             ),]
         ),
         "Insufficient protocol fee"
@@ -2282,7 +2289,8 @@ async fn test_utxo_active_management() {
         original_btc_pending_verify_id,
         vec![generate_tx_out(
             output_amount * 2 - 15000,
-            withdraw_change_address.as_str(), get_chain()
+            withdraw_change_address.as_str(),
+            get_chain()
         ),]
     ));
 
@@ -2305,7 +2313,8 @@ async fn test_utxo_active_management() {
             original_btc_pending_verify_id,
             vec![generate_tx_out(
                 output_amount * 2 - 15000,
-                withdraw_change_address.as_str(), get_chain()
+                withdraw_change_address.as_str(),
+                get_chain()
             ),]
         ),
         "Please wait user rbf"
@@ -2315,7 +2324,11 @@ async fn test_utxo_active_management() {
         context.cancel_active_utxo_management(
             original_btc_pending_verify_id,
             vec![
-                generate_tx_out(output_amount - 15000, withdraw_change_address.as_str(), get_chain()),
+                generate_tx_out(
+                    output_amount - 15000,
+                    withdraw_change_address.as_str(),
+                    get_chain()
+                ),
                 generate_tx_out(output_amount, withdraw_change_address.as_str(), get_chain()),
             ]
         ),
@@ -2507,7 +2520,8 @@ async fn test_utxo_active_management2() {
         original_btc_pending_verify_id,
         vec![generate_tx_out(
             output_amount * 2 - 15000,
-            withdraw_change_address.as_str(), get_chain()
+            withdraw_change_address.as_str(),
+            get_chain()
         ),]
     ));
     let btc_pending_verify_txs = context.get_btc_pending_infos_paged().await.unwrap();

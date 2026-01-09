@@ -83,11 +83,13 @@ pub fn generate_tx_in(tx_id: &str, vout: u32, script_addr: Option<&str>) -> TxIn
 }
 
 pub fn generate_tx_out(value: u64, script_addr: &str, chain: Chain) -> TxOut {
-    let address = satoshi_bridge::network::Address::parse(script_addr, chain)
-        .expect("Invalid btc address");
+    let address =
+        satoshi_bridge::network::Address::parse(script_addr, chain).expect("Invalid btc address");
     TxOut {
         value: Amount::from_sat(value),
-        script_pubkey: address.script_pubkey().expect("Failed to get script pubkey"),
+        script_pubkey: address
+            .script_pubkey()
+            .expect("Failed to get script pubkey"),
     }
 }
 #[cfg(not(feature = "zcash"))]

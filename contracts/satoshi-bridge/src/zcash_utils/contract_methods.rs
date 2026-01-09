@@ -27,7 +27,7 @@ macro_rules! define_rbf_callback {
                             original_btc_pending_verify_id,
                             output,
                             chain_specific_data,
-                            predecessor_account_id
+                            predecessor_account_id,
                         ),
                 );
             }
@@ -80,8 +80,12 @@ macro_rules! define_rbf_callback {
                     last_block_height,
                 );
 
-                let btc_pending_id =
-                    self.$internal_fn(&account_id, original_btc_pending_verify_id, new_psbt, presecessor_account_id);
+                let btc_pending_id = self.$internal_fn(
+                    &account_id,
+                    original_btc_pending_verify_id,
+                    new_psbt,
+                    presecessor_account_id,
+                );
 
                 self.internal_unwrap_mut_account(&account_id)
                     .btc_pending_sign_id = Some(btc_pending_id.clone());

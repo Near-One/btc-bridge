@@ -24,8 +24,12 @@ macro_rules! define_rbf_method {
                 output,
             );
 
-            let btc_pending_id =
-                self.$internal_fn(&account_id, original_btc_pending_verify_id, new_psbt, predecessor_account_id);
+            let btc_pending_id = self.$internal_fn(
+                &account_id,
+                original_btc_pending_verify_id,
+                new_psbt,
+                predecessor_account_id,
+            );
 
             self.internal_unwrap_mut_account(&account_id)
                 .btc_pending_sign_id = Some(btc_pending_id.clone());
