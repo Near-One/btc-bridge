@@ -18,6 +18,7 @@ macro_rules! define_rbf_callback {
                 output: Vec<TxOut>,
                 chain_specific_data: Option<ChainSpecificData>,
             ) {
+                let predecessor_account_id = env::predecessor_account_id();
                 self.get_last_block_height_promise().then(
                     Self::ext(env::current_account_id())
                         .with_static_gas(GAS_RBF_CALL_BACK)
@@ -26,6 +27,7 @@ macro_rules! define_rbf_callback {
                             original_btc_pending_verify_id,
                             output,
                             chain_specific_data,
+                            predecessor_account_id
                         ),
                 );
             }
@@ -40,6 +42,7 @@ macro_rules! define_rbf_callback {
                 original_btc_pending_verify_id: String,
                 output: Vec<TxOut>,
                 chain_specific_data: Option<ChainSpecificData>,
+                presecessor_account_id: AccountId,
                 #[callback_unwrap] last_block_height: u32,
             ) {
                 let (orchard_bundle_bytes, expiry_height) =
@@ -78,7 +81,7 @@ macro_rules! define_rbf_callback {
                 );
 
                 let btc_pending_id =
-                    self.$internal_fn(&account_id, original_btc_pending_verify_id, new_psbt);
+                    self.$internal_fn(&account_id, original_btc_pending_verify_id, new_psbt, presecessor_account_id);
 
                 self.internal_unwrap_mut_account(&account_id)
                     .btc_pending_sign_id = Some(btc_pending_id.clone());

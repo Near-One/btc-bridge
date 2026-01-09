@@ -6,6 +6,7 @@ use bitcoin::{
     Psbt, Transaction as BtcTransaction, TxIn, TxOut,
 };
 use near_workspaces::{result::ExecutionFinalResult, Result};
+use satoshi_bridge::network::Chain;
 
 pub const PRICE_ORICE_BTC_PRICE_ID: &str = "btc_price_id";
 pub const PRICE_ORICE_NEAR_PRICE_ID: &str = "near_price_id";
@@ -81,13 +82,12 @@ pub fn generate_tx_in(tx_id: &str, vout: u32, script_addr: Option<&str>) -> TxIn
     tx_in
 }
 
-pub fn generate_tx_out(value: u64, script_addr: &str) -> TxOut {
-    let address = Address::from_str(script_addr)
-        .expect("Invalid btc address")
-        .assume_checked();
+pub fn generate_tx_out(value: u64, script_addr: &str, chain: Chain) -> TxOut {
+    let address = satoshi_bridge::network::Address::parse(script_addr, chain)
+        .expect("Invalid btc address");
     TxOut {
         value: Amount::from_sat(value),
-        script_pubkey: address.script_pubkey(),
+        script_pubkey: address.script_pubkey().expect("Failed to get script pubkey"),
     }
 }
 #[cfg(not(feature = "zcash"))]
@@ -104,7 +104,7 @@ pub fn generate_transaction_bytes(
             .collect(),
         output: tx_outs
             .into_iter()
-            .map(|(script_addr, value)| generate_tx_out(value, script_addr))
+            .map(|(script_addr, value)| generate_tx_out(value, script_addr, Chain::BitcoinMainnet))
             .collect(),
     })
 }
