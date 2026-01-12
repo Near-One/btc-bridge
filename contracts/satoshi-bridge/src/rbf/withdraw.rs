@@ -96,7 +96,7 @@ impl Contract {
             target_address_script_pubkey.as_script(),
             self.internal_config().chain.clone(),
         )
-        .unwrap()
+        .expect("Error on extract recipient address from script pubkey")
         .to_string();
 
         target_address
