@@ -210,7 +210,7 @@ impl Contract {
         total_output_amount += psbt.add_extra_outputs(&mut actual_received_amounts);
 
         require!(
-            actual_received_amounts.len() <= 1,
+            actual_received_amounts.len() == 1,
             "only one user output is allowed."
         );
         let actual_received_amount = actual_received_amounts[0];
