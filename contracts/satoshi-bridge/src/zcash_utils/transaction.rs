@@ -2,11 +2,16 @@ use crate::network;
 use bitcoin::hashes::Hash;
 use bitcoin::{absolute, ScriptBuf, TxOut, Txid};
 use zcash_primitives::consensus::{BlockHeight, BranchId};
-use zcash_primitives::transaction::{
-    Transaction as ZCashTransaction, TransactionData, TxVersion, Unauthorized,
-};
+use zcash_primitives::transaction::{Transaction as ZCashTransaction, TransactionData, TxVersion};
 use zcash_transparent::builder::TransparentBuilder;
 use zcash_transparent::bundle::Authorized;
+
+pub struct TransparentUnauthorized;
+impl zcash_primitives::transaction::Authorization for TransparentUnauthorized {
+    type TransparentAuth = zcash_transparent::builder::Unauthorized;
+    type SaplingAuth = sapling_crypto::bundle::Authorized;
+    type OrchardAuth = orchard::bundle::Authorized;
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Transaction {
@@ -52,17 +57,17 @@ impl Transaction {
     }
 
     pub fn get_transparent_builder(
-        vin: &Vec<zcash_transparent::bundle::TxIn<Authorized>>,
-        vout: &Vec<zcash_transparent::bundle::TxOut>,
-        input: &Vec<zcash_transparent::bundle::TxOut>,
-        public_key: &bitcoin::PublicKey,
+        vin: &[zcash_transparent::bundle::TxIn<Authorized>],
+        vout: &[zcash_transparent::bundle::TxOut],
+        input: &[zcash_transparent::bundle::TxOut],
+        public_keys: &[bitcoin::PublicKey],
     ) -> TransparentBuilder {
         let mut builder = zcash_transparent::builder::TransparentBuilder::empty();
 
         for index in 0..vin.len() {
             builder
                 .add_input(
-                    public_key.inner,
+                    public_keys[index].inner,
                     vin[index].prevout.clone(),
                     input[index].clone(),
                 )
@@ -79,21 +84,21 @@ impl Transaction {
     }
 
     pub fn to_zcash_tx(
-        vin: &Vec<zcash_transparent::bundle::TxIn<Authorized>>,
-        vout: &Vec<zcash_transparent::bundle::TxOut>,
-        input: &Vec<zcash_transparent::bundle::TxOut>,
+        vin: &[zcash_transparent::bundle::TxIn<Authorized>],
+        vout: &[zcash_transparent::bundle::TxOut],
+        input: &[zcash_transparent::bundle::TxOut],
         expiry_height: u32,
-        public_key: &bitcoin::PublicKey,
+        public_keys: &[bitcoin::PublicKey],
         branch_id: BranchId,
-    ) -> TransactionData<Unauthorized> {
-        let transparent_bundle = Self::get_transparent_builder(vin, vout, input, public_key)
+    ) -> TransactionData<TransparentUnauthorized> {
+        let transparent_bundle = Self::get_transparent_builder(vin, vout, input, public_keys)
             .build()
             .unwrap();
 
         let lock_time = 0;
         let expiry_height = BlockHeight::from_u32(expiry_height);
 
-        let inner_tx = TransactionData::from_parts(
+        TransactionData::from_parts(
             TxVersion::V5,
             branch_id,
             lock_time,
@@ -102,8 +107,6 @@ impl Transaction {
             None,
             None,
             None,
-        );
-
-        inner_tx
+        )
     }
 }

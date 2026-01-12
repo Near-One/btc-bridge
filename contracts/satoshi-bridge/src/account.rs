@@ -1,4 +1,5 @@
 use crate::{near, u128_dec_format, AccountId, Contract};
+use near_sdk::env;
 use std::collections::HashSet;
 
 #[near(serializers = [borsh, json])]
@@ -85,16 +86,20 @@ impl Contract {
         self.data()
             .accounts
             .get(account_id)
-            .map(Into::into)
-            .expect("ACCOUNT NOT REGISTERED")
+            .map(|o| o.into())
+            .unwrap_or_else(|| {
+                env::panic_str(&format!("ERR_ACCOUNT_NOT_REGISTERED: {}", account_id))
+            })
     }
 
     pub fn internal_unwrap_mut_account(&mut self, account_id: &AccountId) -> &mut Account {
         self.data_mut()
             .accounts
             .get_mut(account_id)
-            .map(Into::into)
-            .expect("ACCOUNT NOT REGISTERED")
+            .map(|o| o.into())
+            .unwrap_or_else(|| {
+                env::panic_str(&format!("ERR_ACCOUNT_NOT_REGISTERED: {}", account_id))
+            })
     }
 
     pub fn internal_unwrap_or_create_mut_account(

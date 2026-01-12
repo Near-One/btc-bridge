@@ -1,9 +1,5 @@
-use crate::{
-    assert_one_yocto, env, generate_utxo_storage_key, get_deposit_path, nano_to_sec, near,
-    psbt_wrapper::PsbtWrapper, require, AccessControllable, AccountId, BTCPendingInfo, Contract,
-    ContractExt, DepositMsg, Event, LockTime, OriginalState, OutPoint, Pausable, PendingInfoStage,
-    PendingInfoState, PendingUTXOInfo, Promise, Role, TxOut, WrappedTransaction, UTXO,
-};
+use crate::psbt_wrapper::PsbtWrapper;
+use crate::*;
 use near_plugins::{access_control_any, pause};
 
 #[near]
@@ -204,7 +200,12 @@ impl Contract {
     /// * `original_btc_pending_verify_id` - Pending verify ID of the original transaction.
     /// * `output` - Modified output.
     #[pause(except(roles(Role::DAO)))]
-    pub fn withdraw_rbf(&mut self, original_btc_pending_verify_id: String, output: Vec<TxOut>) {
+    pub fn withdraw_rbf(
+        &mut self,
+        original_btc_pending_verify_id: String,
+        output: Vec<TxOut>,
+        chain_specific_data: Option<ChainSpecificData>,
+    ) {
         let account_id = env::predecessor_account_id();
         require!(
             self.internal_unwrap_account(&account_id)
@@ -213,7 +214,12 @@ impl Contract {
             "Previous btc tx has not been signed"
         );
 
-        self.withdraw_rbf_chain_specific(account_id, original_btc_pending_verify_id, output);
+        self.withdraw_rbf_chain_specific(
+            account_id,
+            original_btc_pending_verify_id,
+            output,
+            chain_specific_data,
+        );
     }
 
     /// If the user's Withdraw is not verified within a certain time, the protocol can actively cancel the Withdraw through RBF, with the gas fee borne by the user.
@@ -242,6 +248,7 @@ impl Contract {
             user_account_id,
             original_btc_pending_verify_id,
             output,
+            None,
         );
     }
 
@@ -327,6 +334,7 @@ impl Contract {
             account_id,
             original_btc_pending_verify_id,
             output,
+            None,
         );
     }
 
@@ -359,6 +367,7 @@ impl Contract {
             user_account_id,
             original_btc_pending_verify_id,
             output,
+            None,
         );
     }
 
@@ -416,7 +425,7 @@ impl Contract {
     pub fn create_active_utxo_management_pending_info(
         &mut self,
         account_id: AccountId,
-        psbt: &mut PsbtWrapper,
+        mut psbt: PsbtWrapper,
     ) {
         let account = self.internal_unwrap_account(&account_id);
         require!(
@@ -424,9 +433,9 @@ impl Contract {
             "Previous btc tx has not been signed"
         );
 
-        let (utxo_storage_keys, vutxos) = self.generate_vutxos(psbt);
+        let (utxo_storage_keys, vutxos) = self.generate_vutxos(&mut psbt);
         let (actual_received_amount, gas_fee) =
-            self.check_active_management_psbt_valid(psbt, &vutxos);
+            self.check_active_management_psbt_valid(&psbt, &vutxos);
         require!(
             gas_fee <= self.data().cur_available_protocol_fee,
             "Insufficient protocol_fee"

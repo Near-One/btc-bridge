@@ -105,14 +105,18 @@ impl PsbtWrapper {
             })
             .collect()
     }
+
+    pub fn add_extra_outputs(&self, _actual_received_amounts: &mut [u128]) -> u128 {
+        0
+    }
     pub fn serialize(&self) -> String {
         self.psbt.serialize_hex()
     }
 
     pub fn deserialize(psbt_hex: &String) -> Self {
-        let psbt_bytes = hex::decode(psbt_hex).unwrap();
+        let psbt_bytes = hex::decode(psbt_hex).expect("ERR_INVALID_PSBT_HEX: failed to decode hex");
         Self {
-            psbt: Psbt::deserialize(&psbt_bytes).expect("ERR_INVALID_PSBT_HEX"),
+            psbt: Psbt::deserialize(&psbt_bytes).expect("ERR_INVALID_PSBT: failed to parse PSBT"),
         }
     }
 
@@ -124,27 +128,27 @@ impl PsbtWrapper {
         self.psbt
             .clone()
             .extract_tx()
-            .unwrap()
+            .expect("ERR_EXTRACT_TX: failed to extract transaction from PSBT")
             .compute_txid()
             .to_string()
     }
 
     #[allow(unused_variables)]
-    pub fn get_hash_to_sign(&self, vin: usize, public_key: &bitcoin::PublicKey) -> [u8; 32] {
+    pub fn get_hash_to_sign(&self, vin: usize, public_keys: &[bitcoin::PublicKey]) -> [u8; 32] {
         let tx = self.psbt.unsigned_tx.clone();
         let mut cache = SighashCache::new(tx);
+        let witness_utxo = self.psbt.inputs[vin]
+            .witness_utxo
+            .as_ref()
+            .expect("ERR_MISSING_WITNESS_UTXO: input missing witness UTXO data");
         cache
             .p2wpkh_signature_hash(
                 vin,
-                &self.psbt.inputs[vin]
-                    .witness_utxo
-                    .as_ref()
-                    .unwrap()
-                    .script_pubkey,
-                self.psbt.inputs[vin].witness_utxo.as_ref().unwrap().value,
+                &witness_utxo.script_pubkey,
+                witness_utxo.value,
                 bitcoin::EcdsaSighashType::All,
             )
-            .unwrap()
+            .expect("ERR_SIGHASH: failed to compute signature hash")
             .to_raw_hash()
             .to_byte_array()
     }
@@ -157,5 +161,9 @@ impl PsbtWrapper {
     ) {
         self.psbt.inputs[sign_index].final_script_witness =
             Some(Witness::p2wpkh(&signature.to_btc_signature(), &public_key));
+    }
+
+    pub fn get_recipient_address(&self) -> Option<String> {
+        None
     }
 }

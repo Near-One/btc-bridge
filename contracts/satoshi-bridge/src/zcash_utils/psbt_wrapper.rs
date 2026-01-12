@@ -1,14 +1,16 @@
+use crate::network::ORCHARD_RAW_ADDRESS_SIZE;
+use crate::zcash_utils::orchard_policy::{self, OrchardOutput, ParsedOrchardBundle};
+use crate::zcash_utils::transaction::{Transaction, TransparentUnauthorized};
 use crate::*;
-use std::io;
-use std::io::{Cursor, Read, Write};
-
-use crate::zcash_utils::transaction::Transaction;
 use bitcoin::hashes::Hash;
 use bitcoin::{OutPoint, TxOut};
-use near_sdk::require;
+use near_sdk::{env, require};
+use std::io;
+use std::io::{Cursor, Read, Write};
+use zcash_primitives::transaction::components::orchard::read_v5_bundle;
 use zcash_primitives::transaction::fees::transparent::{InputSize, OutputView};
 use zcash_primitives::transaction::fees::FeeRule;
-use zcash_primitives::transaction::{TransactionData, TxVersion};
+use zcash_primitives::transaction::{TransactionData, TransactionDigest, TxVersion};
 use zcash_protocol::consensus::{BlockHeight, BranchId};
 use zcash_protocol::value::Zatoshis;
 use zcash_transparent::bundle::Authorized;
@@ -22,17 +24,26 @@ pub struct PsbtWrapper {
     vin: Vec<ZcashTxIn<Authorized>>,
     vout: Vec<ZcashTxOut>,
     inputs_utxo: Vec<ZcashTxOut>,
+    orchard: Option<ParsedOrchardBundle>,
+    recipient_address: Option<String>,
 }
 
 impl PsbtWrapper {
     pub fn new(
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
+        orchard_bundle_bytes: Option<Vec<u8>>,
         expiry_height: u32,
+        current_height: u32,
+        recipient_address: Option<String>,
         config: &Config,
     ) -> Self {
         require!(!input.is_empty(), "empty input");
-        require!(!output.is_empty(), "empty output");
+        // Allow empty output if we have an orchard bundle (funds go to shielded pool)
+        require!(
+            !output.is_empty() || orchard_bundle_bytes.is_some(),
+            "empty output"
+        );
 
         let sequence = bitcoin::Sequence::MAX;
         let vout = output
@@ -61,19 +72,41 @@ impl PsbtWrapper {
             vin.len()
         ];
 
+        let orchard =
+            orchard_policy::extract_orchard_bundle(orchard_bundle_bytes).unwrap_or_else(|_| {
+                env::panic_str("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle")
+            });
+
         Self {
-            branch_id: get_branch_id(expiry_height, config),
+            branch_id: get_branch_id(current_height, config),
             expiry_height,
             vout,
             vin,
             inputs_utxo: inputs,
+            orchard,
+            recipient_address,
         }
+    }
+
+    pub fn validate_orchard_bundle(&self, expected_addr: String, chain: network::Chain) {
+        orchard_policy::validate_orchard_bundle(
+            self.orchard.as_ref().unwrap_or_else(|| {
+                env::panic_str("ERR_NO_ORCHARD_BUNDLE: Orchard bundle is required for validation")
+            }),
+            &expected_addr,
+            &chain,
+        )
+        .unwrap_or_else(|_| {
+            env::panic_str("ERR_ORCHARD_VALIDATION: Orchard bundle validation failed")
+        });
     }
 
     pub fn from_original_psbt(
         original_psbt: PsbtWrapper,
         output: Vec<TxOut>,
+        orchard_bundle_bytes: Option<Vec<u8>>,
         expiry_height: u32,
+        current_height: u32,
         config: &Config,
     ) -> Self {
         let vout = if output.is_empty() {
@@ -89,12 +122,19 @@ impl PsbtWrapper {
                 .collect()
         };
 
+        let orchard =
+            orchard_policy::extract_orchard_bundle(orchard_bundle_bytes).unwrap_or_else(|_| {
+                env::panic_str("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle")
+            });
+
         Self {
-            branch_id: get_branch_id(expiry_height, config),
+            branch_id: get_branch_id(current_height, config),
             expiry_height,
             vin: original_psbt.vin,
             vout,
             inputs_utxo: original_psbt.inputs_utxo,
+            orchard,
+            recipient_address: original_psbt.recipient_address,
         }
     }
 
@@ -114,6 +154,21 @@ impl PsbtWrapper {
     pub fn get_output_num(&self) -> usize {
         self.vout.len()
     }
+
+    pub fn has_orchard_bundle(&self) -> bool {
+        self.orchard.is_some()
+    }
+
+    /// Get the Orchard output amount by recovering it with the bridge OVK.
+    /// Returns the amount in zatoshis (satoshis for ZCash).
+    /// Panics if there is no Orchard bundle.
+    pub fn get_orchard_output_amount(&self) -> u128 {
+        self.orchard
+            .as_ref()
+            .unwrap_or_else(|| env::panic_str("No Orchard bundle present"))
+            .amount()
+    }
+
     pub fn get_utxo_storage_keys(&self) -> Vec<String> {
         self.vin
             .clone()
@@ -125,6 +180,15 @@ impl PsbtWrapper {
                 )
             })
             .collect()
+    }
+
+    pub fn add_extra_outputs(&self, actual_received_amounts: &mut Vec<u128>) -> u128 {
+        if let Some(orchard) = &self.orchard {
+            actual_received_amounts.push(orchard.amount());
+            return orchard.amount();
+        }
+
+        0
     }
 
     pub fn get_output(&self) -> Vec<TxOut> {
@@ -140,7 +204,7 @@ impl PsbtWrapper {
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::<u8>::new();
-        let version: u8 = 2;
+        let version: u8 = 3;
         buf.push(version);
         match self.branch_id {
             BranchId::Nu6 => buf.write_all(&[7u8; 1]).unwrap(),
@@ -170,6 +234,32 @@ impl PsbtWrapper {
             t.write(&mut buf).unwrap();
         }
 
+        if let Some(orchard) = &self.orchard {
+            zcash_primitives::transaction::components::orchard::write_v5_bundle(
+                Some(&orchard.bundle),
+                &mut buf,
+            )
+            .unwrap();
+
+            buf.write_all(&[1u8; 1]).unwrap();
+            buf.write_all(&orchard.output.amount.to_le_bytes()).unwrap();
+            buf.write_all(&orchard.output.recipient_addr).unwrap();
+        } else {
+            buf.write_all(&[0u8; 1]).unwrap();
+        }
+
+        if let Some(recipient_address) = &self.recipient_address {
+            buf.write_all(&[1u8; 1]).unwrap();
+            let recipient_address_bytes = recipient_address.as_bytes();
+
+            let len = recipient_address_bytes.len() as u64;
+            buf.write_all(&len.to_le_bytes()).unwrap();
+
+            buf.write_all(recipient_address_bytes).unwrap();
+        } else {
+            buf.write_all(&[0u8; 1]).unwrap();
+        }
+
         buf
     }
     pub fn serialize(&self) -> String {
@@ -177,39 +267,111 @@ impl PsbtWrapper {
     }
 
     pub fn deserialize(psbt_hex: &String) -> Self {
-        let bytes = hex::decode(&psbt_hex).unwrap();
+        let bytes = hex::decode(psbt_hex)
+            .unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT_HEX: failed to decode hex"));
         let mut rdr = Cursor::new(bytes);
-        let version = read_u8(&mut rdr).unwrap();
-        let branch_id = if version == 2 {
-            let branch_id_u8 = read_u8(&mut rdr).unwrap();
+        let version = read_u8(&mut rdr)
+            .unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read version"));
+        let branch_id = if version >= 2 {
+            let branch_id_u8 = read_u8(&mut rdr)
+                .unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read branch_id"));
             match branch_id_u8 {
                 7 => BranchId::Nu6,
                 8 => BranchId::Nu6_1,
-                _ => unreachable!(),
+                _ => env::panic_str("ERR_INVALID_PSBT: unsupported branch_id"),
             }
         } else {
             BranchId::Nu6_1
         };
 
-        let expiry_height = read_u32_le(&mut rdr).unwrap();
+        let expiry_height = read_u32_le(&mut rdr)
+            .unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read expiry_height"));
 
-        let vin_len = read_u64_le(&mut rdr).unwrap() as usize;
+        let vin_len = read_u64_le(&mut rdr)
+            .unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read vin length"))
+            as usize;
         let mut vin = Vec::with_capacity(vin_len);
         for _ in 0..vin_len {
-            vin.push(ZcashTxIn::<Authorized>::read(&mut rdr).unwrap());
+            vin.push(
+                ZcashTxIn::<Authorized>::read(&mut rdr)
+                    .unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read vin")),
+            );
         }
 
-        let vout_len = read_u64_le(&mut rdr).unwrap() as usize;
+        let vout_len = read_u64_le(&mut rdr)
+            .unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read vout length"))
+            as usize;
         let mut vout = Vec::with_capacity(vout_len);
         for _ in 0..vout_len {
-            vout.push(ZcashTxOut::read(&mut rdr).unwrap());
+            vout.push(
+                ZcashTxOut::read(&mut rdr)
+                    .unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read vout")),
+            );
         }
 
-        let inputs_len = read_u64_le(&mut rdr).unwrap() as usize;
+        let inputs_len = read_u64_le(&mut rdr)
+            .unwrap_or_else(|_| env::panic_str("ERR_INVALID_PSBT: failed to read inputs length"))
+            as usize;
         let mut inputs = Vec::with_capacity(inputs_len);
         for _ in 0..inputs_len {
-            inputs.push(ZcashTxOut::read(&mut rdr).unwrap());
+            inputs.push(
+                ZcashTxOut::read(&mut rdr).unwrap_or_else(|_| {
+                    env::panic_str("ERR_INVALID_PSBT: failed to read input utxo")
+                }),
+            );
         }
+
+        let orchard_bundle = if version >= 3 {
+            read_v5_bundle(&mut rdr).unwrap_or_else(|_| {
+                env::panic_str("ERR_INVALID_PSBT: failed to read Orchard bundle")
+            })
+        } else {
+            None
+        };
+
+        let orchard = if let Some(orchard_bundle) = orchard_bundle {
+            let is_some = read_u8(&mut rdr).unwrap_or_else(|_| {
+                env::panic_str("ERR_INVALID_PSBT: failed to read orchard_output flag")
+            });
+            if is_some == 1 {
+                let amount = read_u64_le(&mut rdr).unwrap_or_else(|_| {
+                    env::panic_str("ERR_INVALID_PSBT: failed to read orchard amount")
+                });
+                let mut addr = [0u8; ORCHARD_RAW_ADDRESS_SIZE];
+                for addr_byte in &mut addr {
+                    *addr_byte = read_u8(&mut rdr).unwrap_or_else(|_| {
+                        env::panic_str("ERR_INVALID_PSBT: failed to read orchard address")
+                    });
+                }
+
+                Some(ParsedOrchardBundle {
+                    bundle: orchard_bundle,
+                    output: OrchardOutput {
+                        amount,
+                        recipient_addr: addr,
+                    },
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let recipient_address = if version >= 3 {
+            let is_some = read_u8(&mut rdr).unwrap_or_else(|_| {
+                env::panic_str("ERR_INVALID_PSBT: failed to read recipient_address flag")
+            });
+            if is_some == 1 {
+                Some(read_string(&mut rdr).unwrap_or_else(|_| {
+                    env::panic_str("ERR_INVALID_PSBT: failed to read recipient_address")
+                }))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         Self {
             branch_id,
@@ -217,20 +379,25 @@ impl PsbtWrapper {
             vin,
             vout,
             inputs_utxo: inputs,
+            orchard,
+            recipient_address,
         }
     }
 
-    pub fn extract_tx_bytes_with_sign(&self) -> Vec<u8> {
-        self.get_zcash_tx().encode().unwrap()
+    pub fn extract_tx_bytes_with_sign(self) -> Vec<u8> {
+        self.get_zcash_tx()
+            .encode()
+            .unwrap_or_else(|_| env::panic_str("ERR_TX_ENCODE: failed to encode Zcash transaction"))
     }
 
-    pub fn get_zcash_tx(&self) -> Transaction {
+    pub fn get_zcash_tx(self) -> Transaction {
         let transparent_bundle = zcash_transparent::bundle::Bundle {
             vin: self.vin.clone(),
             vout: self.vout.clone(),
             authorization: zcash_transparent::bundle::Authorized,
         };
 
+        // Here we encode the Zcash transaction with orchard bundle so it can be submited to the network
         let inner_tx = TransactionData::from_parts(
             TxVersion::V5,
             self.branch_id,
@@ -239,29 +406,51 @@ impl PsbtWrapper {
             Some(transparent_bundle),
             None,
             None,
-            None,
+            self.orchard.map(|b| b.bundle),
         )
         .freeze()
-        .unwrap();
+        .unwrap_or_else(|_| {
+            env::panic_str("ERR_TX_FREEZE: failed to freeze Zcash transaction data")
+        });
 
         Transaction { inner_tx }
     }
 
-    pub fn get_pending_id(&self) -> String {
+    pub fn get_pending_id(self) -> String {
         self.get_zcash_tx().compute_txid().to_string()
     }
 
+    fn tx_digest<D: TransactionDigest<TransparentUnauthorized>>(
+        &self,
+        tx_data: &TransactionData<TransparentUnauthorized>,
+        digester: D,
+    ) -> D::Digest {
+        digester.combine(
+            digester.digest_header(
+                tx_data.version(),
+                tx_data.consensus_branch_id(),
+                tx_data.lock_time(),
+                tx_data.expiry_height(),
+            ),
+            digester.digest_transparent(tx_data.transparent_bundle()),
+            digester.digest_sapling(None),
+            digester.digest_orchard(self.orchard.as_ref().map(|b| &b.bundle)),
+        )
+    }
+
     #[allow(unused_variables)]
-    pub fn get_hash_to_sign(&self, vin: usize, public_key: &bitcoin::PublicKey) -> [u8; 32] {
+    pub fn get_hash_to_sign(&self, vin: usize, public_keys: &[bitcoin::PublicKey]) -> [u8; 32] {
         let tx_data = WrappedTransaction::to_zcash_tx(
             &self.vin,
             &self.vout,
             &self.inputs_utxo,
             self.expiry_height,
-            public_key,
+            public_keys,
             self.branch_id,
         );
-        let txid_parts = tx_data.digest(zcash_primitives::transaction::txid::TxIdDigester);
+        let txid_parts =
+            self.tx_digest(&tx_data, zcash_primitives::transaction::txid::TxIdDigester);
+
         let script = &self.inputs_utxo[vin].script_pubkey;
         let sig_input = zcash_primitives::transaction::sighash::SignableInput::Transparent(
             zcash_transparent::sighash::SignableInput::from_parts(
@@ -273,9 +462,8 @@ impl PsbtWrapper {
             ),
         );
 
-        zcash_primitives::transaction::sighash::signature_hash(&tx_data, &sig_input, &txid_parts)
+        *zcash_primitives::transaction::sighash::signature_hash(&tx_data, &sig_input, &txid_parts)
             .as_ref()
-            .clone()
     }
 
     pub fn save_signature(
@@ -294,23 +482,32 @@ impl PsbtWrapper {
 
     pub fn get_min_fee(&self) -> Zatoshis {
         let fee_rule = zcash_primitives::transaction::fees::zip317::FeeRule::standard();
+        let orchard_action_count = self
+            .orchard
+            .as_ref()
+            .map(|orchard| orchard.bundle.actions().len())
+            .unwrap_or(0);
+
         fee_rule
             .fee_required(
                 &zcash_protocol::consensus::MainNetwork,
                 BlockHeight::from_u32(0u32),
                 vec![InputSize::STANDARD_P2PKH; self.vin.len()],
                 self.vout.iter().map(|i| i.serialized_size()),
-                0,
-                0,
-                0,
+                0, // sapling_input_count
+                0, // sapling_output_count
+                orchard_action_count,
             )
             .unwrap()
     }
+
+    pub fn get_recipient_address(&self) -> Option<String> {
+        self.recipient_address.clone()
+    }
 }
 
-fn get_branch_id(expiry_height: u32, config: &Config) -> BranchId {
-    let current_height = expiry_height - config.expiry_height_gap;
-    return config.chain.get_branch_id(current_height);
+fn get_branch_id(current_height: u32, config: &Config) -> BranchId {
+    config.chain.get_branch_id(current_height)
 }
 
 fn read_u32_le<R: Read>(r: &mut R) -> io::Result<u32> {
@@ -323,6 +520,18 @@ fn read_u8<R: Read>(r: &mut R) -> io::Result<u8> {
     let mut b = [0u8; 1];
     r.read_exact(&mut b)?;
     Ok(b[0])
+}
+
+fn read_string<R: Read>(r: &mut R) -> io::Result<String> {
+    let len = read_u64_le(r)? as usize;
+    let mut recipient_address_bytes = vec![];
+
+    for _ in 0..len {
+        recipient_address_bytes.push(read_u8(r)?);
+    }
+
+    String::from_utf8(recipient_address_bytes.to_vec())
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
 fn read_u64_le<R: Read>(r: &mut R) -> io::Result<u64> {

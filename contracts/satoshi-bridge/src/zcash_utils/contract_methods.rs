@@ -1,4 +1,5 @@
 use crate::psbt_wrapper::PsbtWrapper;
+use crate::zcash_utils::types::ChainSpecificData;
 use crate::*;
 use bitcoin::{OutPoint, TxOut};
 use near_sdk::json_types::U128;
@@ -15,11 +16,19 @@ macro_rules! define_rbf_callback {
                 user_account_id: AccountId,
                 original_btc_pending_verify_id: String,
                 output: Vec<TxOut>,
+                chain_specific_data: Option<ChainSpecificData>,
             ) {
+                let predecessor_account_id = env::predecessor_account_id();
                 self.get_last_block_height_promise().then(
                     Self::ext(env::current_account_id())
                         .with_static_gas(GAS_RBF_CALL_BACK)
-                        .$callback_name(user_account_id, original_btc_pending_verify_id, output),
+                        .$callback_name(
+                            user_account_id,
+                            original_btc_pending_verify_id,
+                            output,
+                            chain_specific_data,
+                            predecessor_account_id,
+                        ),
                 );
             }
         }
@@ -32,9 +41,12 @@ macro_rules! define_rbf_callback {
                 account_id: AccountId,
                 original_btc_pending_verify_id: String,
                 output: Vec<TxOut>,
+                chain_specific_data: Option<ChainSpecificData>,
+                presecessor_account_id: AccountId,
                 #[callback_unwrap] last_block_height: u32,
             ) {
-                let expiry_height = last_block_height + self.get_config().expiry_height_gap;
+                let expiry_height = self.get_expiry_height(&chain_specific_data, last_block_height);
+                let orchard_bundle_bytes = chain_specific_data.map(|c| c.orchard_bundle_bytes);
 
                 let original_tx_btc_pending_info =
                     self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
@@ -42,11 +54,17 @@ macro_rules! define_rbf_callback {
                 let new_psbt = self.generate_psbt_from_original_psbt_and_new_output(
                     original_tx_btc_pending_info,
                     output,
+                    orchard_bundle_bytes.map(|b| b.0),
                     expiry_height,
+                    last_block_height,
                 );
 
-                let btc_pending_id =
-                    self.$internal_fn(&account_id, original_btc_pending_verify_id, new_psbt);
+                let btc_pending_id = self.$internal_fn(
+                    &account_id,
+                    original_btc_pending_verify_id,
+                    new_psbt,
+                    presecessor_account_id,
+                );
 
                 self.internal_unwrap_mut_account(&account_id)
                     .btc_pending_sign_id = Some(btc_pending_id.clone());
@@ -85,6 +103,7 @@ define_rbf_callback!(
 #[near]
 impl Contract {
     #[private]
+    #[allow(clippy::too_many_arguments)]
     pub fn ft_on_transfer_callback(
         &mut self,
         sender_id: AccountId,
@@ -93,22 +112,29 @@ impl Contract {
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
+        chain_specific_data: Option<ChainSpecificData>,
         #[callback_unwrap] last_block_height: u32,
     ) -> U128 {
-        let expiry_height = last_block_height + self.get_config().expiry_height_gap;
-        let mut psbt = PsbtWrapper::new(input, output, expiry_height, self.internal_config());
-        self.create_btc_pending_info(
-            sender_id,
-            amount.0,
-            target_btc_address,
-            &mut psbt,
-            max_gas_fee,
+        let expiry_height = self.get_expiry_height(&chain_specific_data, last_block_height);
+        let orchard_bundle = chain_specific_data.map(|c| c.orchard_bundle_bytes.0);
+
+        let psbt = PsbtWrapper::new(
+            input,
+            output,
+            orchard_bundle,
+            expiry_height,
+            last_block_height,
+            Some(target_btc_address.clone()),
+            self.internal_config(),
         );
+
+        self.create_btc_pending_info(sender_id, amount.0, target_btc_address, psbt, max_gas_fee);
 
         U128(0)
     }
 
     #[private]
+    #[allow(clippy::too_many_arguments)]
     pub fn active_utxo_management_callback(
         &mut self,
         account_id: AccountId,
@@ -118,14 +144,54 @@ impl Contract {
     ) {
         let expiry_height = last_block_height + self.get_config().expiry_height_gap;
 
-        let mut psbt = PsbtWrapper::new(input, output, expiry_height, self.internal_config());
+        // For active UTXO management, we don't validate orchard recipient/amount
+        // as this is internal bridge operations, not user withdrawals
+        let psbt = PsbtWrapper::new(
+            input,
+            output,
+            None,
+            expiry_height,
+            last_block_height,
+            None,
+            self.internal_config(),
+        );
 
-        self.create_active_utxo_management_pending_info(account_id, &mut psbt);
+        self.create_active_utxo_management_pending_info(account_id, psbt);
     }
 }
 
 impl Contract {
-    pub(crate) fn check_psbt_chain_specific(&self, psbt: &PsbtWrapper, gas_fee: u128) {
+    fn get_expiry_height(
+        &self,
+        chain_specific_data: &Option<ChainSpecificData>,
+        last_block_height: u32,
+    ) -> u32 {
+        let expiry_height = if let Some(chain_specific_data) = chain_specific_data {
+            chain_specific_data.expiry_height
+        } else {
+            last_block_height + self.get_config().expiry_height_gap
+        };
+
+        require!(
+            expiry_height >= last_block_height + self.get_config().expiry_height_gap
+                && expiry_height <= last_block_height + 2 * self.get_config().expiry_height_gap,
+            format!(
+                "Invalid expiry height: {}. Expected value between {} and {}.",
+                expiry_height,
+                last_block_height + self.get_config().expiry_height_gap,
+                last_block_height + 2 * self.get_config().expiry_height_gap
+            )
+        );
+
+        expiry_height
+    }
+
+    pub(crate) fn check_psbt_chain_specific(
+        &self,
+        psbt: &PsbtWrapper,
+        gas_fee: u128,
+        target_btc_address: String,
+    ) {
         let min_fee = psbt.get_min_fee();
         require!(
             gas_fee >= min_fee.into_u64() as u128,
@@ -135,6 +201,11 @@ impl Contract {
                 min_fee.into_u64()
             )
         );
+
+        // For withdrawals with Orchard bundle, calculate the expected net amount after fees
+        if psbt.has_orchard_bundle() {
+            psbt.validate_orchard_bundle(target_btc_address, self.internal_config().chain.clone());
+        }
     }
 
     pub(crate) fn check_withdraw_chain_specific(
@@ -143,6 +214,7 @@ impl Contract {
     ) {
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn ft_on_transfer_withdraw_chain_specific(
         &self,
         sender_id: AccountId,
@@ -151,6 +223,7 @@ impl Contract {
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
+        chain_specific_data: Option<ChainSpecificData>,
     ) -> PromiseOrValue<U128> {
         PromiseOrValue::Promise(
             self.get_last_block_height_promise().then(
@@ -163,6 +236,7 @@ impl Contract {
                         input,
                         output,
                         max_gas_fee,
+                        chain_specific_data,
                     ),
             ),
         )
@@ -185,13 +259,17 @@ impl Contract {
         &self,
         original_tx_btc_pending_info: &BTCPendingInfo,
         output: Vec<TxOut>,
+        orchard_bundle_bytes: Option<Vec<u8>>,
         expiry_height: u32,
+        current_height: u32,
     ) -> PsbtWrapper {
         let original_psbt = original_tx_btc_pending_info.get_psbt();
         PsbtWrapper::from_original_psbt(
             original_psbt,
             output,
+            orchard_bundle_bytes,
             expiry_height,
+            current_height,
             self.internal_config(),
         )
     }

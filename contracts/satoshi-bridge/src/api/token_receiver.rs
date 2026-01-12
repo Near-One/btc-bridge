@@ -1,9 +1,4 @@
-use crate::{
-    env, nano_to_sec, near, psbt_wrapper::PsbtWrapper, require, serde_json, AccessControllable,
-    AccountId, BTCPendingInfo, Contract, ContractExt, Event, Gas, OriginalState, OutPoint,
-    Pausable, PendingInfoStage, PendingInfoState, PromiseOrValue, Role, TxOut, U128,
-};
-
+use crate::{psbt_wrapper::PsbtWrapper, *};
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_plugins::pause;
 
@@ -12,11 +7,13 @@ pub const GAS_FOR_FT_ON_TRANSFER_CALL_BACK: Gas = Gas::from_tgas(100);
 #[near(serializers = [json])]
 pub enum TokenReceiverMessage {
     DepositProtocolFee,
+    // Here is the withdraw message structure that will be sent from user or dApp to the btc/zcash connector
     Withdraw {
         target_btc_address: String,
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
+        chain_specific_data: Option<ChainSpecificData>,
     },
 }
 
@@ -56,6 +53,7 @@ impl FungibleTokenReceiver for Contract {
                 input,
                 output,
                 max_gas_fee,
+                chain_specific_data,
             } => self.ft_on_transfer_withdraw_chain_specific(
                 sender_id,
                 amount,
@@ -63,6 +61,7 @@ impl FungibleTokenReceiver for Contract {
                 input,
                 output,
                 max_gas_fee,
+                chain_specific_data,
             ),
         }
     }
@@ -74,27 +73,24 @@ impl Contract {
         sender_id: AccountId,
         amount: u128,
         target_btc_address: String,
-        psbt: &mut PsbtWrapper,
+        mut psbt: PsbtWrapper,
         max_gas_fee: Option<U128>,
     ) {
-        let (utxo_storage_keys, vutxos) = self.generate_vutxos(psbt);
+        let (utxo_storage_keys, vutxos) = self.generate_vutxos(&mut psbt);
         require!(
             self.internal_unwrap_or_create_mut_account(&sender_id)
                 .btc_pending_sign_id
                 .is_none(),
             "Previous btc tx has not been signed"
         );
-        let target_address_script_pubkey = self
-            .internal_config()
-            .string_to_script_pubkey(&target_btc_address);
 
         let withdraw_change_address_script_pubkey =
             self.internal_config().get_change_script_pubkey();
         let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount);
         let (actual_received_amount, gas_fee) = self.check_withdraw_psbt_valid(
-            &target_address_script_pubkey,
+            target_btc_address.clone(),
             &withdraw_change_address_script_pubkey,
-            psbt,
+            &psbt,
             &vutxos,
             amount,
             withdraw_fee,

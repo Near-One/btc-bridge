@@ -456,6 +456,7 @@ mod tests {
             recipient_id: "omni_user_account-20250625-153431.testnet".parse().unwrap(),
             post_actions: None,
             extra_msg: None,
+            safe_deposit: None,
         };
 
         let path = get_deposit_path(&deposit_msg);
