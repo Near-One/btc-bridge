@@ -45,29 +45,8 @@ macro_rules! define_rbf_callback {
                 presecessor_account_id: AccountId,
                 #[callback_unwrap] last_block_height: u32,
             ) {
-                let (orchard_bundle_bytes, expiry_height) =
-                    if let Some(chain_specific_data) = chain_specific_data {
-                        (
-                            Some(chain_specific_data.orchard_bundle_bytes),
-                            chain_specific_data.expiry_height,
-                        )
-                    } else {
-                        (
-                            None,
-                            last_block_height + self.get_config().expiry_height_gap,
-                        )
-                    };
-                require!(
-                    expiry_height >= last_block_height + self.get_config().expiry_height_gap
-                        && expiry_height
-                            <= last_block_height + 2 * self.get_config().expiry_height_gap,
-                    format!(
-                        "Invalid expiry height: {}. Expected value between {} and {}.",
-                        expiry_height,
-                        last_block_height + self.get_config().expiry_height_gap,
-                        last_block_height + 2 * self.get_config().expiry_height_gap
-                    )
-                );
+                let expiry_height = self.get_expiry_height(&chain_specific_data, last_block_height);
+                let orchard_bundle_bytes = chain_specific_data.map(|c| c.orchard_bundle_bytes);
 
                 let original_tx_btc_pending_info =
                     self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
@@ -136,29 +115,8 @@ impl Contract {
         chain_specific_data: Option<ChainSpecificData>,
         #[callback_unwrap] last_block_height: u32,
     ) -> U128 {
-        let (orchard_bundle, expiry_height) = if let Some(chain_specific_data) = chain_specific_data
-        {
-            (
-                Some(chain_specific_data.orchard_bundle_bytes.0),
-                chain_specific_data.expiry_height,
-            )
-        } else {
-            (
-                None,
-                last_block_height + self.get_config().expiry_height_gap,
-            )
-        };
-
-        require!(
-            expiry_height >= last_block_height + self.get_config().expiry_height_gap
-                && expiry_height <= last_block_height + 2 * self.get_config().expiry_height_gap,
-            format!(
-                "Invalid expiry height: {}. Expected value between {} and {}.",
-                expiry_height,
-                last_block_height + self.get_config().expiry_height_gap,
-                last_block_height + 2 * self.get_config().expiry_height_gap
-            )
-        );
+        let expiry_height = self.get_expiry_height(&chain_specific_data, last_block_height);
+        let orchard_bundle = chain_specific_data.map(|c| c.orchard_bundle_bytes.0);
 
         let psbt = PsbtWrapper::new(
             input,
@@ -203,6 +161,31 @@ impl Contract {
 }
 
 impl Contract {
+    fn get_expiry_height(
+        &self,
+        chain_specific_data: &Option<ChainSpecificData>,
+        last_block_height: u32,
+    ) -> u32 {
+        let expiry_height = if let Some(chain_specific_data) = chain_specific_data {
+            chain_specific_data.expiry_height
+        } else {
+            last_block_height + self.get_config().expiry_height_gap
+        };
+
+        require!(
+            expiry_height >= last_block_height + self.get_config().expiry_height_gap
+                && expiry_height <= last_block_height + 2 * self.get_config().expiry_height_gap,
+            format!(
+                "Invalid expiry height: {}. Expected value between {} and {}.",
+                expiry_height,
+                last_block_height + self.get_config().expiry_height_gap,
+                last_block_height + 2 * self.get_config().expiry_height_gap
+            )
+        );
+
+        expiry_height
+    }
+
     pub(crate) fn check_psbt_chain_specific(
         &self,
         psbt: &PsbtWrapper,
