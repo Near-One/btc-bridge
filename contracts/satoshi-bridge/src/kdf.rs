@@ -3,6 +3,7 @@ use crate::{env, BtcPublicKey, Contract};
 use crate::network::Address;
 use k256::elliptic_curve::sec1::ToEncodedPoint;
 
+#[near]
 impl Contract {
     pub fn get_public_key_by_path(&self, path: String) -> String {
         let public_key_bytes = self.generate_public_key(&path);
