@@ -84,6 +84,7 @@ pub enum Event<'a> {
     },
     UtxoAdded {
         utxo_storage_keys: Vec<String>,
+        balances: Option<Vec<U128>>,
     },
     UtxoRemoved {
         utxo_storage_keys: Vec<String>,

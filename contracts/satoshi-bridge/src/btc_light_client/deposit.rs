@@ -223,6 +223,9 @@ impl Contract {
         if is_success {
             Event::UtxoAdded {
                 utxo_storage_keys: vec![pending_utxo_info.utxo_storage_key.clone()],
+                balances: Some(vec![U128::from(<u64 as Into<u128>>::into(
+                    pending_utxo_info.utxo.balance,
+                ))]),
             }
             .emit();
             self.internal_set_utxo(&pending_utxo_info.utxo_storage_key, pending_utxo_info.utxo);
