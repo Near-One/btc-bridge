@@ -402,7 +402,6 @@ This means:
 
 ### Main Branches
 - `omni-main` - Main branch (use this for PRs)
-- `add_utxo_event` - Current working branch
 
 ### Commit Message Format
 ```
@@ -477,6 +476,64 @@ Types: feat, fix, refactor, test, docs, chore
 
 ---
 
+## Key Design Decisions & Architectural Patterns
+
+### Bridge Transparency Philosophy
+
+**Core Principle:** Bridge operations prioritize transparency over privacy.
+- Full transaction tracking is required for validation and auditability
+- All bridge UTXO management uses public addresses
+- Privacy is NOT a design goal - users seeking privacy should use external solutions
+- This is intentional, not a limitation
+
+### Validation Architecture Patterns
+
+**Critical Validation:** `actual_received_amounts.len() == 1` ensures mutual exclusion.
+- Guarantees EITHER transparent OR Orchard output, never both
+- Transparent addresses CANNOT accept Orchard bundles (will panic)
+- This prevents mixing attack vectors
+
+**Public API vs Private Callbacks:** Always check the complete call chain.
+- Callback infrastructure may accept parameters not exposed in public API
+- If parameter cannot be passed through public API, no vulnerability exists
+- Example: `#[private]` callbacks with parameters that public methods hardcode to `None`
+
+### Zcash-Specific Design Decisions
+
+**Branch ID Management:** Hardcoded activation heights are acceptable.
+- Contract redeployment required when branch IDs update anyway
+- Important: verify behavior at block height boundaries during transitions
+
+**Expiry Height Gap:** Exists specifically to provide transaction processing buffer.
+- Gap between current block and expiry height is intentional
+- Can be tuned based on network conditions
+- Larger gap = more tolerance for processing delays
+
+### Data Integrity Patterns
+
+**Self-Serialized Data:** No validation needed for internally stored data.
+- Deserialization format matches serialization format
+- All data stored by the contract itself, no external untrusted input
+- Format guaranteed correct by construction
+- Length/format validation only needed for external inputs
+
+### Error Messaging Philosophy
+
+**UX vs Security:** Distinguish between security issues and user experience.
+- Unclear error messages = poor UX, not security vulnerability
+- Empty input validation = better errors, not security fix
+- Comment accuracy = maintainability, not correctness
+- Prioritize security over polish
+
+### Redeployment Assumptions
+
+**When Contract Needs Redeployment Anyway:** Hardcoded values are acceptable.
+- Protocol upgrades (branch IDs, consensus rules) require redeployment
+- No need to make these values configurable if update requires new contract
+- Focus configurability on operational parameters, not protocol constants
+
+---
+
 ## Useful Commands
 
 ### Main Makefile Targets
@@ -525,13 +582,6 @@ make test
 make test-bitcoin
 make test-zcash
 
-# Run tests with output
-cargo test --manifest-path contracts/satoshi-bridge/Cargo.toml --features bitcoin -- --nocapture
-
-# Run specific test
-cargo test --manifest-path contracts/satoshi-bridge/Cargo.toml --features bitcoin test_name
-```
-
 ### Code Quality
 
 ```bash
@@ -545,9 +595,6 @@ cargo fmt --all --check
 make clippy-bitcoin
 make clippy-zcash
 
-# Or directly
-cargo clippy --manifest-path contracts/satoshi-bridge/Cargo.toml --features bitcoin
-```
 
 ### Manual Build Commands (if needed)
 
