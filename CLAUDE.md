@@ -132,32 +132,6 @@ The bridge provides "safe" versions of deposit/mint functions primarily used by 
 - If NOT registered → returns `U128(0)` instead of panicking
 - Used by safe_verify_deposit to detect failures
 
-### Deriving Deposit Addresses
-
-Use `get_user_deposit_address(deposit_msg)` view function:
-
-```rust
-// Example DepositMsg for standard deposit
-{
-  "recipient_id": "user.near",
-  "post_actions": null,
-  "extra_msg": null,
-  "safe_deposit": null  // Must be null for verify_deposit
-}
-
-// Example DepositMsg for safe deposit (Omni Bridge)
-{
-  "recipient_id": "user.near",
-  "post_actions": null,
-  "extra_msg": null,
-  "safe_deposit": {
-    "msg": "transfer context for Omni Bridge"
-  }
-}
-```
-
-**CRITICAL:** Derive address BEFORE sending BTC. The deposit address is deterministically generated from DepositMsg hash.
-
 ---
 
 ## Common Mistakes & Design Decisions
