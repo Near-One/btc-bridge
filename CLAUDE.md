@@ -77,7 +77,9 @@ make clippy-zcash           # Clippy for Zcash
 ### State Management
 - Mutate state (mark UTXO used, update balances) BEFORE cross-contract calls
 - Create and emit events AFTER all state mutations complete
-- NEAR execution model: callbacks are atomic, no reentrancy
+- **Cross-contract calls are NOT atomic:** Each callback is a separate transaction - must manually rollback state in callback if external call fails
+- No reentrancy: Callbacks cannot re-enter the same function
+
 
 ### Zcash-Specific
 - **Mutual exclusion:** `actual_received_amounts.len() == 1` ensures EITHER transparent OR Orchard output, never both
