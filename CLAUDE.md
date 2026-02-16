@@ -159,14 +159,5 @@ The bridge provides "safe" versions of deposit/mint functions primarily used by 
 
 ---
 
-## Resources
-
-- [NEAR Documentation](https://docs.near.org/)
-- [NEP-141 Fungible Token Standard](https://nomicon.io/Standards/Tokens/FungibleToken/Core)
-- [near-plugins Documentation](https://github.com/aurora-is-near/near-plugins)
-- [PSBT (BIP 174)](https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki)
-
----
-
 *Version: 2.1*
 *Last Updated: 2026-02-16*
