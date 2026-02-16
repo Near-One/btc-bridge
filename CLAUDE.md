@@ -99,6 +99,67 @@ make clippy-zcash           # Clippy for Zcash
 
 ---
 
+## Safe Functions (Omni Bridge Integration)
+
+The bridge provides "safe" versions of deposit/mint functions primarily used by Omni Bridge:
+
+### verify_deposit vs safe_verify_deposit
+
+**verify_deposit (standard):**
+- Normal deposit flow with fees
+- Charges deposit bridge fee
+- Pays for user's token storage
+- Requires `safe_deposit: None` in DepositMsg
+- Does NOT revert on mint failures (uses lost & found)
+
+**safe_verify_deposit (integration):**
+- Primarily used by Omni Bridge
+- NO fees charged
+- User must attach NEAR for storage (via `#[payable]`)
+- **Reverts entire transaction if mint fails** (no lost & found)
+- Requires `safe_deposit: Some(SafeDepositMsg)` in DepositMsg
+- **post_actions must be None** (not supported in safe mode)
+- Safer for integrations - atomic success/failure
+
+### mint vs safe_mint (nbtc contract)
+
+**mint (standard):**
+- Mints tokens unconditionally
+- If account not registered → panics or creates account
+
+**safe_mint (integration):**
+- Checks if account is registered first
+- If NOT registered → returns `U128(0)` instead of panicking
+- Used by safe_verify_deposit to detect failures
+
+### Deriving Deposit Addresses
+
+Use `get_user_deposit_address(deposit_msg)` view function:
+
+```rust
+// Example DepositMsg for standard deposit
+{
+  "recipient_id": "user.near",
+  "post_actions": null,
+  "extra_msg": null,
+  "safe_deposit": null  // Must be null for verify_deposit
+}
+
+// Example DepositMsg for safe deposit (Omni Bridge)
+{
+  "recipient_id": "user.near",
+  "post_actions": null,
+  "extra_msg": null,
+  "safe_deposit": {
+    "msg": "transfer context for Omni Bridge"
+  }
+}
+```
+
+**CRITICAL:** Derive address BEFORE sending BTC. The deposit address is deterministically generated from DepositMsg hash.
+
+---
+
 ## Common Mistakes & Design Decisions
 
 **DON'T assume:**
