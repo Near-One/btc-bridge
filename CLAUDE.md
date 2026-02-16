@@ -31,14 +31,9 @@ make clippy-zcash           # Clippy for Zcash
 
 ## Key Architecture
 
-### Contracts
-- **contracts/nbtc/** - NEP-141 fungible token (nBTC)
-- **contracts/satoshi-bridge/** - Main bridge managing deposits/withdrawals/UTXOs
-- **contracts/mock-*** - Testing utilities
+**Contracts:** `contracts/nbtc/` (NEP-141 token), `contracts/satoshi-bridge/` (main bridge), `contracts/mock-*` (testing)
 
-### External Dependencies
-- **BTC Light Client** - SPV verification via Merkle proofs
-- **Chain Signatures (MPC)** - Distributed key for Bitcoin signing
+**External Dependencies:** BTC Light Client (Merkle proof verification), Chain Signatures (MPC signing)
 
 ### Bridge Flows
 
@@ -62,172 +57,93 @@ make clippy-zcash           # Clippy for Zcash
    → Burns from bridge balance (tokens already there!)
 ```
 
-**CRITICAL:** `burn_account_id` parameter is for ACCOUNTING/EVENTS only. Actual burn happens from `bridge_id` balance where tokens already are after `ft_transfer`. This is NEP-141 standard behavior.
-
----
-
-## Zcash Orchard Support
-
-Bridge supports both transparent (Bitcoin-style) and Orchard (shielded) outputs:
-
-- **Mutual Exclusion:** `actual_received_amounts.len() == 1` ensures EITHER transparent OR Orchard output, never both
-- **OVK Validation:** Orchard outputs require Outgoing Viewing Key to decrypt and verify recipient
-- **Address Restrictions:** Transparent addresses CANNOT accept Orchard bundles (panics on `extract_orchard_receiver()`)
-- **Bridge Transparency:** Bridge operates with full transparency, privacy is NOT a design goal
-
 ---
 
 ## Security Invariants
 
 ### Access Control
-- **NEVER bypass:** `assert_one_yocto()`, `#[private]` callbacks, `assert_bridge()`, `assert_controller()`
-- **All admin functions:** Must have `#[access_control_any(roles(Role::DAO))]` or similar
-- **Callbacks:** Must be `#[private]` - no external calls allowed
+- NEVER bypass: `assert_one_yocto()`, `#[private]` callbacks, `assert_bridge()`, `assert_controller()`
+- All admin functions must have `#[access_control_any(roles(Role::DAO))]` or similar
+- Callbacks must be `#[private]` - no external calls allowed
 
-### Token Flow
-- **Withdraw tokens already transferred:** By the time `burn()` is called, tokens are already in bridge balance via `ft_transfer`
-- **NEP-141 ft_on_transfer:** Bridge returns `0` = keep all tokens, `amount` = refund amount
-- **No burn without verification:** Only burn after BTC tx is verified on-chain
+### Token Flow (NEP-141)
+- **Withdraw tokens already transferred:** By the time `burn()` is called, tokens are in bridge balance via `ft_transfer`
+- **burn_account_id is for events only:** Actual burn happens from bridge balance, not from burn_account_id
+- **ft_on_transfer return value:** `0` = keep all tokens, `amount` = refund amount
+- Only burn after BTC tx is verified on-chain
 
 ### Arithmetic Safety
 - **overflow-checks = true:** All overflow panics in release mode (fail-safe)
-- **Use checked_*:** For explicit error handling: `checked_mul()`, `checked_add()`
-- **Never silent corruption:** Prefer panic over wrong amounts
+- Use `checked_mul()`, `checked_add()` for explicit error handling
+- Prefer panic over silent corruption
 
 ### State Management
-- **State before external calls:** Mutate state (mark UTXO used, update balances) BEFORE cross-contract calls
-- **Events after state changes:** Create and emit events AFTER all state mutations complete
-- **Atomic callbacks:** NEAR execution model prevents reentrancy, callbacks are atomic
+- Mutate state (mark UTXO used, update balances) BEFORE cross-contract calls
+- Create and emit events AFTER all state mutations complete
+- NEAR execution model: callbacks are atomic, no reentrancy
 
-### Zcash Validation
-- **Orchard mutual exclusion:** Check `actual_received_amounts.len() == 1` prevents mixed outputs
-- **OVK required:** All Orchard bundles must provide valid OVK for decryption
-- **Change < dust is valid:** Transparent change CAN be less than dust (546 sats) in Zcash - this is intentional
+### Zcash-Specific
+- **Mutual exclusion:** `actual_received_amounts.len() == 1` ensures EITHER transparent OR Orchard output, never both
+- **OVK required:** All Orchard bundles must provide valid Outgoing Viewing Key for decryption
+- **Address restrictions:** Transparent addresses CANNOT accept Orchard bundles (panics)
+- **Bridge transparency:** Full transaction tracking required, privacy is NOT a design goal
 - **Branch IDs hardcoded:** Network upgrades require contract redeployment anyway
+- **Change < dust is valid:** Transparent change CAN be less than 546 sats in Zcash
 
 ---
 
 ## Critical Patterns
 
-### NEAR-Specific
-```rust
-// Callbacks must be #[private]
-#[private]
-pub fn callback_after_external_call(...) { }
+**NEAR decorators:** `#[private]` for callbacks, `#[access_control_any(roles(...))]` for admin functions, `#[pause(except(roles(...)))]` for pausable functions, `assert_one_yocto()` to prevent batching
 
-// Access control decorators
-#[access_control_any(roles(Role::DAO, Role::Operator))]
-pub fn admin_function(...) { }
-
-// Pausable with exceptions
-#[pause(except(roles(Role::DAO)))]
-pub fn user_function(...) { }
-
-// Prevent batching
-#[payable]
-pub fn sensitive_operation(...) {
-    assert_one_yocto();
-    // ...
-}
-```
-
-### Security Checks
-```rust
-// Always validate input
-require!(condition, "Clear error message");
-
-// Checked arithmetic for money
-amount.checked_mul(rate)
-    .unwrap_or_else(|| env::panic_str("overflow"));
-
-// Events after state changes
-self.internal_set_utxo(&key, utxo);
-Event::UtxoAdded { utxo_storage_keys: vec![key] }.emit();
-```
+**Security checks:** Always use `require!(condition, "message")` for validation, `checked_*` arithmetic for money operations, emit events AFTER state changes
 
 ---
 
 ## Key Files
 
-### Core Contracts
-- `contracts/satoshi-bridge/src/lib.rs` - Main contract
-- `contracts/satoshi-bridge/src/api/bridge.rs` - User-facing functions
-- `contracts/satoshi-bridge/src/api/management.rs` - Admin functions
-- `contracts/satoshi-bridge/src/btc_light_client/` - Deposit/withdraw verification
-- `contracts/nbtc/src/lib.rs` - Token contract
+**Core:** `contracts/satoshi-bridge/src/lib.rs`, `contracts/satoshi-bridge/src/api/bridge.rs` (user functions), `contracts/satoshi-bridge/src/api/management.rs` (admin functions), `contracts/nbtc/src/lib.rs`
 
-### Critical Modules
-- `contracts/satoshi-bridge/src/psbt.rs` - PSBT validation (DON'T modify without deep understanding)
-- `contracts/satoshi-bridge/src/zcash_utils/orchard_policy.rs` - Orchard bundle validation
-- `contracts/satoshi-bridge/src/config.rs` - Configuration and validation
+**Critical (don't modify without deep understanding):** `contracts/satoshi-bridge/src/psbt.rs`, `contracts/satoshi-bridge/src/zcash_utils/orchard_policy.rs`, `contracts/satoshi-bridge/src/config.rs`
+
+---
+
+## Common Mistakes & Design Decisions
+
+**DON'T assume:**
+- burn() should burn from user balance → NO! Already transferred to bridge via ft_transfer
+- overflow without checked_* is silent → NO! overflow-checks=true causes panic
+- callbacks can be reentered → NO! NEAR model prevents this
+- DAO powers are a bug → NO! Necessary governance
+- transparent change must be >= dust → NO! In Zcash < dust is valid
+- bridge should provide privacy → NO! Transparency is by design
+
+**These patterns are INTENTIONAL (non-issues):**
+- Hardcoded branch IDs → Protocol upgrades require redeployment anyway
+- Expiry height gap → Buffer for transaction processing delays
+- No validation for self-serialized data → Format guaranteed by construction
+- Public API vs private callbacks → If parameter can't be passed through public API, no vulnerability
+
+---
+
+## Before Suggesting Changes
+
+**Check:**
+1. Where are the tokens? (user balance? bridge balance? not minted?)
+2. Is callback #[private]?
+3. Is access control present?
+4. Are events emitted AFTER state changes?
+5. Is this a bug or a design choice?
+
+**Read the full flow** from user action to final state. Many "bugs" are actually correct by design.
 
 ---
 
 ## Git Workflow
 
-**Main Branch:** `omni-main` (use for PRs)
+**Main branch:** `omni-main` (use for PRs)
 
-**Before Committing:**
-1. Run tests: `cargo test`
-2. Format: `cargo fmt`
-3. Clippy: `cargo clippy`
-4. **Only commit if user explicitly requests**
-
-**NEVER:**
-- Push to remote without explicit request
-- Force push to main/omni-main
-- Use `--no-verify`
-- Commit without user asking
-
----
-
-## Common Pitfalls
-
-**DON'T assume:**
-- "burn() should burn from user balance" → NO! Already transferred to bridge
-- "overflow without checked_* is silent" → NO! overflow-checks=true causes panic
-- "callbacks can be reentered" → NO! NEAR model prevents this
-- "DAO powers are a bug" → NO! Necessary governance
-- "transparent change must be >= dust" → NO! In Zcash < dust is valid
-
-**DO understand:**
-- Tokens flow: user → bridge (via ft_transfer) → burn from bridge balance
-- NEP-141 ft_on_transfer return value controls token disposition
-- Callbacks are atomic and #[private]
-- `actual_received_amounts.len() == 1` prevents attack vectors
-- Bridge transparency is by design, not a limitation
-
----
-
-## Design Decisions (Non-Issues)
-
-These patterns are intentional. Do not flag or "fix" them:
-
-- **Burn from bridge balance:** Tokens already transferred via `ft_transfer` before burn
-- **Bridge has no privacy:** Full transaction tracking required for validation
-- **Hardcoded branch IDs:** Protocol upgrades require redeployment anyway
-- **Expiry height gap:** Buffer for transaction processing delays
-- **No validation for self-serialized data:** Format guaranteed by construction
-- **Transparent change < dust allowed:** Valid in Zcash protocol
-- **Public API vs private callbacks:** If parameter can't be passed through public API, no vulnerability
-
----
-
-## When Modifying Contracts
-
-**Always ask yourself:**
-1. Where are the tokens right now? (user balance? bridge balance? not minted?)
-2. Is callback #[private]? Can external contracts call it?
-3. Is access control decorator present?
-4. Are events emitted AFTER state changes?
-5. Is this a bug or a design choice?
-
-**Before suggesting changes:**
-- Read the full flow from user action to final state
-- Check if tokens are already transferred
-- Verify callback execution order
-- Consider NEAR execution model (atomic callbacks)
-- Look at existing patterns in the codebase
+**Before committing:** Run `cargo test`, `cargo fmt`, `cargo clippy`. **Only commit if user explicitly requests.**
 
 ---
 
@@ -238,9 +154,7 @@ These patterns are intentional. Do not flag or "fix" them:
 - [near-plugins Documentation](https://github.com/aurora-is-near/near-plugins)
 - [PSBT (BIP 174)](https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki)
 
-**Remember:** Always understand the full flow before suggesting changes. Many "bugs" are actually correct by design.
-
 ---
 
-*Version: 2.0*
+*Version: 2.1*
 *Last Updated: 2026-02-16*
