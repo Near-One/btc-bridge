@@ -75,7 +75,7 @@ make clippy-zcash           # Clippy for Zcash
 ### Arithmetic Safety
 - **overflow-checks = true:** All overflow panics in release mode (fail-safe)
 - Use `checked_mul()`, `checked_add()` for explicit error handling
-- Prefer panic over silent corruption
+- Prefer panic over silent
 
 ### State Management
 - Mutate state (mark UTXO used, update balances) BEFORE cross-contract calls
@@ -88,7 +88,6 @@ make clippy-zcash           # Clippy for Zcash
 - **Address restrictions:** Transparent addresses CANNOT accept Orchard bundles (panics)
 - **Bridge transparency:** Full transaction tracking required, privacy is NOT a design goal
 - **Branch IDs hardcoded:** Network upgrades require contract redeployment anyway
-- **Change < dust is valid:** Transparent change CAN be less than 546 sats in Zcash
 
 ---
 
@@ -115,7 +114,6 @@ make clippy-zcash           # Clippy for Zcash
 - overflow without checked_* is silent → NO! overflow-checks=true causes panic
 - callbacks can be reentered → NO! NEAR model prevents this
 - DAO powers are a bug → NO! Necessary governance
-- transparent change must be >= dust → NO! In Zcash < dust is valid
 - bridge should provide privacy → NO! Transparency is by design
 
 **These patterns are INTENTIONAL (non-issues):**
@@ -123,19 +121,6 @@ make clippy-zcash           # Clippy for Zcash
 - Expiry height gap → Buffer for transaction processing delays
 - No validation for self-serialized data → Format guaranteed by construction
 - Public API vs private callbacks → If parameter can't be passed through public API, no vulnerability
-
----
-
-## Before Suggesting Changes
-
-**Check:**
-1. Where are the tokens? (user balance? bridge balance? not minted?)
-2. Is callback #[private]?
-3. Is access control present?
-4. Are events emitted AFTER state changes?
-5. Is this a bug or a design choice?
-
-**Read the full flow** from user action to final state. Many "bugs" are actually correct by design.
 
 ---
 
