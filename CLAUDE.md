@@ -1,178 +1,129 @@
-# CLAUDE.md - Instructions for AI Assistant
+# NEAR BTC/Zcash Bridge
 
-This file contains important context and guidelines for working with the NEAR BTC Bridge codebase.
+Bridge between Bitcoin/Zcash and NEAR Protocol. Users deposit BTC/ZEC to receive nBTC/nZEC (NEP-141 token) and withdraw nBTC/nZEC to receive BTC/ZEC back.
 
----
-
-## Project Overview
-
-**NEAR BTC Bridge** is a trustless bridge between Bitcoin and NEAR Protocol that allows users to:
-- Deposit BTC and receive nBTC (fungible token on NEAR)
-- Withdraw nBTC and receive BTC back
-- Manage Bitcoin UTXOs efficiently
-
-**Key Components:**
-- `contracts/nbtc/` - NEP-141 fungible token contract (nBTC)
-- `contracts/satoshi-bridge/` - Main bridge contract managing deposits/withdrawals
-- `contracts/mock-*` - Testing utilities
-
-**External Dependencies:**
-- BTC Light Client contract (SPV verification)
-- Chain Signatures contract (MPC for Bitcoin signing)
+**Trust Model:**
+- **BTC → NEAR (deposit):** Trustless verification via BTC Light Client (Merkle proof validation)
+- **NEAR → BTC (withdraw):** Requires trust in NEAR validator set for Chain Signatures (MPC)
 
 ---
 
-## Architecture & Key Concepts
+## Build / Test / Lint
 
-### CRITICAL: Understanding the Flow
+```bash
+# Build for development (non-reproducible)
+make build-local-bitcoin    # Bitcoin bridge
+make build-local-zcash      # Zcash bridge
 
-#### Deposit Flow (BTC → nBTC)
+# Build for release (reproducible)
+make release
+
+# Run tests
+make test
+
+# Format and clippy
+cargo fmt --all             # Format all code
+make clippy-bitcoin         # Clippy for Bitcoin
+make clippy-zcash           # Clippy for Zcash
+```
+
+---
+
+## Key Architecture
+
+### Contracts
+- **contracts/nbtc/** - NEP-141 fungible token (nBTC)
+- **contracts/satoshi-bridge/** - Main bridge managing deposits/withdrawals/UTXOs
+- **contracts/mock-*** - Testing utilities
+
+### External Dependencies
+- **BTC Light Client** - SPV verification via Merkle proofs
+- **Chain Signatures (MPC)** - Distributed key for Bitcoin signing
+
+### Bridge Flows
+
+**Deposit (BTC → nBTC)**
 ```
 1. User sends BTC to deposit address (derived from DepositMsg hash)
-2. Relayer calls: bridge.verify_deposit(tx_proof)
-3. Bridge verifies transaction with BTC Light Client
-4. Bridge calls: nbtc.mint(user, amount)
-5. nBTC mints tokens to user
-6. UTXO added to bridge's available set
+2. Relayer: bridge.verify_deposit(tx_proof)
+3. Bridge verifies with Light Client → calls nbtc.mint(user, amount)
+4. UTXO added to bridge's available set
 ```
 
-#### Withdraw Flow (nBTC → BTC)
+**Withdraw (nBTC → BTC)**
 ```
-1. User calls: nbtc.ft_transfer(bridge, amount, WithdrawMsg)
+1. User: nbtc.ft_transfer(bridge, amount, WithdrawMsg)
    → Tokens TRANSFERRED to bridge (not burned yet!)
-2. nBTC calls: bridge.ft_on_transfer(user, amount, msg)
-   → Bridge returns 0 (keeps all tokens)
-3. Bridge creates pending BTC transaction
-4. Chain Signatures signs transaction
-5. Transaction broadcast to Bitcoin network
-6. Relayer calls: bridge.verify_withdraw(tx_proof)
-7. Bridge verifies with Light Client
-8. Bridge calls: nbtc.burn(user, amount, relayer, fee)
+2. nBTC: bridge.ft_on_transfer(user, amount, msg) → Bridge returns 0 (keeps tokens)
+3. Bridge creates BTC tx, Chain Signatures signs
+4. Tx broadcast to Bitcoin network
+5. Relayer: bridge.verify_withdraw(tx_proof)
+6. Bridge verifies → calls nbtc.burn(user, amount, relayer, fee)
    → Burns from bridge balance (tokens already there!)
 ```
 
-**IMPORTANT:** The `burn_account_id` parameter in `burn()` is for ACCOUNTING/EVENTS only. The actual burn happens from `bridge_id` balance where tokens already are after `ft_transfer`.
-
-### Token Flow Understanding
-
-```
-┌─────────────────────────────────────────────────────┐
-│              nBTC Token Contract                     │
-│                                                      │
-│  User Balance: 1000                                 │
-│  Bridge Balance: 0                                  │
-│                                                      │
-│         ↓ ft_transfer(bridge, 100, msg)            │
-│                                                      │
-│  User Balance: 900                                  │
-│  Bridge Balance: 100  ← TOKENS HERE NOW            │
-│                                                      │
-│         ↓ ft_on_transfer callback                   │
-│         ↓ (bridge returns 0 = keep tokens)          │
-│                                                      │
-│  After BTC tx verified:                             │
-│         ↓ burn(user, 100, ...)                      │
-│                                                      │
-│  Bridge Balance: 0    ← BURNED FROM HERE            │
-│  Total Supply: 900                                  │
-└─────────────────────────────────────────────────────┘
-```
+**CRITICAL:** `burn_account_id` parameter is for ACCOUNTING/EVENTS only. Actual burn happens from `bridge_id` balance where tokens already are after `ft_transfer`. This is NEP-141 standard behavior.
 
 ---
 
-## Security Guidelines
+## Zcash Orchard Support
 
-### 🔒 NEVER DO
+Bridge supports both transparent (Bitcoin-style) and Orchard (shielded) outputs:
 
-1. **DON'T suggest reading or modifying:**
-   - `.env` files
-   - `config.*` files
-   - Any file starting with `.`
-   - Private keys or secrets
-
-2. **DON'T propose changes that:**
-   - Remove `assert_one_yocto()` protections
-   - Bypass `#[private]` callbacks
-   - Disable access control checks
-   - Skip `assert_bridge()` or `assert_controller()` checks
-
-3. **DON'T create commits without explicit user request:**
-   - User must specifically ask to commit
-   - Always run tests before committing
-   - Never use `--no-verify`
-
-4. **DON'T push to remote unless explicitly requested:**
-   - NEVER push to main/omni-main without confirmation
-   - NEVER force push without explicit request
-
-### ✅ ALWAYS DO
-
-1. **Security patterns to preserve:**
-   ```rust
-   // Always use checked arithmetic for money operations
-   amount.checked_mul(rate).unwrap_or_else(|| env::panic_str("overflow"))
-
-   // Always validate before external calls
-   require!(is_valid, "Invalid input");
-
-   // Always use #[private] for callbacks
-   #[private]
-   pub fn callback(...) { }
-   ```
-
-2. **Access control patterns:**
-   ```rust
-   // Bridge can only call nBTC
-   self.assert_bridge();
-
-   // Controller can modify config
-   self.assert_controller();
-
-   // Use near-plugins decorators
-   #[access_control_any(roles(Role::DAO))]
-   ```
-
-3. **Before suggesting changes:**
-   - Understand the full flow (deposit or withdraw)
-   - Check if tokens are already transferred
-   - Verify callback execution order
-   - Consider NEAR execution model (atomic callbacks)
+- **Mutual Exclusion:** `actual_received_amounts.len() == 1` ensures EITHER transparent OR Orchard output, never both
+- **OVK Validation:** Orchard outputs require Outgoing Viewing Key to decrypt and verify recipient
+- **Address Restrictions:** Transparent addresses CANNOT accept Orchard bundles (panics on `extract_orchard_receiver()`)
+- **Bridge Transparency:** Bridge operates with full transparency, privacy is NOT a design goal
 
 ---
 
-## Code Conventions
+## Security Invariants
 
-### Rust Style
+### Access Control
+- **NEVER bypass:** `assert_one_yocto()`, `#[private]` callbacks, `assert_bridge()`, `assert_controller()`
+- **All admin functions:** Must have `#[access_control_any(roles(Role::DAO))]` or similar
+- **Callbacks:** Must be `#[private]` - no external calls allowed
 
-```rust
-// Use descriptive names
-pub fn internal_mint_promise(...) -> Promise { }  // Good
-pub fn imp(...) -> Promise { }                     // Bad
+### Token Flow
+- **Withdraw tokens already transferred:** By the time `burn()` is called, tokens are already in bridge balance via `ft_transfer`
+- **NEP-141 ft_on_transfer:** Bridge returns `0` = keep all tokens, `amount` = refund amount
+- **No burn without verification:** Only burn after BTC tx is verified on-chain
 
-// Explicit error messages
-require!(condition, "Clear error message describing what went wrong");
+### Arithmetic Safety
+- **overflow-checks = true:** All overflow panics in release mode (fail-safe)
+- **Use checked_*:** For explicit error handling: `checked_mul()`, `checked_add()`
+- **Never silent corruption:** Prefer panic over wrong amounts
 
-// Use checked arithmetic for financial operations
-let fee = amount.checked_mul(rate).and_then(|v| v.checked_div(MAX_RATIO))
-    .unwrap_or_else(|| env::panic_str("Fee calculation overflow"));
-```
+### State Management
+- **State before external calls:** Mutate state (mark UTXO used, update balances) BEFORE cross-contract calls
+- **Events after state changes:** Create and emit events AFTER all state mutations complete
+- **Atomic callbacks:** NEAR execution model prevents reentrancy, callbacks are atomic
 
-### NEAR-Specific Patterns
+### Zcash Validation
+- **Orchard mutual exclusion:** Check `actual_received_amounts.len() == 1` prevents mixed outputs
+- **OVK required:** All Orchard bundles must provide valid OVK for decryption
+- **Change < dust is valid:** Transparent change CAN be less than dust (546 sats) in Zcash - this is intentional
+- **Branch IDs hardcoded:** Network upgrades require contract redeployment anyway
 
+---
+
+## Critical Patterns
+
+### NEAR-Specific
 ```rust
 // Callbacks must be #[private]
 #[private]
 pub fn callback_after_external_call(...) { }
 
-// Use near-plugins for access control
+// Access control decorators
 #[access_control_any(roles(Role::DAO, Role::Operator))]
 pub fn admin_function(...) { }
 
-// Pausable functions
+// Pausable with exceptions
 #[pause(except(roles(Role::DAO)))]
 pub fn user_function(...) { }
 
-// Assert one yocto for security
+// Prevent batching
 #[payable]
 pub fn sensitive_operation(...) {
     assert_one_yocto();
@@ -180,471 +131,103 @@ pub fn sensitive_operation(...) {
 }
 ```
 
-### Event Emission
-
+### Security Checks
 ```rust
-// Emit events AFTER state changes
+// Always validate input
+require!(condition, "Clear error message");
+
+// Checked arithmetic for money
+amount.checked_mul(rate)
+    .unwrap_or_else(|| env::panic_str("overflow"));
+
+// Events after state changes
 self.internal_set_utxo(&key, utxo);
 Event::UtxoAdded { utxo_storage_keys: vec![key] }.emit();
-
-// NOT before:
-let event = Event::UtxoAdded { ... };  // ❌ Created too early
-// ... state changes ...
-event.emit();
 ```
 
 ---
 
-## Testing Approach
-
-### Running Tests
-
-```bash
-# Build all contracts
-make build
-
-# Run tests
-cargo test
-
-# Run specific test
-cargo test test_name
-
-# Check formatting
-cargo fmt --check
-
-# Clippy
-cargo clippy -- -D warnings
-```
-
-### Test Structure
-
-```rust
-#[test]
-fn test_deposit_flow() {
-    // 1. Setup
-    let context = get_context();
-    testing_env!(context);
-    let mut contract = Contract::new(...);
-
-    // 2. Execute
-    let result = contract.verify_deposit(...);
-
-    // 3. Verify
-    assert_eq!(result.is_success(), true);
-    assert_eq!(contract.get_balance(), expected);
-}
-```
-
-### Mock Contracts
-
-Use mock contracts in `contracts/mock-*` for testing:
-- `mock-btc-light-client` - Simulates BTC SPV verification
-- `mock-chain-signatures` - Simulates MPC signing
-- `mock-dapp` - Simulates external contract for post_actions
-
----
-
-## Common Workflows
-
-### Adding a New Configuration Parameter
-
-1. Add field to `Config` struct:
-   ```rust
-   pub struct Config {
-       // ... existing fields
-       pub new_parameter: u64,
-   }
-   ```
-
-2. Add validation in `assert_valid()`:
-   ```rust
-   impl Config {
-       pub fn assert_valid(&self) {
-           // ... existing validations
-           require!(self.new_parameter > 0, "Invalid new_parameter");
-       }
-   }
-   ```
-
-3. Add setter function:
-   ```rust
-   #[payable]
-   #[access_control_any(roles(Role::DAO))]
-   pub fn set_new_parameter(&mut self, value: u64) {
-       assert_one_yocto();
-       let mut config = self.internal_config();
-       config.new_parameter = value;
-       config.assert_valid();
-       self.data_mut().config.set(&config);
-   }
-   ```
-
-4. Add tests
-5. Update documentation
-
-### Adding a New Event
-
-1. Define event in `event.rs`:
-   ```rust
-   #[near(serializers=[json])]
-   pub enum Event {
-       // ... existing events
-       NewEvent {
-           field1: &'a AccountId,
-           field2: U128,
-       },
-   }
-   ```
-
-2. Emit after state changes:
-   ```rust
-   // Perform state changes first
-   self.data_mut().value = new_value;
-
-   // Then emit event
-   Event::NewEvent {
-       field1: &account_id,
-       field2: amount,
-   }.emit();
-   ```
-
-### Adding a New Role-Protected Function
-
-```rust
-#[payable]
-#[access_control_any(roles(Role::DAO, Role::Operator))]
-#[pause(except(roles(Role::DAO)))]
-pub fn new_admin_function(&mut self, param: u64) {
-    assert_one_yocto();  // Prevent batching
-
-    // Validation
-    require!(param > 0, "Invalid parameter");
-
-    // State changes
-    self.data_mut().field = param;
-
-    // Emit event
-    Event::ConfigChanged { ... }.emit();
-}
-```
-
----
-
-## Important Context
-
-### Why Burn Burns from bridge_id
-
-This confused the initial audit. Here's why it's correct:
-
-**NEP-141 Flow:**
-1. `ft_transfer` moves tokens from user to bridge
-2. `ft_on_transfer` callback lets bridge decide to keep or refund
-3. Bridge returns `0` (keep all tokens)
-4. Tokens now in bridge balance
-5. Later, `burn()` burns from bridge balance (correct!)
-
-The `burn_account_id` parameter is METADATA for events, not the source of burn.
-
-### Why overflow-checks = true Matters
-
-```toml
-[profile.release]
-overflow-checks = true
-```
-
-This means:
-- Overflow PANICS even in release mode
-- No silent corruption
-- Fail-safe behavior
-- But still good to use checked_* arithmetic for explicit handling
-
-### NEAR Execution Model
-
-- Callbacks are atomic (no race conditions)
-- `#[private]` prevents external calls
-- Promise chains don't create reentrancy windows
-- Gas is pre-allocated per callback
-
-### Chain Signatures (MPC)
-
-- Private key distributed across nodes
-- Threshold signatures (t-of-n)
-- No single point of compromise
-- Bridge depends on MPC service availability
-
----
-
-## Files You'll Work With Most
+## Key Files
 
 ### Core Contracts
-- `contracts/satoshi-bridge/src/lib.rs` - Main contract structure
+- `contracts/satoshi-bridge/src/lib.rs` - Main contract
 - `contracts/satoshi-bridge/src/api/bridge.rs` - User-facing functions
 - `contracts/satoshi-bridge/src/api/management.rs` - Admin functions
-- `contracts/satoshi-bridge/src/btc_light_client/deposit.rs` - Deposit logic
-- `contracts/satoshi-bridge/src/btc_light_client/withdraw.rs` - Withdraw logic
+- `contracts/satoshi-bridge/src/btc_light_client/` - Deposit/withdraw verification
 - `contracts/nbtc/src/lib.rs` - Token contract
 
-### Key Modules
-- `contracts/satoshi-bridge/src/nbtc/mint.rs` - Mint callbacks
-- `contracts/satoshi-bridge/src/nbtc/burn.rs` - Burn callbacks
-- `contracts/satoshi-bridge/src/config.rs` - Configuration
-- `contracts/satoshi-bridge/src/event.rs` - Event definitions
-- `contracts/satoshi-bridge/src/utxo.rs` - UTXO management
-
-### Don't Modify Without Understanding
-- `contracts/satoshi-bridge/src/bitcoin_utils/` - Bitcoin transaction handling
-- `contracts/satoshi-bridge/src/psbt.rs` - PSBT validation
-- `contracts/satoshi-bridge/src/chain_signature.rs` - MPC signing
+### Critical Modules
+- `contracts/satoshi-bridge/src/psbt.rs` - PSBT validation (DON'T modify without deep understanding)
+- `contracts/satoshi-bridge/src/zcash_utils/orchard_policy.rs` - Orchard bundle validation
+- `contracts/satoshi-bridge/src/config.rs` - Configuration and validation
 
 ---
 
 ## Git Workflow
 
-### Main Branches
-- `omni-main` - Main branch (use this for PRs)
+**Main Branch:** `omni-main` (use for PRs)
 
-### Commit Message Format
-```
-<type>: <short description>
-
-<optional longer description>
-
-Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
-```
-
-Types: feat, fix, refactor, test, docs, chore
-
-### Before Committing
+**Before Committing:**
 1. Run tests: `cargo test`
-2. Check formatting: `cargo fmt`
-3. Run clippy: `cargo clippy`
-4. Review changes carefully
-5. Only commit if user explicitly requested
+2. Format: `cargo fmt`
+3. Clippy: `cargo clippy`
+4. **Only commit if user explicitly requests**
+
+**NEVER:**
+- Push to remote without explicit request
+- Force push to main/omni-main
+- Use `--no-verify`
+- Commit without user asking
 
 ---
 
 ## Common Pitfalls
 
-### ❌ Wrong Assumptions
-
 **DON'T assume:**
-- "burn() should burn from user balance" (NO! Already transferred to bridge)
-- "overflow without checked_* is silent" (NO! overflow-checks=true causes panic)
-- "callbacks can be reentered" (NO! NEAR model prevents this)
-- "DAO powers are a bug" (NO! Necessary governance)
-
-### ✅ Correct Understanding
+- "burn() should burn from user balance" → NO! Already transferred to bridge
+- "overflow without checked_* is silent" → NO! overflow-checks=true causes panic
+- "callbacks can be reentered" → NO! NEAR model prevents this
+- "DAO powers are a bug" → NO! Necessary governance
+- "transparent change must be >= dust" → NO! In Zcash < dust is valid
 
 **DO understand:**
-- Tokens flow through ft_transfer BEFORE burn
+- Tokens flow: user → bridge (via ft_transfer) → burn from bridge balance
 - NEP-141 ft_on_transfer return value controls token disposition
 - Callbacks are atomic and #[private]
-- Governance is by design, not a vulnerability
-- overflow-checks=true protects against silent overflow
+- `actual_received_amounts.len() == 1` prevents attack vectors
+- Bridge transparency is by design, not a limitation
 
-### 🔍 When Reviewing Code
+---
 
-**Check for:**
-1. Are tokens already transferred before burn/mint?
-2. Is callback #[private]?
+## Design Decisions (Non-Issues)
+
+These patterns are intentional. Do not flag or "fix" them:
+
+- **Burn from bridge balance:** Tokens already transferred via `ft_transfer` before burn
+- **Bridge has no privacy:** Full transaction tracking required for validation
+- **Hardcoded branch IDs:** Protocol upgrades require redeployment anyway
+- **Expiry height gap:** Buffer for transaction processing delays
+- **No validation for self-serialized data:** Format guaranteed by construction
+- **Transparent change < dust allowed:** Valid in Zcash protocol
+- **Public API vs private callbacks:** If parameter can't be passed through public API, no vulnerability
+
+---
+
+## When Modifying Contracts
+
+**Always ask yourself:**
+1. Where are the tokens right now? (user balance? bridge balance? not minted?)
+2. Is callback #[private]? Can external contracts call it?
 3. Is access control decorator present?
 4. Are events emitted AFTER state changes?
-5. Is checked arithmetic used for money operations?
-6. Are errors descriptive?
+5. Is this a bug or a design choice?
 
----
-
-## Questions to Ask Before Suggesting Changes
-
-1. **"Where are the tokens right now?"**
-   - In user balance? In bridge balance? Not minted yet?
-
-2. **"Is this callback atomic?"**
-   - Can it be reentered? (Usually no in NEAR)
-
-3. **"Who can call this function?"**
-   - Check decorators: #[private], #[access_control_any]
-
-4. **"What happens if this external call fails?"**
-   - Is there error handling? Rollback? Lost & found?
-
-5. **"Is this a bug or a design choice?"**
-   - Governance powers, centralization, etc.
-
-6. **"What are the economic incentives?"**
-   - Is attack profitable? Cost vs gain?
-
----
-
-## Key Design Decisions & Architectural Patterns
-
-### Bridge Transparency Philosophy
-
-**Core Principle:** Bridge operations prioritize transparency over privacy.
-- Full transaction tracking is required for validation and auditability
-- All bridge UTXO management uses public addresses
-- Privacy is NOT a design goal - users seeking privacy should use external solutions
-- This is intentional, not a limitation
-
-### Validation Architecture Patterns
-
-**Critical Validation:** `actual_received_amounts.len() == 1` ensures mutual exclusion.
-- Guarantees EITHER transparent OR Orchard output, never both
-- Transparent addresses CANNOT accept Orchard bundles (will panic)
-- This prevents mixing attack vectors
-
-**Public API vs Private Callbacks:** Always check the complete call chain.
-- Callback infrastructure may accept parameters not exposed in public API
-- If parameter cannot be passed through public API, no vulnerability exists
-- Example: `#[private]` callbacks with parameters that public methods hardcode to `None`
-
-### Zcash-Specific Design Decisions
-
-**Branch ID Management:** Hardcoded activation heights are acceptable.
-- Contract redeployment required when branch IDs update anyway
-- Important: verify behavior at block height boundaries during transitions
-
-**Expiry Height Gap:** Exists specifically to provide transaction processing buffer.
-- Gap between current block and expiry height is intentional
-- Can be tuned based on network conditions
-- Larger gap = more tolerance for processing delays
-
-### Data Integrity Patterns
-
-**Self-Serialized Data:** No validation needed for internally stored data.
-- Deserialization format matches serialization format
-- All data stored by the contract itself, no external untrusted input
-- Format guaranteed correct by construction
-- Length/format validation only needed for external inputs
-
-### Error Messaging Philosophy
-
-**UX vs Security:** Distinguish between security issues and user experience.
-- Unclear error messages = poor UX, not security vulnerability
-- Empty input validation = better errors, not security fix
-- Comment accuracy = maintainability, not correctness
-- Prioritize security over polish
-
-### Redeployment Assumptions
-
-**When Contract Needs Redeployment Anyway:** Hardcoded values are acceptable.
-- Protocol upgrades (branch IDs, consensus rules) require redeployment
-- No need to make these values configurable if update requires new contract
-- Focus configurability on operational parameters, not protocol constants
-
----
-
-## Useful Commands
-
-### Main Makefile Targets
-
-```bash
-# Build all contracts for release (reproducible WASM)
-make release
-
-# Build for local development (non-reproducible, faster)
-make build-local
-
-# Run linting (fmt + clippy)
-make lint
-
-# Run tests (builds local first, then tests both bitcoin and zcash features)
-make test
-```
-
-### Building Specific Contracts
-
-```bash
-# Build nBTC token contract
-make nbtc
-
-# Build mock contracts for testing
-make mock-dapp
-make mock-chain-signatures
-make mock-btc-light-client
-
-# Build bridge for specific feature
-make build-bitcoin    # Bitcoin bridge
-make build-zcash      # Zcash bridge
-
-# Build local (development) for specific feature
-make build-local-bitcoin
-make build-local-zcash
-```
-
-### Testing
-
-```bash
-# Run all tests (both bitcoin and zcash features)
-make test
-
-# Test specific feature
-make test-bitcoin
-make test-zcash
-
-### Code Quality
-
-```bash
-# Run formatter
-cargo fmt --all
-
-# Check formatting
-cargo fmt --all --check
-
-# Run clippy for specific feature
-make clippy-bitcoin
-make clippy-zcash
-
-
-### Manual Build Commands (if needed)
-
-```bash
-# Build reproducible WASM (for production)
-cargo near build reproducible-wasm --manifest-path contracts/satoshi-bridge/Cargo.toml --variant bitcoin
-
-# Build non-reproducible WASM (for development, faster)
-cargo near build non-reproducible-wasm --manifest-path contracts/satoshi-bridge/Cargo.toml --features bitcoin --no-abi
-
-# Check contract size
-ls -lh res/*.wasm
-
-# Output is in:
-# - res/bitcoin_bridge_release.wasm (reproducible)
-# - res/bitcoin_bridge.wasm (local dev)
-# - res/zcash_bridge_release.wasm (reproducible)
-# - res/zcash_bridge.wasm (local dev)
-# - res/nbtc.wasm
-```
-
-### Common Development Workflow
-
-```bash
-# 1. Make changes to code
-# 2. Format
-cargo fmt --all
-
-# 3. Build locally
-make build-local
-
-# 4. Run tests
-make test
-
-# 5. Run clippy
-make lint
-
-# 6. If all good, build release
-make release
-```
-
----
-
-## When in Doubt
-
-1. **Read the full flow** from user action to final state
-2. **Check NEP-141 spec** for token standards
-3. **Look at existing patterns** in the codebase
-4. **Test your assumptions** with actual code traces
-5. **Ask the user** if unclear about requirements
+**Before suggesting changes:**
+- Read the full flow from user action to final state
+- Check if tokens are already transferred
+- Verify callback execution order
+- Consider NEAR execution model (atomic callbacks)
+- Look at existing patterns in the codebase
 
 ---
 
@@ -653,19 +236,11 @@ make release
 - [NEAR Documentation](https://docs.near.org/)
 - [NEP-141 Fungible Token Standard](https://nomicon.io/Standards/Tokens/FungibleToken/Core)
 - [near-plugins Documentation](https://github.com/aurora-is-near/near-plugins)
-- [Bitcoin Developer Guide](https://developer.bitcoin.org/devguide/)
 - [PSBT (BIP 174)](https://github.com/bitcoin/bips/blob/master/bip-0174.mediawiki)
 
-
-## Contact
-
-If you encounter security issues or need clarification on architecture:
-- Check this CLAUDE.md for context
-- Ask the user for clarification
-
-**Remember:** Always understand the full flow before suggesting changes. The BTC bridge is complex, and many "bugs" are actually correct by design.
+**Remember:** Always understand the full flow before suggesting changes. Many "bugs" are actually correct by design.
 
 ---
 
-*Last Updated: 2026-02-12*
-*Version: 1.0*
+*Version: 2.0*
+*Last Updated: 2026-02-16*
