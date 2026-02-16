@@ -124,6 +124,18 @@ The bridge provides "safe" versions of deposit/mint functions primarily used by 
 - If NOT registered → returns `U128(0)` instead of panicking
 - Used by safe_verify_deposit to detect failures
 
+---
+
+## Design Decisions (Non-Issues)
+
+These patterns are intentional. Do not flag or "fix" them:
+
+- **DAO powers are by design:** Governance functions with DAO role are necessary, not a vulnerability
+- **Expiry height gap:** Buffer for transaction processing delays (Zcash)
+- **No validation for self-serialized data:** Format guaranteed by construction - only validate external inputs
+- **Public API vs private callbacks:** If parameter cannot be passed through public API, no vulnerability exists
+
+---
 
 ## Git Workflow
 
