@@ -15,9 +15,6 @@ Bridge between Bitcoin/Zcash and NEAR Protocol. Users deposit BTC/ZEC to receive
 make build-local-bitcoin    # Bitcoin bridge
 make build-local-zcash      # Zcash bridge
 
-# Build for release (reproducible)
-make release
-
 # Run tests
 make test
 
