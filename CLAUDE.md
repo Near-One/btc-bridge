@@ -129,24 +129,6 @@ The bridge provides "safe" versions of deposit/mint functions primarily used by 
 - If NOT registered → returns `U128(0)` instead of panicking
 - Used by safe_verify_deposit to detect failures
 
----
-
-## Common Mistakes & Design Decisions
-
-**DON'T assume:**
-- burn() should burn from user balance → NO! Already transferred to bridge via ft_transfer
-- overflow without checked_* is silent → NO! overflow-checks=true causes panic
-- callbacks can be reentered → NO! NEAR model prevents this
-- DAO powers are a bug → NO! Necessary governance
-- bridge should provide privacy → NO! Transparency is by design
-
-**These patterns are INTENTIONAL (non-issues):**
-- Hardcoded branch IDs → Protocol upgrades require redeployment anyway
-- Expiry height gap → Buffer for transaction processing delays
-- No validation for self-serialized data → Format guaranteed by construction
-- Public API vs private callbacks → If parameter can't be passed through public API, no vulnerability
-
----
 
 ## Git Workflow
 
