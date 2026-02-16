@@ -99,14 +99,6 @@ make clippy-zcash           # Clippy for Zcash
 
 ---
 
-## Key Files
-
-**Core:** `contracts/satoshi-bridge/src/lib.rs`, `contracts/satoshi-bridge/src/api/bridge.rs` (user functions), `contracts/satoshi-bridge/src/api/management.rs` (admin functions), `contracts/nbtc/src/lib.rs`
-
-**Critical (don't modify without deep understanding):** `contracts/satoshi-bridge/src/psbt.rs`, `contracts/satoshi-bridge/src/zcash_utils/orchard_policy.rs`, `contracts/satoshi-bridge/src/config.rs`
-
----
-
 ## Common Mistakes & Design Decisions
 
 **DON'T assume:**
