@@ -37,10 +37,6 @@ impl Contract {
             .expect("Deserialization tx_bytes failed");
         let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
         require!(deposit_amount > 0, "Invalid deposit_amount");
-        require!(
-            transaction.lock_time() == LockTime::ZERO,
-            "Tx with a non-zero lock_time are not supported."
-        );
         let deposit_address = self.generate_utxo_chain_address(&path);
         let deposit_address_script_pubkey = deposit_address
             .script_pubkey()
