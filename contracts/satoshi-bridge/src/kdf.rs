@@ -22,6 +22,8 @@ impl Contract {
                 .expect("Missing chain_signatures_root_public_key"),
         );
         let epsilon = crypto_shared::derive_epsilon(
+            // NOTE: conversion to string with parsing later on is needed to convert to the proper
+            // version of `AccountId`
             &env::current_account_id().as_str().parse().unwrap(),
             path,
         );
