@@ -277,7 +277,8 @@ impl Context {
         worker: &Worker<Sandbox>,
         account_id: &AccountId,
     ) -> u128 {
-        match worker.view_account(account_id).await {
+        let ws_account_id: near_workspaces::AccountId = account_id.as_str().parse().unwrap();
+        match worker.view_account(&ws_account_id).await {
             Ok(a) => a.balance.as_yoctonear(),
             Err(_) => 0,
         }

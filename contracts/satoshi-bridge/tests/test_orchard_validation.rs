@@ -27,7 +27,7 @@ async fn test_orchard_wrong_recipient() {
     // Setup: Deposit for alice
     let alice_btc_deposit_address = context
         .get_user_deposit_address(DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -38,7 +38,7 @@ async fn test_orchard_wrong_recipient() {
     check!(context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -152,7 +152,7 @@ async fn test_orchard_missing_bundle() {
     // Setup: Deposit for alice
     let alice_btc_deposit_address = context
         .get_user_deposit_address(DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -163,7 +163,7 @@ async fn test_orchard_missing_bundle() {
     check!(context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -247,7 +247,7 @@ async fn test_orchard_bundle_in_zcash_tx() {
     // Setup: Deposit for alice
     let alice_btc_deposit_address = context
         .get_user_deposit_address(DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -258,7 +258,7 @@ async fn test_orchard_bundle_in_zcash_tx() {
     check!(context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
