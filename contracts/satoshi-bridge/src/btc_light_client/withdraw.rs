@@ -1,6 +1,6 @@
 use crate::{
-    env, near, require, serde_json, BTCPendingInfo, Contract, ContractExt, Gas,
-    MAX_BOOL_RESULT, Promise, PromiseOrValue,
+    env, near, require, serde_json, BTCPendingInfo, Contract, ContractExt, Gas, Promise,
+    PromiseOrValue, MAX_BOOL_RESULT,
 };
 
 pub const GAS_FOR_VERIFY_WITHDRAW_CALL_BACK: Gas = Gas::from_tgas(50);

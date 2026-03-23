@@ -1,6 +1,6 @@
 use crate::{
     env, ext_contract, nano_to_sec, near, require, serde_json, AccountId, Contract, ContractExt,
-    Event, Gas, MAX_PUBLIC_KEY_RESULT, MAX_SIGNATURE_RESULT, Promise, PublicKey,
+    Event, Gas, Promise, PublicKey, MAX_PUBLIC_KEY_RESULT, MAX_SIGNATURE_RESULT,
 };
 use bitcoin::ecdsa::Signature;
 

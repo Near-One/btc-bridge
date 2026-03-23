@@ -4,9 +4,9 @@ use crate::{
     burn::GAS_FOR_BURN_CALL,
     env, ext_nbtc,
     mint::{GAS_FOR_MINT_CALL, GAS_FOR_MINT_CALL_BACK},
-    near, require, serde_json, AccountId, Contract, ContractExt, DepositMsg, Event, Gas,
-    MAX_BOOL_RESULT, MAX_FT_TRANSFER_CALL_RESULT, NearToken, PendingUTXOInfo, PostAction, Promise,
-    PromiseOrValue, SafeDepositMsg, U128,
+    near, require, serde_json, AccountId, Contract, ContractExt, DepositMsg, Event, Gas, NearToken,
+    PendingUTXOInfo, PostAction, Promise, PromiseOrValue, SafeDepositMsg, MAX_BOOL_RESULT,
+    MAX_FT_TRANSFER_CALL_RESULT, U128,
 };
 
 pub const GAS_FOR_VERIFY_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(190);
