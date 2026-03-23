@@ -2,6 +2,7 @@ use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 use near_plugins::{access_control_any, pause};
 
+#[trusted_relayer]
 #[near]
 impl Contract {
     /// Verify that the user has transferred BTC asset to the protocol's designated BTC deposit account, and mint NBTC to the user's NEAR account.
@@ -18,6 +19,7 @@ impl Contract {
     /// # Returns
     ///
     /// bool - Whether nBTC minting was successful.
+    #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_deposit(
         &mut self,
@@ -91,6 +93,7 @@ impl Contract {
     ///
     /// bool - Whether nBTC minting was successful.
     #[payable]
+    #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn safe_verify_deposit(
         &mut self,
@@ -164,6 +167,7 @@ impl Contract {
     /// # Returns
     ///
     /// bool - Whether nBTC burning was successful.
+    #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_withdraw(
         &mut self,
