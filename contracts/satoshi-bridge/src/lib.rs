@@ -4,7 +4,7 @@ use near_sdk::{
     borsh::{BorshDeserialize, BorshSerialize},
     env, ext_contract, is_promise_success,
     json_types::{U128, U64},
-    log, near, promise_result_as_success, require,
+    log, near, require,
     serde::{Deserialize, Serialize},
     serde_json::{self, json, Value},
     store::{IterableMap, IterableSet, LazyOption, LookupSet},

@@ -33,6 +33,7 @@ near-contract-standards.workspace = true
 bitcoin.workspace = true
 hex.workspace = true
 near-plugins.workspace = true
+omni-utils.workspace = true
 k256 = "0.13.1"
 ed25519-dalek = "2.1.0"
 crypto-shared = { git = "https://github.com/near/mpc_old", rev = "0afee9004a1b1c3386940e60c28cff7cf1b5978c" }

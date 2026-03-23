@@ -1,6 +1,6 @@
 use crate::{
-    env, ext_contract, nano_to_sec, near, promise_result_as_success, require, serde_json,
-    AccountId, Contract, ContractExt, Event, Gas, Promise, PublicKey,
+    env, ext_contract, nano_to_sec, near, require, serde_json, AccountId, Contract, ContractExt,
+    Event, Gas, MAX_PUBLIC_KEY_RESULT, MAX_SIGNATURE_RESULT, Promise, PublicKey,
 };
 use bitcoin::ecdsa::Signature;
 
@@ -117,7 +117,7 @@ impl Contract {
 impl Contract {
     #[private]
     pub fn sync_root_public_key_callback(&mut self) -> bool {
-        if let Some(result_bytes) = promise_result_as_success() {
+        if let Ok(result_bytes) = env::promise_result_checked(0, MAX_PUBLIC_KEY_RESULT) {
             let root_public_key =
                 serde_json::from_slice::<PublicKey>(&result_bytes).expect("Invalid PublicKey");
             self.internal_mut_config().chain_signatures_root_public_key = Some(root_public_key);
@@ -138,7 +138,7 @@ impl Contract {
         btc_pending_sign_id: String,
         sign_index: usize,
     ) -> bool {
-        if let Some(result_bytes) = promise_result_as_success() {
+        if let Ok(result_bytes) = env::promise_result_checked(0, MAX_SIGNATURE_RESULT) {
             let signature = serde_json::from_slice::<SignatureResponse>(&result_bytes)
                 .expect("Invalid signature");
 

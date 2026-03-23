@@ -21,7 +21,10 @@ impl Contract {
                 .clone()
                 .expect("Missing chain_signatures_root_public_key"),
         );
-        let epsilon = crypto_shared::derive_epsilon(&env::current_account_id(), path);
+        let epsilon = crypto_shared::derive_epsilon(
+            &env::current_account_id().as_str().parse().unwrap(),
+            path,
+        );
         let user_pk = crypto_shared::derive_key(mpc_pk, epsilon);
         let user_pk_encoded_point = user_pk.to_encoded_point(false);
         user_pk_encoded_point.as_bytes().to_vec()
