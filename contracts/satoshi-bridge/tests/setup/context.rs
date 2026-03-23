@@ -237,6 +237,20 @@ impl Context {
             .unwrap()
             .unwrap();
 
+        // Grant UnrestrictedRelayer role to test accounts so they can call
+        // methods guarded by #[trusted_relayer]
+        for account in [&relayer, &alice, &bob, &charlie, &tx_listener] {
+            root.call(bridge_contract.id(), "acl_grant_role")
+                .args_json(json!({
+                    "role": "UnrestrictedRelayer",
+                    "account_id": account.id()
+                }))
+                .transact()
+                .await
+                .unwrap()
+                .unwrap();
+        }
+
         Self {
             root,
             tx_listener,
