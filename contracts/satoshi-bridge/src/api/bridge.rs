@@ -268,6 +268,7 @@ impl Contract {
     /// # Returns
     ///
     /// bool - Whether nBTC burning was successful.
+    #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_active_utxo_management(
         &mut self,
