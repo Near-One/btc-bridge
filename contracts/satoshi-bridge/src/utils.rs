@@ -11,7 +11,7 @@ pub const MAX_FT_TRANSFER_CALL_RESULT: usize = 50;
 /// Maximum expected byte length of a JSON-serialized `near_sdk::PublicKey` promise result.
 pub const MAX_PUBLIC_KEY_RESULT: usize = 200;
 /// Maximum expected byte length of a JSON-serialized `SignatureResponse` promise result.
-pub const MAX_SIGNATURE_RESULT: usize = 500;
+pub const MAX_SIGNATURE_RESULT: usize = 300;
 
 pub fn generate_utxo_storage_key(txid: String, vout: u32) -> String {
     format!(
