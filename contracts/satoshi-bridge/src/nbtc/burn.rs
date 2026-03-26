@@ -135,7 +135,8 @@ impl Contract {
                 self.data_mut().cur_available_protocol_fee += protocol_fee.0;
             }
             if refund > 0 {
-                self.internal_transfer_nbtc(&btc_pending_info.account_id, refund);
+                self.internal_transfer_nbtc(&btc_pending_info.account_id, refund)
+                    .detach();
             }
             self.internal_remove_btc_pending_info(&tx_id);
             Event::UtxoAdded { utxo_storage_keys }.emit();

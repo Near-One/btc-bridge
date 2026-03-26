@@ -237,6 +237,20 @@ impl Context {
             .unwrap()
             .unwrap();
 
+        // Grant UnrestrictedRelayer role to test accounts so they can call
+        // methods guarded by #[trusted_relayer]
+        for account in [&relayer, &alice, &bob, &charlie, &tx_listener] {
+            root.call(bridge_contract.id(), "acl_grant_role")
+                .args_json(json!({
+                    "role": "UnrestrictedRelayer",
+                    "account_id": account.id()
+                }))
+                .transact()
+                .await
+                .unwrap()
+                .unwrap();
+        }
+
         Self {
             root,
             tx_listener,
@@ -277,7 +291,8 @@ impl Context {
         worker: &Worker<Sandbox>,
         account_id: &AccountId,
     ) -> u128 {
-        match worker.view_account(account_id).await {
+        let ws_account_id: near_workspaces::AccountId = account_id.as_str().parse().unwrap();
+        match worker.view_account(&ws_account_id).await {
             Ok(a) => a.balance.as_yoctonear(),
             Err(_) => 0,
         }

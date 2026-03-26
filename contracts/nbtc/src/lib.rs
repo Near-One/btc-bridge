@@ -133,7 +133,9 @@ impl Contract {
             self.mint_inner(&relayer_account_id, relayer_fee);
         }
         if let Some(post_actions) = post_actions {
-            Self::ext(env::current_account_id()).handle_post_actions(mint_account_id, post_actions);
+            Self::ext(env::current_account_id())
+                .handle_post_actions(mint_account_id, post_actions)
+                .detach();
         }
     }
 
@@ -374,15 +376,12 @@ impl Contract {
                 Self::ext(env::current_account_id())
                     .with_static_gas(gas)
                     .handle_post_action(sender_id.clone(), receiver_id, amount, memo, msg)
+                    .detach();
             } else {
-                Self::ext(env::current_account_id()).handle_post_action(
-                    sender_id.clone(),
-                    receiver_id,
-                    amount,
-                    memo,
-                    msg,
-                )
-            };
+                Self::ext(env::current_account_id())
+                    .handle_post_action(sender_id.clone(), receiver_id, amount, memo, msg)
+                    .detach();
+            }
         }
     }
 
@@ -413,6 +412,7 @@ impl Contract {
                 ext_ft_resolver::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
                     .ft_resolve_transfer(sender_id, receiver_id, amount.into()),
-            );
+            )
+            .detach();
     }
 }

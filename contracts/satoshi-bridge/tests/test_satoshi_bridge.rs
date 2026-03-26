@@ -1,6 +1,6 @@
 mod setup;
 use bitcoin::{Amount, OutPoint, TxOut};
-use near_sdk::{AccountId, Gas};
+use near_sdk::{AccountId, Gas, NearToken};
 use satoshi_bridge::network::{Address, Chain};
 use satoshi_bridge::{DepositMsg, PendingInfoState, PostAction, TokenReceiverMessage};
 use setup::*;
@@ -31,7 +31,7 @@ async fn test_role() {
         context.get_metadata().await.unwrap().super_admins,
         vec!["test.near".parse::<AccountId>().unwrap()]
     );
-    check!(print context.bridge_add_super_admin("root", context.get_account_by_name("alice").id()));
+    check!(print context.bridge_add_super_admin("root", &context.get_account_by_name("alice").sdk_id()));
     assert_eq!(
         context.get_metadata().await.unwrap().super_admins,
         vec![
@@ -39,17 +39,17 @@ async fn test_role() {
             "alice.test.near".parse::<AccountId>().unwrap()
         ]
     );
-    check!(print context.bridge_remove_super_admin("alice", context.get_account_by_name("root").id()));
+    check!(print context.bridge_remove_super_admin("alice", &context.get_account_by_name("root").sdk_id()));
     assert_eq!(
         context.get_metadata().await.unwrap().super_admins,
         vec!["alice.test.near".parse::<AccountId>().unwrap()]
     );
     check!(
-        context.bridge_add_super_admin("root", context.get_account_by_name("alice").id()),
+        context.bridge_add_super_admin("root", &context.get_account_by_name("alice").sdk_id()),
         "Insufficient permissions"
     );
     check!(
-        context.bridge_remove_super_admin("alice", context.get_account_by_name("alice").id()),
+        context.bridge_remove_super_admin("alice", &context.get_account_by_name("alice").sdk_id()),
         "cannot remove oneself"
     );
     assert_eq!(
@@ -110,7 +110,7 @@ async fn test_base() {
     let withdraw_change_address = context.get_change_address().await.unwrap();
     let alice_btc_deposit_address = context
         .get_user_deposit_address(DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -119,7 +119,7 @@ async fn test_base() {
         .unwrap();
     let bob_btc_deposit_address = context
         .get_user_deposit_address(DepositMsg {
-            recipient_id: context.get_account_by_name("bob").id().clone(),
+            recipient_id: context.get_account_by_name("bob").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -130,7 +130,7 @@ async fn test_base() {
     check!(printr "alice 10000" context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -178,7 +178,7 @@ async fn test_base() {
     check!(printr "alice 50000" context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -227,7 +227,7 @@ async fn test_base() {
         context.verify_deposit(
             "relayer",
             DepositMsg {
-                recipient_id: context.get_account_by_name("alice").id().clone(),
+                recipient_id: context.get_account_by_name("alice").sdk_id(),
                 post_actions: None,
                 extra_msg: None,
                 safe_deposit: None,
@@ -260,7 +260,7 @@ async fn test_base() {
     check!(context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("bob").id().clone(),
+            recipient_id: context.get_account_by_name("bob").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -479,7 +479,7 @@ async fn test_fix_bridge_fee_and_relayer() {
     let withdraw_change_address = context.get_change_address().await.unwrap();
     let alice_btc_deposit_address = context
         .get_user_deposit_address(DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -490,7 +490,7 @@ async fn test_fix_bridge_fee_and_relayer() {
     check!(printr "alice 500000" context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -619,7 +619,7 @@ async fn test_ratio_bridge_fee_and_relayer() {
     let withdraw_change_address = context.get_change_address().await.unwrap();
     let alice_btc_deposit_address = context
         .get_user_deposit_address(DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -630,7 +630,7 @@ async fn test_ratio_bridge_fee_and_relayer() {
     check!(printr "alice 500000" context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -762,7 +762,7 @@ async fn test_directly_withdraw() {
     let withdraw_change_address = context.get_change_address().await.unwrap();
     let alice_btc_deposit_address = context
         .get_user_deposit_address(DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -773,7 +773,7 @@ async fn test_directly_withdraw() {
     check!(printr "alice 500000" context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -885,9 +885,9 @@ async fn test_one_click() {
     {
         // dapp not in post_action_receiver_id_white_list
         let deposit_msg = DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: Some(vec![PostAction {
-                receiver_id: context.get_account_by_name("dapp").id().clone(),
+                receiver_id: context.get_account_by_name("dapp").sdk_id(),
                 amount: 5000.into(),
                 memo: None,
                 msg: "".to_string(),
@@ -942,13 +942,12 @@ async fn test_one_click() {
         check!(
             context.extend_post_action_receiver_id_white_list(vec![context
                 .get_account_by_name("dapp")
-                .id()
-                .clone()])
+                .sdk_id()])
         );
         let deposit_msg = DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: Some(vec![PostAction {
-                receiver_id: context.get_account_by_name("dapp").id().clone(),
+                receiver_id: context.get_account_by_name("dapp").sdk_id(),
                 amount: 5000.into(),
                 memo: None,
                 msg: "".to_string(),
@@ -1003,9 +1002,9 @@ async fn test_one_click() {
     {
         // PostAction gas too large
         let deposit_msg = DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: Some(vec![PostAction {
-                receiver_id: context.get_account_by_name("dapp").id().clone(),
+                receiver_id: context.get_account_by_name("dapp").sdk_id(),
                 amount: 5000.into(),
                 memo: None,
                 msg: "".to_string(),
@@ -1060,17 +1059,17 @@ async fn test_one_click() {
     {
         // PostAction total gas too large
         let deposit_msg = DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: Some(vec![
                 PostAction {
-                    receiver_id: context.get_account_by_name("dapp").id().clone(),
+                    receiver_id: context.get_account_by_name("dapp").sdk_id(),
                     amount: 5000.into(),
                     memo: None,
                     msg: "".to_string(),
                     gas: Some(Gas::from_tgas(100)),
                 },
                 PostAction {
-                    receiver_id: context.get_account_by_name("dapp").id().clone(),
+                    receiver_id: context.get_account_by_name("dapp").sdk_id(),
                     amount: 5000.into(),
                     memo: None,
                     msg: "".to_string(),
@@ -1126,24 +1125,24 @@ async fn test_one_click() {
     {
         // PostAction > 2
         let deposit_msg = DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: Some(vec![
                 PostAction {
-                    receiver_id: context.get_account_by_name("dapp").id().clone(),
+                    receiver_id: context.get_account_by_name("dapp").sdk_id(),
                     amount: 5000.into(),
                     memo: None,
                     msg: "".to_string(),
                     gas: None,
                 },
                 PostAction {
-                    receiver_id: context.get_account_by_name("dapp").id().clone(),
+                    receiver_id: context.get_account_by_name("dapp").sdk_id(),
                     amount: 5000.into(),
                     memo: None,
                     msg: "".to_string(),
                     gas: None,
                 },
                 PostAction {
-                    receiver_id: context.get_account_by_name("dapp").id().clone(),
+                    receiver_id: context.get_account_by_name("dapp").sdk_id(),
                     amount: 5000.into(),
                     memo: None,
                     msg: "".to_string(),
@@ -1199,9 +1198,9 @@ async fn test_one_click() {
     {
         // amount > current deposit
         let deposit_msg = DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: Some(vec![PostAction {
-                receiver_id: context.get_account_by_name("dapp").id().clone(),
+                receiver_id: context.get_account_by_name("dapp").sdk_id(),
                 amount: 500000.into(),
                 memo: None,
                 msg: "".to_string(),
@@ -1256,17 +1255,17 @@ async fn test_one_click() {
     {
         // The user is not registered with the dapp
         let deposit_msg = DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: Some(vec![
                 PostAction {
-                    receiver_id: context.get_account_by_name("dapp").id().clone(),
+                    receiver_id: context.get_account_by_name("dapp").sdk_id(),
                     amount: 20000.into(),
                     memo: None,
                     msg: "".to_string(),
                     gas: Some(Gas::from_tgas(50)),
                 },
                 PostAction {
-                    receiver_id: context.get_account_by_name("dapp").id().clone(),
+                    receiver_id: context.get_account_by_name("dapp").sdk_id(),
                     amount: 20000.into(),
                     memo: None,
                     msg: "".to_string(),
@@ -1323,17 +1322,17 @@ async fn test_one_click() {
         check!(context.storage_deposit("nbtc", "dapp"));
         check!(context.storage_deposit("dapp", "alice"));
         let deposit_msg = DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: Some(vec![
                 PostAction {
-                    receiver_id: context.get_account_by_name("dapp").id().clone(),
+                    receiver_id: context.get_account_by_name("dapp").sdk_id(),
                     amount: 20000.into(),
                     memo: None,
                     msg: "".to_string(),
                     gas: Some(Gas::from_tgas(100)),
                 },
                 PostAction {
-                    receiver_id: context.get_account_by_name("dapp").id().clone(),
+                    receiver_id: context.get_account_by_name("dapp").sdk_id(),
                     amount: 20000.into(),
                     memo: None,
                     msg: "".to_string(),
@@ -1400,7 +1399,7 @@ async fn test_utxo_passive_management() {
     let withdraw_change_address = context.get_change_address().await.unwrap();
     let alice_btc_deposit_address = context
         .get_user_deposit_address(DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -1412,7 +1411,7 @@ async fn test_utxo_passive_management() {
     check!(printr "alice 500000" context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -1436,7 +1435,7 @@ async fn test_utxo_passive_management() {
     check!(printr "alice 60000" context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -1622,7 +1621,7 @@ async fn test_cancel_withdraw() {
     let withdraw_change_address = context.get_change_address().await.unwrap();
     let alice_btc_deposit_address = context
         .get_user_deposit_address(DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -1633,7 +1632,7 @@ async fn test_cancel_withdraw() {
     check!(printr "alice 500000" context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -1857,7 +1856,7 @@ async fn test_cancel_withdraw2() {
     let withdraw_change_address = context.get_change_address().await.unwrap();
     let alice_btc_deposit_address = context
         .get_user_deposit_address(DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -1868,7 +1867,7 @@ async fn test_cancel_withdraw2() {
     check!(printr "alice 500000" context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -2041,7 +2040,7 @@ async fn test_utxo_active_management() {
     let withdraw_change_address = context.get_change_address().await.unwrap();
     let alice_btc_deposit_address = context
         .get_user_deposit_address(DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -2053,7 +2052,7 @@ async fn test_utxo_active_management() {
     check!(printr "alice 500000" context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -2077,7 +2076,7 @@ async fn test_utxo_active_management() {
     check!(printr "alice 60000" context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -2410,7 +2409,7 @@ async fn test_utxo_active_management2() {
     let withdraw_change_address = context.get_change_address().await.unwrap();
     let alice_btc_deposit_address = context
         .get_user_deposit_address(DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -2422,7 +2421,7 @@ async fn test_utxo_active_management2() {
     check!(printr "alice 500000" context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -2446,7 +2445,7 @@ async fn test_utxo_active_management2() {
     check!(printr "alice 60000" context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -2601,5 +2600,131 @@ async fn test_utxo_active_management2() {
     assert_eq!(
         context.ft_balance_of("alice").await.unwrap().0,
         560000 - 20000
+    );
+}
+
+#[tokio::test]
+async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    // Create a new account that does NOT receive the UnrestrictedRelayer role.
+    // Context::new only grants UnrestrictedRelayer to relayer, alice, bob, charlie, and tx_listener.
+    let unauthorized = worker.dev_create_account().await.unwrap();
+
+    let alice_btc_deposit_address = context
+        .get_user_deposit_address(DepositMsg {
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
+            post_actions: None,
+            extra_msg: None,
+            safe_deposit: None,
+        })
+        .await
+        .unwrap();
+
+    // verify_deposit should fail for an account without the trusted-relayer role
+    let outcome = unauthorized
+        .call(context.bridge_contract.id(), "verify_deposit")
+        .args_json(near_sdk::serde_json::json!({
+            "deposit_msg": DepositMsg {
+                recipient_id: context.get_account_by_name("alice").sdk_id(),
+                post_actions: None,
+                extra_msg: None,
+                safe_deposit: None,
+            },
+            "tx_bytes": generate_transaction_bytes(
+                vec![(
+                    "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
+                    1,
+                    None,
+                )],
+                vec![
+                    (alice_btc_deposit_address.as_str(), 50000),
+                    (TARGET_ADDRESS, 90000),
+                ],
+            ),
+            "vout": 0u32,
+            "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
+            "tx_index": 1u64,
+            "merkle_proof": Vec::<String>::new(),
+        }))
+        .max_gas()
+        .transact()
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("Relayer is not active"),
+        "verify_deposit should reject an account without trusted-relayer role"
+    );
+
+    // safe_verify_deposit should fail for an account without the trusted-relayer role
+    let outcome = unauthorized
+        .call(context.bridge_contract.id(), "safe_verify_deposit")
+        .args_json(near_sdk::serde_json::json!({
+            "deposit_msg": DepositMsg {
+                recipient_id: context.get_account_by_name("alice").sdk_id(),
+                post_actions: None,
+                extra_msg: None,
+                safe_deposit: None,
+            },
+            "tx_bytes": generate_transaction_bytes(
+                vec![(
+                    "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
+                    1,
+                    None,
+                )],
+                vec![
+                    (alice_btc_deposit_address.as_str(), 50000),
+                    (TARGET_ADDRESS, 90000),
+                ],
+            ),
+            "vout": 0u32,
+            "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
+            "tx_index": 1u64,
+            "merkle_proof": Vec::<String>::new(),
+        }))
+        .max_gas()
+        .deposit(NearToken::from_near(1))
+        .transact()
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("Relayer is not active"),
+        "safe_verify_deposit should reject an account without trusted-relayer role"
+    );
+
+    // verify_withdraw should fail for an account without the trusted-relayer role
+    let outcome = unauthorized
+        .call(context.bridge_contract.id(), "verify_withdraw")
+        .args_json(near_sdk::serde_json::json!({
+            "tx_id": "",
+            "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
+            "tx_index": 1u64,
+            "merkle_proof": Vec::<String>::new(),
+        }))
+        .max_gas()
+        .transact()
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("Relayer is not active"),
+        "verify_withdraw should reject an account without trusted-relayer role"
+    );
+
+    // verify_active_utxo_management should fail for an account without the trusted-relayer role
+    let outcome = unauthorized
+        .call(
+            context.bridge_contract.id(),
+            "verify_active_utxo_management",
+        )
+        .args_json(near_sdk::serde_json::json!({
+            "tx_id": "",
+            "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
+            "tx_index": 1u64,
+            "merkle_proof": Vec::<String>::new(),
+        }))
+        .max_gas()
+        .transact()
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("Relayer is not active"),
+        "verify_active_utxo_management should reject an account without trusted-relayer role"
     );
 }
