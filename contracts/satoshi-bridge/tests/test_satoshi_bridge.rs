@@ -1,6 +1,6 @@
 mod setup;
 use bitcoin::{Amount, OutPoint, TxOut};
-use near_sdk::{AccountId, Gas};
+use near_sdk::{AccountId, Gas, NearToken};
 use satoshi_bridge::network::{Address, Chain};
 use satoshi_bridge::{DepositMsg, PendingInfoState, PostAction, TokenReceiverMessage};
 use setup::*;
@@ -2600,5 +2600,131 @@ async fn test_utxo_active_management2() {
     assert_eq!(
         context.ft_balance_of("alice").await.unwrap().0,
         560000 - 20000
+    );
+}
+
+#[tokio::test]
+async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    // Create a new account that does NOT receive the UnrestrictedRelayer role.
+    // Context::new only grants UnrestrictedRelayer to relayer, alice, bob, charlie, and tx_listener.
+    let unauthorized = worker.dev_create_account().await.unwrap();
+
+    let alice_btc_deposit_address = context
+        .get_user_deposit_address(DepositMsg {
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
+            post_actions: None,
+            extra_msg: None,
+            safe_deposit: None,
+        })
+        .await
+        .unwrap();
+
+    // verify_deposit should fail for an account without the trusted-relayer role
+    let outcome = unauthorized
+        .call(context.bridge_contract.id(), "verify_deposit")
+        .args_json(near_sdk::serde_json::json!({
+            "deposit_msg": DepositMsg {
+                recipient_id: context.get_account_by_name("alice").sdk_id(),
+                post_actions: None,
+                extra_msg: None,
+                safe_deposit: None,
+            },
+            "tx_bytes": generate_transaction_bytes(
+                vec![(
+                    "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
+                    1,
+                    None,
+                )],
+                vec![
+                    (alice_btc_deposit_address.as_str(), 50000),
+                    (TARGET_ADDRESS, 90000),
+                ],
+            ),
+            "vout": 0u32,
+            "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
+            "tx_index": 1u64,
+            "merkle_proof": Vec::<String>::new(),
+        }))
+        .max_gas()
+        .transact()
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("Relayer is not active"),
+        "verify_deposit should reject an account without trusted-relayer role"
+    );
+
+    // safe_verify_deposit should fail for an account without the trusted-relayer role
+    let outcome = unauthorized
+        .call(context.bridge_contract.id(), "safe_verify_deposit")
+        .args_json(near_sdk::serde_json::json!({
+            "deposit_msg": DepositMsg {
+                recipient_id: context.get_account_by_name("alice").sdk_id(),
+                post_actions: None,
+                extra_msg: None,
+                safe_deposit: None,
+            },
+            "tx_bytes": generate_transaction_bytes(
+                vec![(
+                    "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
+                    1,
+                    None,
+                )],
+                vec![
+                    (alice_btc_deposit_address.as_str(), 50000),
+                    (TARGET_ADDRESS, 90000),
+                ],
+            ),
+            "vout": 0u32,
+            "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
+            "tx_index": 1u64,
+            "merkle_proof": Vec::<String>::new(),
+        }))
+        .max_gas()
+        .deposit(NearToken::from_near(1))
+        .transact()
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("Relayer is not active"),
+        "safe_verify_deposit should reject an account without trusted-relayer role"
+    );
+
+    // verify_withdraw should fail for an account without the trusted-relayer role
+    let outcome = unauthorized
+        .call(context.bridge_contract.id(), "verify_withdraw")
+        .args_json(near_sdk::serde_json::json!({
+            "tx_id": "",
+            "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
+            "tx_index": 1u64,
+            "merkle_proof": Vec::<String>::new(),
+        }))
+        .max_gas()
+        .transact()
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("Relayer is not active"),
+        "verify_withdraw should reject an account without trusted-relayer role"
+    );
+
+    // verify_active_utxo_management should fail for an account without the trusted-relayer role
+    let outcome = unauthorized
+        .call(
+            context.bridge_contract.id(),
+            "verify_active_utxo_management",
+        )
+        .args_json(near_sdk::serde_json::json!({
+            "tx_id": "",
+            "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
+            "tx_index": 1u64,
+            "merkle_proof": Vec::<String>::new(),
+        }))
+        .max_gas()
+        .transact()
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("Relayer is not active"),
+        "verify_active_utxo_management should reject an account without trusted-relayer role"
     );
 }
