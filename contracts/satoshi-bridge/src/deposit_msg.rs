@@ -22,6 +22,9 @@ pub struct DepositMsg {
     // If this field is present, the legacy post_actions field must be None
     #[serde(skip_serializing_if = "Option::is_none")]
     pub safe_deposit: Option<SafeDepositMsg>,
+    // BTC address for refund if deposit is never finalized.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refund_address: Option<String>,
 }
 
 #[near(serializers = [json])]

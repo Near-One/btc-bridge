@@ -110,6 +110,9 @@ pub struct Config {
     pub unhealthy_utxo_amount: u64,
     #[cfg(feature = "zcash")]
     pub expiry_height_gap: u32,
+    // Timelock in seconds before a refund request can be executed.
+    #[serde(default)]
+    pub refund_timelock_sec: u64,
 }
 
 impl Config {

@@ -459,4 +459,11 @@ impl Contract {
         );
         self.internal_mut_config().unhealthy_utxo_amount = unhealthy_utxo_amount.0;
     }
+
+    #[payable]
+    #[access_control_any(roles(Role::DAO))]
+    pub fn set_refund_timelock_sec(&mut self, refund_timelock_sec: u64) {
+        assert_one_yocto();
+        self.internal_mut_config().refund_timelock_sec = refund_timelock_sec;
+    }
 }

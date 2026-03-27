@@ -35,6 +35,7 @@ pub mod nbtc;
 pub mod network;
 pub mod psbt;
 pub mod rbf;
+pub mod refund;
 pub mod token_transfer;
 #[cfg(test)]
 mod unit;
@@ -53,6 +54,7 @@ pub use crate::json_utils::*;
 pub use crate::legacy::*;
 pub use crate::nbtc::*;
 pub use crate::rbf::*;
+pub use crate::refund::*;
 pub use crate::token_transfer::*;
 pub use crate::utils::*;
 pub use crate::utxo::*;
@@ -91,6 +93,7 @@ enum StorageKey {
     LostFound,
     PostActionMsgTemplates,
     ExtraMsgRelayerWhiteList,
+    RefundRequests,
 }
 
 #[derive(AccessControlRole, Deserialize, Serialize, Copy, Clone)]
@@ -122,6 +125,7 @@ pub struct ContractData {
     pub acc_claimed_protocol_fee: u128,
     pub cur_reserved_protocol_fee: u128,
     pub acc_protocol_fee_for_gas: u128,
+    pub refund_requests: IterableMap<String, VRefundRequest>,
 }
 
 #[near(serializers = [borsh])]
@@ -178,6 +182,7 @@ impl Contract {
                 ),
                 post_action_msg_templates: IterableMap::new(StorageKey::PostActionMsgTemplates),
                 lost_found: IterableMap::new(StorageKey::LostFound),
+                refund_requests: IterableMap::new(StorageKey::RefundRequests),
                 acc_collected_protocol_fee: 0,
                 cur_available_protocol_fee: 0,
                 acc_claimed_protocol_fee: 0,

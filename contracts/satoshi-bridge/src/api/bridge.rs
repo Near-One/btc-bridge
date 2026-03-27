@@ -419,6 +419,42 @@ impl Contract {
         let config = self.internal_config();
         config.change_address.clone()
     }
+
+    // ── Refund API ──
+
+    #[pause(except(roles(Role::DAO)))]
+    pub fn request_refund(
+        &mut self,
+        deposit_msg: DepositMsg,
+        tx_bytes: Vec<u8>,
+        vout: usize,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Promise {
+        self.internal_request_refund(
+            deposit_msg,
+            tx_bytes,
+            vout,
+            tx_block_blockhash,
+            tx_index,
+            merkle_proof,
+        )
+    }
+
+    #[payable]
+    #[access_control_any(roles(Role::DAO, Role::Operator))]
+    pub fn reject_refund(&mut self, utxo_storage_key: String) {
+        assert_one_yocto();
+        self.internal_reject_refund(utxo_storage_key);
+    }
+
+    #[payable]
+    #[access_control_any(roles(Role::DAO, Role::Operator))]
+    pub fn execute_refund(&mut self, utxo_storage_key: String) {
+        assert_one_yocto();
+        self.internal_execute_refund(utxo_storage_key);
+    }
 }
 
 impl Contract {

@@ -92,6 +92,19 @@ pub enum Event<'a> {
         index: Option<usize>,
         err_msg: String,
     },
+    RefundRequested {
+        utxo_storage_key: String,
+        amount: U128,
+        refund_address: String,
+    },
+    RefundRejected {
+        utxo_storage_key: String,
+    },
+    RefundExecuted {
+        utxo_storage_key: String,
+        amount: U128,
+        refund_address: String,
+    },
 }
 
 impl Event<'_> {
