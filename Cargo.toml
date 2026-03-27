@@ -15,7 +15,7 @@ near-contract-standards = "=5.24.1"
 hex="0.4.3"
 bitcoin = { version = "0.32.0", default-features = false, features = ["serde"] }
 near-plugins = { git = "https://github.com/aurora-is-near/near-plugins", tag = "v0.4.1" }
-omni-utils = { git = "https://github.com/near-one/omni-utils", rev = "077d09daf7a7b32ad237f0530033c7db804f2c67" }
+omni-utils = { git = "https://github.com/near-one/omni-utils", rev = "f9bc3ea4a72e97f02660b8f1c0b2f79a9fbde3a4" }
 
 [profile.release]
 codegen-units = 1
