@@ -11,6 +11,7 @@ impl Contract {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         });
         let utxo_storage_key = generate_utxo_storage_key(txid, vout);
         let tx_bytes = vec![0u8; 300]; // TODO: optimise storage usage

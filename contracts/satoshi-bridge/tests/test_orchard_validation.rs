@@ -31,6 +31,7 @@ async fn test_orchard_wrong_recipient() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         })
         .await
         .unwrap();
@@ -42,6 +43,7 @@ async fn test_orchard_wrong_recipient() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         generate_transaction_bytes(
             vec![(
@@ -156,6 +158,7 @@ async fn test_orchard_missing_bundle() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         })
         .await
         .unwrap();
@@ -167,6 +170,7 @@ async fn test_orchard_missing_bundle() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         generate_transaction_bytes(
             vec![(
@@ -251,6 +255,7 @@ async fn test_orchard_bundle_in_zcash_tx() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         })
         .await
         .unwrap();
@@ -262,6 +267,7 @@ async fn test_orchard_bundle_in_zcash_tx() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         generate_transaction_bytes(
             vec![(

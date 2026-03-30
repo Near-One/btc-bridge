@@ -1244,4 +1244,66 @@ impl UpgradeContext {
             .unwrap()
             .json::<String>()
     }
+
+}
+
+impl Context {
+    // ── Refund helpers ──
+
+    pub async fn request_refund(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        tx_bytes: Vec<u8>,
+        vout: u32,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "request_refund")
+            .args_json(json!({
+                "deposit_msg": deposit_msg,
+                "tx_bytes": tx_bytes,
+                "vout": vout,
+                "tx_block_blockhash": tx_block_blockhash,
+                "tx_index": tx_index,
+                "merkle_proof": merkle_proof,
+            }))
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn execute_refund(
+        &self,
+        user: &str,
+        utxo_storage_key: &str,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "execute_refund")
+            .args_json(json!({
+                "utxo_storage_key": utxo_storage_key,
+            }))
+            .deposit(NearToken::from_yoctonear(1))
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn reject_refund(
+        &self,
+        user: &str,
+        utxo_storage_key: &str,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "reject_refund")
+            .args_json(json!({
+                "utxo_storage_key": utxo_storage_key,
+            }))
+            .deposit(NearToken::from_yoctonear(1))
+            .max_gas()
+            .transact()
+            .await
+    }
 }

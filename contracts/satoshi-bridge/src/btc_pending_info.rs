@@ -457,6 +457,7 @@ mod tests {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         };
 
         let path = get_deposit_path(&deposit_msg);

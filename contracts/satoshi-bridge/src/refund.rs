@@ -7,21 +7,28 @@ use crate::utils::{generate_utxo_storage_key, nano_to_sec};
 
 pub const GAS_FOR_REQUEST_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
 
+/// Stored refund request. `deposit_msg` is kept as JSON string
+/// because `DepositMsg` does not implement Borsh serialization.
 #[near(serializers = [borsh, json])]
 #[derive(Clone)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 pub struct RefundRequest {
-    pub deposit_msg: DepositMsg,
+    pub deposit_msg_json: String,
     pub utxo_storage_key: String,
     pub tx_bytes: Vec<u8>,
     pub vout: usize,
     pub amount: u128,
-    pub created_at_sec: u64,
+    pub refund_address: String,
+    pub created_at_sec: u32,
+}
+
+impl RefundRequest {
+    pub fn deposit_msg(&self) -> DepositMsg {
+        serde_json::from_str(&self.deposit_msg_json).expect("Invalid deposit_msg_json")
+    }
 }
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 pub enum VRefundRequest {
     Current(RefundRequest),
 }
@@ -64,7 +71,10 @@ impl Contract {
             "DepositMsg must contain refund_address"
         );
 
-        let tx_id = crate::utils::compute_tx_id(&tx_bytes);
+        let transaction =
+            crate::WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
+                .expect("Deserialization tx_bytes failed");
+        let tx_id = transaction.compute_txid().to_string();
         let utxo_storage_key = generate_utxo_storage_key(tx_id.clone(), vout as u32);
 
         // Must not be already verified/finalized
@@ -110,7 +120,6 @@ impl Contract {
     }
 
     /// Execute an approved refund request after timelock has passed.
-    /// Creates a BTC pending info for signing and broadcasting.
     pub fn internal_execute_refund(&mut self, utxo_storage_key: String) {
         let refund_request: RefundRequest = self
             .data()
@@ -124,7 +133,7 @@ impl Contract {
         // Check timelock
         let now = nano_to_sec(env::block_timestamp());
         require!(
-            now >= refund_request.created_at_sec + config.refund_timelock_sec,
+            u64::from(now) >= u64::from(refund_request.created_at_sec) + config.refund_timelock_sec,
             "Refund timelock has not passed yet"
         );
 
@@ -137,30 +146,19 @@ impl Contract {
             "UTXO already verified via deposit, cannot refund"
         );
 
-        let refund_address = refund_request
-            .deposit_msg
-            .refund_address
-            .clone()
-            .expect("No refund address");
-
         // TODO: Build PSBT with:
         //   input:  the deposit UTXO (tx_bytes + vout)
         //   output: refund_address (amount - gas_fee)
         // Then create BTCPendingInfo for sign pipeline.
-        //
-        // The actual PSBT construction will be chain-specific (bitcoin_utils).
 
         Event::RefundExecuted {
             utxo_storage_key: utxo_storage_key.clone(),
             amount: refund_request.amount.into(),
-            refund_address,
+            refund_address: refund_request.refund_address,
         }
         .emit();
 
         self.data_mut().refund_requests.remove(&utxo_storage_key);
-
-        // Do NOT add to verified_deposit_utxo — the UTXO will be spent on Bitcoin,
-        // which prevents double-spend naturally.
     }
 }
 
@@ -179,7 +177,6 @@ impl Contract {
             .expect("verify_transaction_inclusion return not bool");
         require!(is_valid, "verify_transaction_inclusion return false");
 
-        // Extract amount from tx output
         let config = self.internal_config();
         let transaction = crate::WrappedTransaction::decode(&tx_bytes, &config.chain)
             .expect("Deserialization tx_bytes failed");
@@ -187,14 +184,17 @@ impl Contract {
 
         // Verify that the output script matches the deposit address derived from deposit_msg
         let path = get_deposit_path(&deposit_msg);
-        let deposit_script_pubkey = config.get_deposit_script_pubkey(&path);
+        let deposit_address = self.generate_utxo_chain_address(&path);
+        let deposit_script_pubkey = deposit_address
+            .script_pubkey()
+            .expect("Invalid deposit address");
         require!(
             deposit_script_pubkey == output.script_pubkey,
             "Output script_pubkey does not match deposit address"
         );
 
         let amount = output.value.to_sat() as u128;
-        let tx_id = crate::utils::compute_tx_id(&tx_bytes);
+        let tx_id = transaction.compute_txid().to_string();
         let utxo_storage_key = generate_utxo_storage_key(tx_id, vout as u32);
 
         // Double-check not finalized (could have been verified between request and callback)
@@ -211,16 +211,17 @@ impl Contract {
         Event::RefundRequested {
             utxo_storage_key: utxo_storage_key.clone(),
             amount: amount.into(),
-            refund_address,
+            refund_address: refund_address.clone(),
         }
         .emit();
 
         let refund_request = RefundRequest {
-            deposit_msg,
+            deposit_msg_json: serde_json::to_string(&deposit_msg).unwrap(),
             utxo_storage_key: utxo_storage_key.clone(),
             tx_bytes,
             vout,
             amount,
+            refund_address,
             created_at_sec: nano_to_sec(env::block_timestamp()),
         };
 
