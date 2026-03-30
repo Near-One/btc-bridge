@@ -1,8 +1,13 @@
+use bitcoin::{Amount, OutPoint, TxOut};
+
 use crate::{
-    env, near, require, serde_json, Contract, ContractExt, DepositMsg, Event, Gas, Promise, U128,
+    env, near, require, serde_json, BTCPendingInfo, Contract, ContractExt, DepositMsg, Event, Gas,
+    OriginalState, PendingInfoStage, PendingInfoState, Promise, VBTCPendingInfo, UTXO, VUTXO,
+    U128,
 };
 
 use crate::deposit_msg::get_deposit_path;
+use crate::psbt_wrapper::PsbtWrapper;
 use crate::utils::{generate_utxo_storage_key, nano_to_sec};
 
 pub const GAS_FOR_REQUEST_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
@@ -146,15 +151,118 @@ impl Contract {
             "UTXO already verified via deposit, cannot refund"
         );
 
-        // TODO: Build PSBT with:
-        //   input:  the deposit UTXO (tx_bytes + vout)
-        //   output: refund_address (amount - gas_fee)
-        // Then create BTCPendingInfo for sign pipeline.
+        let refund_address = refund_request.refund_address.clone();
+
+        // Parse the original deposit transaction to get OutPoint
+        let transaction =
+            crate::WrappedTransaction::decode(&refund_request.tx_bytes, &config.chain)
+                .expect("Deserialization tx_bytes failed");
+        let txid = transaction.compute_txid();
+        let outpoint = OutPoint {
+            txid,
+            vout: refund_request.vout as u32,
+        };
+
+        // The deposit UTXO output (for witness)
+        let deposit_output = transaction.output()[refund_request.vout].clone();
+
+        // Parse refund address
+        let refund_addr =
+            crate::network::Address::parse(&refund_address, config.chain.clone())
+                .expect("Invalid refund address");
+        let refund_script_pubkey = refund_addr
+            .script_pubkey()
+            .expect("Invalid refund script_pubkey");
+
+        // Calculate gas fee: entire remainder goes to gas
+        let gas_fee = config.min_btc_gas_fee;
+        let refund_amount = refund_request
+            .amount
+            .checked_sub(gas_fee)
+            .expect("Deposit amount too small to cover gas fee");
+        require!(refund_amount > 0, "Refund amount is zero after gas fee");
+
+        // Build refund output
+        let refund_output = TxOut {
+            value: Amount::from_sat(refund_amount as u64),
+            script_pubkey: refund_script_pubkey,
+        };
+
+        // Build PSBT: 1 input (deposit UTXO), 1 output (refund address)
+        let mut psbt = PsbtWrapper::new(vec![outpoint], vec![refund_output]);
+        psbt.set_input_utxo(vec![deposit_output]);
+
+        // Build VUTXO for signing (path derived from deposit_msg)
+        let deposit_msg = refund_request.deposit_msg();
+        let path = get_deposit_path(&deposit_msg);
+        let vutxo = VUTXO::Current(UTXO {
+            path,
+            tx_bytes: refund_request.tx_bytes.clone(),
+            vout: refund_request.vout,
+            balance: refund_request.amount as u64,
+        });
+
+        // Create BTCPendingInfo
+        let btc_pending_id = psbt.get_pending_id();
+        let caller = env::predecessor_account_id();
+
+        if !self.check_account_exists(&caller) {
+            self.internal_set_account(&caller, crate::Account::new(&caller));
+        }
+        require!(
+            self.internal_unwrap_account(&caller)
+                .btc_pending_sign_id
+                .is_none(),
+            "Previous btc tx has not been signed"
+        );
+
+        let btc_pending_info = BTCPendingInfo {
+            account_id: caller.clone(),
+            btc_pending_id: btc_pending_id.clone(),
+            transfer_amount: 0,
+            actual_received_amount: refund_amount,
+            withdraw_fee: 0,
+            gas_fee,
+            burn_amount: gas_fee,
+            psbt_hex: psbt.serialize(),
+            vutxos: vec![vutxo],
+            signatures: vec![None; 1],
+            tx_bytes_with_sign: None,
+            create_time_sec: nano_to_sec(env::block_timestamp()),
+            last_sign_time_sec: 0,
+            state: PendingInfoState::Refund(OriginalState {
+                stage: PendingInfoStage::PendingSign,
+                max_gas_fee: gas_fee,
+                last_rbf_time_sec: None,
+                cancel_rbf_reserved: None,
+            }),
+        };
+
+        require!(
+            self.data_mut()
+                .btc_pending_infos
+                .insert(btc_pending_id.clone(), btc_pending_info.into())
+                .is_none(),
+            "pending info already exist"
+        );
+        self.internal_unwrap_mut_account(&caller)
+            .btc_pending_sign_id = Some(btc_pending_id.clone());
+
+        // Mark UTXO as verified to prevent verify_deposit later
+        self.data_mut()
+            .verified_deposit_utxo
+            .insert(utxo_storage_key.clone());
 
         Event::RefundExecuted {
             utxo_storage_key: utxo_storage_key.clone(),
             amount: refund_request.amount.into(),
-            refund_address: refund_request.refund_address,
+            refund_address,
+        }
+        .emit();
+
+        Event::GenerateBtcPendingInfo {
+            account_id: &caller,
+            btc_pending_id: &btc_pending_id,
         }
         .emit();
 

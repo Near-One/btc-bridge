@@ -73,6 +73,7 @@ pub enum PendingInfoState {
     ActiveUtxoManagementOriginal(OriginalState),
     ActiveUtxoManagementRbf(RbfState),
     ActiveUtxoManagementCancelRbf(RbfState),
+    Refund(OriginalState),
 }
 
 impl PendingInfoState {
@@ -84,6 +85,7 @@ impl PendingInfoState {
             PendingInfoState::ActiveUtxoManagementOriginal(state) => state.assert_pending_sign(),
             PendingInfoState::ActiveUtxoManagementRbf(state) => state.assert_pending_sign(),
             PendingInfoState::ActiveUtxoManagementCancelRbf(state) => state.assert_pending_sign(),
+            PendingInfoState::Refund(state) => state.assert_pending_sign(),
         }
     }
     pub fn assert_pending_verify(&self) {
@@ -94,6 +96,7 @@ impl PendingInfoState {
             PendingInfoState::ActiveUtxoManagementOriginal(state) => state.assert_pending_verify(),
             PendingInfoState::ActiveUtxoManagementRbf(state) => state.assert_pending_verify(),
             PendingInfoState::ActiveUtxoManagementCancelRbf(state) => state.assert_pending_verify(),
+            PendingInfoState::Refund(state) => state.assert_pending_verify(),
         }
     }
 }
@@ -222,6 +225,9 @@ impl BTCPendingInfo {
             PendingInfoState::ActiveUtxoManagementCancelRbf(state) => {
                 state.stage = PendingInfoStage::PendingVerify;
             }
+            PendingInfoState::Refund(state) => {
+                state.stage = PendingInfoStage::PendingVerify;
+            }
         }
     }
 
@@ -241,6 +247,9 @@ impl BTCPendingInfo {
                 state.stage = PendingInfoStage::PendingBurn;
             }
             PendingInfoState::ActiveUtxoManagementCancelRbf(state) => {
+                state.stage = PendingInfoStage::PendingBurn;
+            }
+            PendingInfoState::Refund(state) => {
                 state.stage = PendingInfoStage::PendingBurn;
             }
         }
