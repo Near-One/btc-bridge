@@ -281,3 +281,93 @@ async fn test_refund_duplicate_request() {
         "Refund request already exists for this UTXO"
     );
 }
+
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_refund_then_deposit_fails() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").id().clone(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: Some(TARGET_ADDRESS.to_string()),
+    };
+
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    // Build BTC transaction to deposit address
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "e6e6069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f23",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 100_000)],
+    );
+    let vout: u32 = 0;
+
+    // 1. Request refund
+    check!(
+        print "request_refund"
+        context.request_refund(
+            "alice",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d"
+                .to_string(),
+            1,
+            vec![]
+        )
+    );
+
+    // 2. Set timelock to 0 and execute refund
+    context
+        .get_account_by_name("root")
+        .call(context.bridge_contract.id(), "set_refund_timelock_sec")
+        .args_json(json!({"refund_timelock_sec": 0}))
+        .deposit(near_sdk::NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+
+    let key = utxo_storage_key(&tx_bytes, vout);
+    check!(
+        print "execute_refund"
+        context.execute_refund("root", &key)
+    );
+
+    // 3. Sign the refund transaction
+    let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
+    let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
+    check!(
+        print "sign_btc_transaction"
+        context.sign_btc_transaction("relayer", &pending_keys[0], 0, 0)
+    );
+
+    // 4. Now try verify_deposit with the same tx — should fail with "Already deposit utxo"
+    check!(
+        context.verify_deposit(
+            "relayer",
+            deposit_msg,
+            tx_bytes,
+            vout,
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d"
+                .to_string(),
+            1,
+            vec![]
+        ),
+        "Already deposit utxo"
+    );
+
+    // 5. No nBTC was minted
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+}
