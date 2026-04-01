@@ -89,7 +89,7 @@ async fn test_refund_basic_flow() {
     let key = utxo_storage_key(&tx_bytes, vout);
     check!(
         print "execute_refund"
-        context.execute_refund("root", &key)
+        context.execute_refund("alice", &key)
     );
 
     // 7. BTCPendingInfo should exist, pending sign
@@ -112,7 +112,7 @@ async fn test_refund_basic_flow() {
 
     // 10. Refund request is gone (can't execute twice)
     check!(
-        context.execute_refund("root", &key),
+        context.execute_refund("alice", &key),
         "Refund request not found"
     );
 
@@ -174,7 +174,7 @@ async fn test_refund_reject() {
 
     // Can't execute after rejection
     check!(
-        context.execute_refund("root", &key),
+        context.execute_refund("alice", &key),
         "Refund request not found"
     );
 }
@@ -342,7 +342,7 @@ async fn test_refund_then_deposit_fails() {
     let key = utxo_storage_key(&tx_bytes, vout);
     check!(
         print "execute_refund"
-        context.execute_refund("root", &key)
+        context.execute_refund("alice", &key)
     );
 
     // 3. Sign the refund transaction
