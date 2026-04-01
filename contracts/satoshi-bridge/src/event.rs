@@ -93,6 +93,7 @@ pub enum Event<'a> {
         err_msg: String,
     },
     RefundRequested {
+        deposit_msg: DepositMsg,
         utxo_storage_key: String,
         amount: U128,
         refund_address: String,

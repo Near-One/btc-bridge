@@ -79,7 +79,7 @@ impl Contract {
             crate::WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
                 .expect("Deserialization tx_bytes failed");
         let tx_id = transaction.compute_txid().to_string();
-        let utxo_storage_key = generate_utxo_storage_key(tx_id.clone(), vout as u32);
+        let utxo_storage_key = generate_utxo_storage_key(tx_id.clone(), u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")));
 
         // Must not be already verified/finalized
         require!(
@@ -159,7 +159,7 @@ impl Contract {
         let txid = transaction.compute_txid();
         let outpoint = OutPoint {
             txid,
-            vout: refund_request.vout as u32,
+            vout: u32::try_from(refund_request.vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
         };
 
         // The deposit UTXO output (for witness)
@@ -174,7 +174,7 @@ impl Contract {
             .expect("Invalid refund script_pubkey");
 
         // Calculate gas fee: entire remainder goes to gas
-        let gas_fee = config.min_btc_gas_fee;
+        let gas_fee = config.max_btc_gas_fee;
         let refund_amount = refund_request
             .amount
             .checked_sub(gas_fee)
@@ -183,7 +183,10 @@ impl Contract {
 
         // Build refund output
         let refund_output = TxOut {
-            value: Amount::from_sat(refund_amount as u64),
+            value: Amount::from_sat(
+                u64::try_from(refund_amount)
+                    .unwrap_or_else(|_| env::panic_str("Refund amount overflow")),
+            ),
             script_pubkey: refund_script_pubkey,
         };
 
@@ -198,7 +201,8 @@ impl Contract {
             path,
             tx_bytes: refund_request.tx_bytes.clone(),
             vout: refund_request.vout,
-            balance: refund_request.amount as u64,
+            balance: u64::try_from(refund_request.amount)
+                .unwrap_or_else(|_| env::panic_str("Amount overflow")),
         });
 
         // Create BTCPendingInfo
@@ -300,9 +304,9 @@ impl Contract {
             "Output script_pubkey does not match deposit address"
         );
 
-        let amount = output.value.to_sat() as u128;
+        let amount = u128::from(output.value.to_sat());
         let tx_id = transaction.compute_txid().to_string();
-        let utxo_storage_key = generate_utxo_storage_key(tx_id, vout as u32);
+        let utxo_storage_key = generate_utxo_storage_key(tx_id, u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")));
 
         // Double-check not finalized (could have been verified between request and callback)
         require!(
@@ -316,6 +320,7 @@ impl Contract {
             .expect("No refund address");
 
         Event::RefundRequested {
+            deposit_msg: deposit_msg.clone(),
             utxo_storage_key: utxo_storage_key.clone(),
             amount: amount.into(),
             refund_address: refund_address.clone(),

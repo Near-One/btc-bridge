@@ -1,5 +1,5 @@
 mod setup;
-use bitcoin::Transaction as BtcTransaction;
+use bitcoin::{Transaction as BtcTransaction, TxOut};
 use near_sdk::serde_json::json;
 use satoshi_bridge::DepositMsg;
 use setup::*;
@@ -85,11 +85,36 @@ async fn test_refund_basic_flow() {
         .unwrap()
         .unwrap();
 
-    // 6. Execute refund — should create BTCPendingInfo for sign pipeline
+    // 6. Execute refund — measure storage before and after
     let key = utxo_storage_key(&tx_bytes, vout);
+
+    let storage_before = context
+        .bridge_contract
+        .view_account()
+        .await
+        .unwrap()
+        .storage_usage;
+
     check!(
         print "execute_refund"
         context.execute_refund("alice", &key)
+    );
+
+    let storage_after = context
+        .bridge_contract
+        .view_account()
+        .await
+        .unwrap()
+        .storage_usage;
+
+    let storage_used = storage_after - storage_before;
+    let cost_per_byte = 10u128.pow(19); // 0.00001 NEAR per byte
+    let storage_cost_yocto = storage_used as u128 * cost_per_byte;
+    println!("==> Storage used by execute_refund: {} bytes", storage_used);
+    println!("==> Storage cost: {} yoctoNEAR", storage_cost_yocto);
+    println!(
+        "==> Storage cost: {:.4} NEAR",
+        storage_cost_yocto as f64 / 1e24
     );
 
     // 7. BTCPendingInfo should exist, pending sign
@@ -368,6 +393,43 @@ async fn test_refund_then_deposit_fails() {
         "Already deposit utxo"
     );
 
-    // 5. No nBTC was minted
+    // 5. Try verify_withdraw — should fail with "Not withdraw related tx"
+    check!(
+        context.verify_withdraw(
+            "relayer",
+            &pending_keys[0],
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d"
+                .to_string(),
+            1,
+            vec![]
+        ),
+        "Not withdraw related tx"
+    );
+
+    // 6. Try withdraw_rbf — should fail with "Not withdraw original tx"
+    let rbf_err = tool_err_msg(
+        &context
+            .get_account_by_name("alice")
+            .call(context.bridge_contract.id(), "withdraw_rbf")
+            .args_json(json!({
+                "original_btc_pending_verify_id": &pending_keys[0],
+                "output": Vec::<TxOut>::new(),
+                "chain_specific_data": null,
+            }))
+            .max_gas()
+            .transact()
+            .await,
+    );
+    assert!(!rbf_err.is_empty(), "withdraw_rbf should have failed for refund tx");
+
+    // 7. Try cancel_withdraw — should fail for refund tx
+    let cancel_err = tool_err_msg(
+        &context
+            .cancel_withdraw(&pending_keys[0], vec![])
+            .await,
+    );
+    assert!(!cancel_err.is_empty(), "cancel_withdraw should have failed for refund tx");
+
+    // 8. No nBTC was minted
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
 }
