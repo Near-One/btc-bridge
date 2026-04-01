@@ -1285,7 +1285,6 @@ impl Context {
             .args_json(json!({
                 "utxo_storage_key": utxo_storage_key,
             }))
-            .deposit(NearToken::from_yoctonear(1))
             .max_gas()
             .transact()
             .await

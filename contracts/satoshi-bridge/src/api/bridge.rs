@@ -449,10 +449,8 @@ impl Contract {
         self.internal_reject_refund(utxo_storage_key);
     }
 
-    #[payable]
-    #[access_control_any(roles(Role::DAO, Role::Operator))]
+    #[pause(except(roles(Role::DAO)))]
     pub fn execute_refund(&mut self, utxo_storage_key: String) {
-        assert_one_yocto();
         self.internal_execute_refund(utxo_storage_key);
     }
 }
