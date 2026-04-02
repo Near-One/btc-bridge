@@ -5,10 +5,43 @@ use near_sdk::serde::{
 };
 use std::{fmt, str::FromStr};
 
+#[cfg(not(feature = "dash"))]
+use crate::require;
 use crate::{env, ext_contract, near, AccountId, Contract, Gas, Promise};
 pub mod active_utxo_management;
 pub mod deposit;
 pub mod withdraw;
+
+/// Maximum expected byte length for the verification promise result.
+/// For light client (BTC/non-dash): bool result (~10 bytes).
+/// For MPC (DASH): VerifyForeignTransactionResponse (~1024 bytes).
+#[cfg(not(feature = "dash"))]
+pub(crate) const MAX_VERIFY_RESULT: usize = crate::MAX_BOOL_RESULT;
+#[cfg(feature = "dash")]
+pub(crate) const MAX_VERIFY_RESULT: usize = crate::MAX_MPC_VERIFY_RESULT;
+
+/// Assert that the transaction verification promise (light client or MPC) succeeded.
+///
+/// For non-DASH (light client): parses the `bool` return value and requires it to be `true`.
+/// For DASH (MPC): a successful promise means the MPC network confirmed the transaction.
+/// The MPC contract's `verify_foreign_transaction` panics if verification fails,
+/// so reaching the callback means the transaction is verified.
+pub(crate) fn assert_verification_succeeded() {
+    let result_bytes =
+        env::promise_result_checked(0, MAX_VERIFY_RESULT).expect("Transaction verification failed");
+
+    #[cfg(not(feature = "dash"))]
+    {
+        let is_valid = crate::serde_json::from_slice::<bool>(&result_bytes)
+            .expect("verify_transaction_inclusion returned invalid result");
+        require!(is_valid, "verify_transaction_inclusion returned false");
+    }
+
+    #[cfg(feature = "dash")]
+    {
+        let _ = result_bytes;
+    }
+}
 
 pub const GAS_FOR_VERIFY_TRANSACTION_INCLUSION: Gas = Gas::from_tgas(10);
 pub const GAS_FOR_GET_LAST_BLOCK_HEIGHT: Gas = Gas::from_tgas(3);

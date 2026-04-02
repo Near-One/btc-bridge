@@ -18,8 +18,10 @@ use bitcoin::{absolute::LockTime, Amount, OutPoint, PublicKey as BtcPublicKey, S
 
 pub mod account;
 pub mod api;
-#[cfg(not(feature = "zcash"))]
+#[cfg(not(any(feature = "zcash", feature = "dash")))]
 pub mod bitcoin_utils;
+#[cfg(feature = "dash")]
+pub mod dash_utils;
 #[cfg(feature = "zcash")]
 pub mod zcash_utils;
 
@@ -32,6 +34,8 @@ pub mod event;
 pub mod json_utils;
 pub mod kdf;
 pub mod legacy;
+#[cfg(feature = "dash")]
+pub mod mpc_verifier;
 pub mod nbtc;
 pub mod network;
 pub mod psbt;
@@ -58,12 +62,19 @@ pub use crate::token_transfer::*;
 pub use crate::utils::*;
 pub use crate::utxo::*;
 
-#[cfg(not(feature = "zcash"))]
+#[cfg(not(any(feature = "zcash", feature = "dash")))]
 pub use crate::bitcoin_utils::psbt_wrapper;
-#[cfg(not(feature = "zcash"))]
+#[cfg(not(any(feature = "zcash", feature = "dash")))]
 pub use crate::bitcoin_utils::transaction::Transaction as WrappedTransaction;
-#[cfg(not(feature = "zcash"))]
+#[cfg(not(any(feature = "zcash", feature = "dash")))]
 use crate::bitcoin_utils::types::ChainSpecificData;
+
+#[cfg(feature = "dash")]
+pub use crate::dash_utils::psbt_wrapper;
+#[cfg(feature = "dash")]
+pub use crate::dash_utils::transaction::Transaction as WrappedTransaction;
+#[cfg(feature = "dash")]
+use crate::dash_utils::types::ChainSpecificData;
 
 #[cfg(feature = "zcash")]
 pub use crate::zcash_utils::contract_methods::*;

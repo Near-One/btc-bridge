@@ -4,7 +4,7 @@ BRIDGE_MANIFEST := $(MAKEFILE_DIR)/contracts/satoshi-bridge/Cargo.toml
 
 RFLAGS="-C link-arg=-s"
 
-FEATURES = bitcoin zcash
+FEATURES = bitcoin zcash dash
 
 release: $(addprefix build-,$(FEATURES))
 	$(call build_release_wasm,nbtc,nbtc)

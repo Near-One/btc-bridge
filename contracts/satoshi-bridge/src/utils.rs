@@ -12,6 +12,10 @@ pub const MAX_FT_TRANSFER_CALL_RESULT: usize = 50;
 pub const MAX_PUBLIC_KEY_RESULT: usize = 200;
 /// Maximum expected byte length of a JSON-serialized `SignatureResponse` promise result.
 pub const MAX_SIGNATURE_RESULT: usize = 300;
+/// Maximum expected byte length of a JSON-serialized `VerifyForeignTransactionResponse` promise result.
+/// The response contains payload_hash (64 hex chars) and signature (big_r affine_point + s scalar + recovery_id).
+#[cfg(feature = "dash")]
+pub const MAX_MPC_VERIFY_RESULT: usize = 1024;
 
 pub fn generate_utxo_storage_key(txid: String, vout: u32) -> String {
     format!(
