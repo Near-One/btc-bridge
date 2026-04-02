@@ -27,8 +27,14 @@ impl Contract {
             confirmations,
         );
 
+        // For DASH (legacy P2PKH), the on-chain txid differs from the unsigned pending ID
+        // because script_sig is included in the txid hash. Compute the actual signed txid
+        // from tx_bytes_with_sign for the MPC verification query.
         #[cfg(feature = "dash")]
-        let verify_promise = self.verify_transaction_via_mpc(tx_id.clone(), confirmations);
+        let verify_promise = {
+            let signed_tx_id = btc_pending_info.get_signed_tx_id();
+            self.verify_transaction_via_mpc(signed_tx_id, confirmations)
+        };
 
         verify_promise.then(
             Self::ext(env::current_account_id())

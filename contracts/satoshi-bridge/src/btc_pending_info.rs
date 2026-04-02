@@ -282,6 +282,16 @@ impl BTCPendingInfo {
         PsbtWrapper::deserialize(&self.psbt_hex)
     }
 
+    pub fn get_signed_tx_id(&self) -> String {
+        let tx_bytes = self
+            .tx_bytes_with_sign
+            .as_ref()
+            .expect("Missing tx_bytes_with_sign");
+        let tx: bitcoin::Transaction =
+            bitcoin::consensus::deserialize(tx_bytes).expect("Deserialization tx_bytes failed");
+        tx.compute_txid().to_string()
+    }
+
     pub fn get_transaction(&self, chain: &network::Chain) -> WrappedTransaction {
         WrappedTransaction::decode(
             self.tx_bytes_with_sign

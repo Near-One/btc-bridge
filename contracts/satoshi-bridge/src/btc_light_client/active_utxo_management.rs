@@ -27,7 +27,10 @@ impl Contract {
         );
 
         #[cfg(feature = "dash")]
-        let verify_promise = self.verify_transaction_via_mpc(tx_id.clone(), confirmations);
+        let verify_promise = {
+            let signed_tx_id = btc_pending_info.get_signed_tx_id();
+            self.verify_transaction_via_mpc(signed_tx_id, confirmations)
+        };
 
         verify_promise.then(
             Self::ext(env::current_account_id())
