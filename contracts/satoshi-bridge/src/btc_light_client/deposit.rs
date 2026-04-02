@@ -14,6 +14,7 @@ pub const GAS_FOR_VERIFY_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(190);
 pub const GAS_FOR_UNAVAILABLE_UTXO_CALL_BACK: Gas = Gas::from_tgas(20);
 
 impl Contract {
+    #[allow(unused_variables)]
     pub(crate) fn internal_verify_deposit(
         &mut self,
         deposit_amount: u128,
@@ -42,10 +43,8 @@ impl Contract {
         );
 
         #[cfg(feature = "dash")]
-        let promise = {
-            let _ = (&tx_block_blockhash, tx_index, &merkle_proof);
-            self.verify_transaction_via_mpc(pending_utxo_info.tx_id.clone(), confirmations)
-        };
+        let promise =
+            self.verify_transaction_via_mpc(pending_utxo_info.tx_id.clone(), confirmations);
 
         if deposit_amount < config.min_deposit_amount {
             promise.then(
@@ -76,7 +75,7 @@ impl Contract {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, unused_variables)]
     pub(crate) fn internal_safe_verify_deposit(
         &mut self,
         deposit_amount: u128,
@@ -101,10 +100,8 @@ impl Contract {
         );
 
         #[cfg(feature = "dash")]
-        let promise = {
-            let _ = (&tx_block_blockhash, tx_index, &merkle_proof);
-            self.verify_transaction_via_mpc(pending_utxo_info.tx_id.clone(), confirmations)
-        };
+        let promise =
+            self.verify_transaction_via_mpc(pending_utxo_info.tx_id.clone(), confirmations);
 
         if deposit_amount < config.min_deposit_amount {
             promise.then(

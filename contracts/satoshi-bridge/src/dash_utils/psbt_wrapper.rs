@@ -9,25 +9,14 @@ use bitcoin::Transaction as BtcTransaction;
 use bitcoin::{OutPoint, ScriptBuf, TxIn, TxOut, Witness};
 use near_sdk::require;
 
-/// Current serialization format version for the custom DASH PSBT.
 const PSBT_FORMAT_VERSION: u8 = 1;
-/// Maximum allowed byte length for a serialized transaction (1 MB).
 const MAX_TX_BYTES: usize = 1_000_000;
-/// Maximum number of inputs/outputs/script_sigs allowed.
 const MAX_ITEM_COUNT: usize = 1_000;
-/// Maximum allowed byte length for a single UTXO or script_sig (100 KB).
 const MAX_ELEMENT_BYTES: usize = 100_000;
 
-/// DASH PSBT wrapper using legacy P2PKH signing (no SegWit).
-///
-/// DASH is a Bitcoin fork that does not support SegWit, so we use
-/// `legacy_signature_hash` and `script_sig` instead of witness data.
 pub struct PsbtWrapper {
-    /// The unsigned transaction being constructed.
     unsigned_tx: BtcTransaction,
-    /// Witness UTXOs (previous outputs) for each input, used for sighash computation.
     input_utxos: Vec<Option<TxOut>>,
-    /// Final script_sig for each input (populated after signing).
     final_script_sigs: Vec<Option<ScriptBuf>>,
 }
 
@@ -128,50 +117,36 @@ impl PsbtWrapper {
     }
 
     pub fn serialize(&self) -> String {
-        // Custom binary serialization for the DASH PSBT
         let mut buf = Vec::<u8>::new();
-        let version: u8 = 1;
-        buf.push(version);
+        buf.push(PSBT_FORMAT_VERSION);
 
-        // Serialize unsigned tx
         let tx_bytes = serialize(&self.unsigned_tx);
-        let tx_len = tx_bytes.len() as u64;
-        buf.extend_from_slice(&tx_len.to_le_bytes());
+        buf.extend_from_slice(&(tx_bytes.len() as u64).to_le_bytes());
         buf.extend_from_slice(&tx_bytes);
 
-        // Serialize input UTXOs
-        let utxo_count = self.input_utxos.len() as u64;
-        buf.extend_from_slice(&utxo_count.to_le_bytes());
+        buf.extend_from_slice(&(self.input_utxos.len() as u64).to_le_bytes());
         for utxo in &self.input_utxos {
             match utxo {
                 Some(txout) => {
                     buf.push(1);
                     let utxo_bytes = serialize(txout);
-                    let utxo_len = utxo_bytes.len() as u64;
-                    buf.extend_from_slice(&utxo_len.to_le_bytes());
+                    buf.extend_from_slice(&(utxo_bytes.len() as u64).to_le_bytes());
                     buf.extend_from_slice(&utxo_bytes);
                 }
-                None => {
-                    buf.push(0);
-                }
+                None => buf.push(0),
             }
         }
 
-        // Serialize final script_sigs
-        let sig_count = self.final_script_sigs.len() as u64;
-        buf.extend_from_slice(&sig_count.to_le_bytes());
+        buf.extend_from_slice(&(self.final_script_sigs.len() as u64).to_le_bytes());
         for sig in &self.final_script_sigs {
             match sig {
                 Some(script) => {
                     buf.push(1);
                     let script_bytes = script.as_bytes();
-                    let script_len = script_bytes.len() as u64;
-                    buf.extend_from_slice(&script_len.to_le_bytes());
+                    buf.extend_from_slice(&(script_bytes.len() as u64).to_le_bytes());
                     buf.extend_from_slice(script_bytes);
                 }
-                None => {
-                    buf.push(0);
-                }
+                None => buf.push(0),
             }
         }
 
@@ -179,7 +154,7 @@ impl PsbtWrapper {
     }
 
     pub fn deserialize(psbt_hex: &String) -> Self {
-        let bytes = hex::decode(psbt_hex).expect("ERR_INVALID_PSBT_HEX: failed to decode hex");
+        let bytes = hex::decode(psbt_hex).expect("ERR_INVALID_PSBT_HEX");
         let mut cursor = std::io::Cursor::new(&bytes);
 
         use std::io::Read;
@@ -187,31 +162,27 @@ impl PsbtWrapper {
         let mut version_buf = [0u8; 1];
         cursor
             .read_exact(&mut version_buf)
-            .expect("ERR_INVALID_PSBT: failed to read version");
+            .expect("ERR_INVALID_PSBT");
         require!(
             version_buf[0] == PSBT_FORMAT_VERSION,
             "ERR_INVALID_PSBT: unsupported version"
         );
 
-        // Read unsigned tx
         let mut tx_len_buf = [0u8; 8];
         cursor
             .read_exact(&mut tx_len_buf)
-            .expect("ERR_INVALID_PSBT: failed to read tx length");
+            .expect("ERR_INVALID_PSBT");
         let tx_len = u64::from_le_bytes(tx_len_buf) as usize;
         require!(tx_len <= MAX_TX_BYTES, "ERR_INVALID_PSBT: tx too large");
         let mut tx_bytes = vec![0u8; tx_len];
-        cursor
-            .read_exact(&mut tx_bytes)
-            .expect("ERR_INVALID_PSBT: failed to read tx bytes");
-        let unsigned_tx: BtcTransaction = bitcoin::consensus::deserialize(&tx_bytes)
-            .expect("ERR_INVALID_PSBT: failed to parse tx");
+        cursor.read_exact(&mut tx_bytes).expect("ERR_INVALID_PSBT");
+        let unsigned_tx: BtcTransaction =
+            bitcoin::consensus::deserialize(&tx_bytes).expect("ERR_INVALID_PSBT");
 
-        // Read input UTXOs
         let mut utxo_count_buf = [0u8; 8];
         cursor
             .read_exact(&mut utxo_count_buf)
-            .expect("ERR_INVALID_PSBT: failed to read utxo count");
+            .expect("ERR_INVALID_PSBT");
         let utxo_count = u64::from_le_bytes(utxo_count_buf) as usize;
         require!(
             utxo_count <= MAX_ITEM_COUNT,
@@ -220,14 +191,12 @@ impl PsbtWrapper {
         let mut input_utxos = Vec::with_capacity(utxo_count);
         for _ in 0..utxo_count {
             let mut flag = [0u8; 1];
-            cursor
-                .read_exact(&mut flag)
-                .expect("ERR_INVALID_PSBT: failed to read utxo flag");
+            cursor.read_exact(&mut flag).expect("ERR_INVALID_PSBT");
             if flag[0] == 1 {
                 let mut utxo_len_buf = [0u8; 8];
                 cursor
                     .read_exact(&mut utxo_len_buf)
-                    .expect("ERR_INVALID_PSBT: failed to read utxo length");
+                    .expect("ERR_INVALID_PSBT");
                 let utxo_len = u64::from_le_bytes(utxo_len_buf) as usize;
                 require!(
                     utxo_len <= MAX_ELEMENT_BYTES,
@@ -236,20 +205,19 @@ impl PsbtWrapper {
                 let mut utxo_bytes = vec![0u8; utxo_len];
                 cursor
                     .read_exact(&mut utxo_bytes)
-                    .expect("ERR_INVALID_PSBT: failed to read utxo bytes");
-                let txout: TxOut = bitcoin::consensus::deserialize(&utxo_bytes)
-                    .expect("ERR_INVALID_PSBT: failed to parse utxo");
+                    .expect("ERR_INVALID_PSBT");
+                let txout: TxOut =
+                    bitcoin::consensus::deserialize(&utxo_bytes).expect("ERR_INVALID_PSBT");
                 input_utxos.push(Some(txout));
             } else {
                 input_utxos.push(None);
             }
         }
 
-        // Read final script_sigs
         let mut sig_count_buf = [0u8; 8];
         cursor
             .read_exact(&mut sig_count_buf)
-            .expect("ERR_INVALID_PSBT: failed to read sig count");
+            .expect("ERR_INVALID_PSBT");
         let sig_count = u64::from_le_bytes(sig_count_buf) as usize;
         require!(
             sig_count <= MAX_ITEM_COUNT,
@@ -258,14 +226,12 @@ impl PsbtWrapper {
         let mut final_script_sigs = Vec::with_capacity(sig_count);
         for _ in 0..sig_count {
             let mut flag = [0u8; 1];
-            cursor
-                .read_exact(&mut flag)
-                .expect("ERR_INVALID_PSBT: failed to read sig flag");
+            cursor.read_exact(&mut flag).expect("ERR_INVALID_PSBT");
             if flag[0] == 1 {
                 let mut script_len_buf = [0u8; 8];
                 cursor
                     .read_exact(&mut script_len_buf)
-                    .expect("ERR_INVALID_PSBT: failed to read script length");
+                    .expect("ERR_INVALID_PSBT");
                 let script_len = u64::from_le_bytes(script_len_buf) as usize;
                 require!(
                     script_len <= MAX_ELEMENT_BYTES,
@@ -274,7 +240,7 @@ impl PsbtWrapper {
                 let mut script_bytes = vec![0u8; script_len];
                 cursor
                     .read_exact(&mut script_bytes)
-                    .expect("ERR_INVALID_PSBT: failed to read script bytes");
+                    .expect("ERR_INVALID_PSBT");
                 final_script_sigs.push(Some(ScriptBuf::from_bytes(script_bytes)));
             } else {
                 final_script_sigs.push(None);
@@ -291,14 +257,12 @@ impl PsbtWrapper {
     pub fn extract_tx_bytes_with_sign(&self) -> Vec<u8> {
         let mut signed_tx = self.unsigned_tx.clone();
 
-        // Apply script_sigs to the transaction inputs
         for (i, sig) in self.final_script_sigs.iter().enumerate() {
             if let Some(script_sig) = sig {
                 signed_tx.input[i].script_sig = script_sig.clone();
             }
         }
 
-        // DASH doesn't use SegWit, so ensure witness is empty
         for input in &mut signed_tx.input {
             input.witness = Witness::default();
         }
@@ -310,33 +274,24 @@ impl PsbtWrapper {
         self.unsigned_tx.compute_txid().to_string()
     }
 
-    /// Compute the legacy P2PKH sighash for the given input index.
-    ///
-    /// For DASH (a non-SegWit Bitcoin fork), we use `legacy_signature_hash`
-    /// which hashes the transaction with the previous output's scriptPubKey
-    /// placed in the input being signed.
     #[allow(unused_variables)]
     pub fn get_hash_to_sign(&self, vin: usize, public_keys: &[bitcoin::PublicKey]) -> [u8; 32] {
         let input_utxo = self.input_utxos[vin]
             .as_ref()
-            .expect("ERR_MISSING_INPUT_UTXO: input missing UTXO data");
+            .expect("ERR_MISSING_INPUT_UTXO");
 
-        let tx = self.unsigned_tx.clone();
-        let cache = SighashCache::new(tx);
+        let cache = SighashCache::new(self.unsigned_tx.clone());
         cache
             .legacy_signature_hash(
                 vin,
                 &input_utxo.script_pubkey,
                 bitcoin::EcdsaSighashType::All.to_u32(),
             )
-            .expect("ERR_SIGHASH: failed to compute legacy signature hash")
+            .expect("ERR_SIGHASH")
             .to_raw_hash()
             .to_byte_array()
     }
 
-    /// Save a P2PKH signature for the given input.
-    ///
-    /// Constructs a script_sig = <signature> <pubkey> (legacy P2PKH format).
     pub fn save_signature(
         &mut self,
         sign_index: usize,

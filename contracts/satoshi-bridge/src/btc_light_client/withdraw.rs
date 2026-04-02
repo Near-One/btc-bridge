@@ -5,6 +5,7 @@ pub const GAS_FOR_VERIFY_WITHDRAW_CALL_BACK: Gas = Gas::from_tgas(50);
 pub const GAS_FOR_VERIFY_CANCEL_WITHDRAW_CALL_BACK: Gas = Gas::from_tgas(50);
 
 impl Contract {
+    #[allow(unused_variables)]
     pub fn internal_verify_withdraw(
         &self,
         tx_id: String,
@@ -27,10 +28,7 @@ impl Contract {
         );
 
         #[cfg(feature = "dash")]
-        let verify_promise = {
-            let _ = (&tx_block_blockhash, tx_index, &merkle_proof);
-            self.verify_transaction_via_mpc(tx_id.clone(), confirmations)
-        };
+        let verify_promise = self.verify_transaction_via_mpc(tx_id.clone(), confirmations);
 
         verify_promise.then(
             Self::ext(env::current_account_id())
