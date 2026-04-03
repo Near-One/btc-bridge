@@ -60,6 +60,11 @@ sequenceDiagram
     Note over B: request_refund_callback<br/>📄 refund.rs:170
     B->>B: Save RefundRequest {<br/>utxo_storage_key, amount, created_at}
 
+    rect rgb(255, 200, 200)
+        U->>B: execute_refund(utxo_storage_key)<br/>📄 api/bridge.rs:454
+        Note over B: PANIC: "Refund timelock has not passed yet"
+    end
+
     Note over B: Timelock period passes<br/>(refund_timelock_sec)
 
     U->>B: execute_refund(utxo_storage_key)<br/>📄 api/bridge.rs:454
