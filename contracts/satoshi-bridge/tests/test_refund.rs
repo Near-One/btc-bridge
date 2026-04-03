@@ -394,19 +394,26 @@ async fn test_refund_then_deposit_fails() {
     );
 
     // 5. Try verify_withdraw — should fail with "Not withdraw related tx"
-    check!(
-        context.verify_withdraw(
-            "relayer",
-            &pending_keys[0],
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d"
-                .to_string(),
-            1,
-            vec![]
-        ),
-        "Not withdraw related tx"
+    let verify_withdraw_err = tool_err_msg(
+        &context
+            .verify_withdraw(
+                "relayer",
+                &pending_keys[0],
+                "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d"
+                    .to_string(),
+                1,
+                vec![],
+            )
+            .await,
+    );
+    println!("verify_withdraw error: {}", verify_withdraw_err);
+    assert!(
+        verify_withdraw_err.contains("Not withdraw related tx"),
+        "Expected 'Not withdraw related tx', got: {}",
+        verify_withdraw_err
     );
 
-    // 6. Try withdraw_rbf — should fail with "Not withdraw original tx"
+    // 6. Try withdraw_rbf — should fail
     let rbf_err = tool_err_msg(
         &context
             .get_account_by_name("alice")
@@ -420,15 +427,34 @@ async fn test_refund_then_deposit_fails() {
             .transact()
             .await,
     );
-    assert!(!rbf_err.is_empty(), "withdraw_rbf should have failed for refund tx");
-
-    // 7. Try cancel_withdraw — should fail for refund tx
-    let cancel_err = tool_err_msg(
-        &context
-            .cancel_withdraw(&pending_keys[0], vec![])
-            .await,
+    println!("withdraw_rbf error: {}", rbf_err);
+    assert!(
+        rbf_err.contains("Not original tx"),
+        "Expected 'Not original tx', got: {}",
+        rbf_err
     );
-    assert!(!cancel_err.is_empty(), "cancel_withdraw should have failed for refund tx");
+
+    // 7. Try cancel_withdraw — set max_btc_tx_pending_sec=0 so time check passes
+    context
+        .get_account_by_name("root")
+        .call(context.bridge_contract.id(), "set_max_btc_tx_pending_sec")
+        .args_json(json!({"max_btc_tx_pending_sec": 0}))
+        .deposit(near_sdk::NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+
+    let cancel_err = tool_err_msg(
+        &context.cancel_withdraw(&pending_keys[0], vec![]).await,
+    );
+    println!("cancel_withdraw error: {}", cancel_err);
+    assert!(
+        cancel_err.contains("Not original tx"),
+        "Expected 'Not original tx', got: {}",
+        cancel_err
+    );
 
     // 8. No nBTC was minted
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
