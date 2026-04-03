@@ -1327,4 +1327,30 @@ impl Context {
             .transact()
             .await
     }
+
+    pub async fn safe_verify_deposit(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        tx_bytes: Vec<u8>,
+        vout: u32,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "safe_verify_deposit")
+            .args_json(json!({
+                "deposit_msg": deposit_msg,
+                "tx_bytes": tx_bytes,
+                "vout": vout,
+                "tx_block_blockhash": tx_block_blockhash,
+                "tx_index": tx_index,
+                "merkle_proof": merkle_proof,
+            }))
+            .deposit(NearToken::from_millinear(2))
+            .max_gas()
+            .transact()
+            .await
+    }
 }

@@ -844,3 +844,292 @@ async fn test_refund_spoofed_refund_address() {
         )
     );
 }
+
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_refund_race_safe_deposit_wins() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").id().clone(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
+        refund_address: Some(TARGET_ADDRESS.to_string()),
+    };
+
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "ecec069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f29",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 100_000)],
+    );
+    let vout: u32 = 0;
+    let blockhash =
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+
+    // 1. Request refund
+    check!(
+        print "request_refund"
+        context.request_refund(
+            "alice",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            blockhash.clone(),
+            1,
+            vec![]
+        )
+    );
+
+    // 2. During timelock, Relayer calls safe_verify_deposit — succeeds
+    // Register alice in nBTC first (safe_mint requires it)
+    check!(context.storage_deposit("nbtc", "alice"));
+    check!(
+        print "safe_verify_deposit"
+        context.safe_verify_deposit(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            blockhash.clone(),
+            1,
+            vec![]
+        )
+    );
+
+    // 3. nBTC minted to alice
+    assert!(context.ft_balance_of("alice").await.unwrap().0 > 0);
+
+    // 4. Set timelock to 0
+    context
+        .get_account_by_name("root")
+        .call(context.bridge_contract.id(), "set_refund_timelock_sec")
+        .args_json(json!({"refund_timelock_sec": 0}))
+        .deposit(near_sdk::NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+
+    // 5. execute_refund fails — UTXO already verified via safe deposit
+    let key = utxo_storage_key(&tx_bytes, vout);
+    check!(
+        context.execute_refund("alice", &key),
+        "UTXO already verified via deposit, cannot refund"
+    );
+}
+
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_refund_after_safe_deposit_fails() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").id().clone(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
+        refund_address: Some(TARGET_ADDRESS.to_string()),
+    };
+
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "fdfd069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f30",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 100_000)],
+    );
+    let vout: u32 = 0;
+    let blockhash =
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+
+    // 1. Register alice in nBTC and do safe_verify_deposit
+    check!(context.storage_deposit("nbtc", "alice"));
+    check!(
+        print "safe_verify_deposit"
+        context.safe_verify_deposit(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            blockhash.clone(),
+            1,
+            vec![]
+        )
+    );
+
+    // 2. nBTC minted
+    assert!(context.ft_balance_of("alice").await.unwrap().0 > 0);
+
+    // 3. request_refund fails — UTXO already verified
+    check!(
+        context.request_refund(
+            "alice",
+            deposit_msg,
+            tx_bytes,
+            vout,
+            blockhash,
+            1,
+            vec![]
+        ),
+        "UTXO already verified via deposit"
+    );
+}
+
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_refund_then_safe_deposit_fails() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").id().clone(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
+        refund_address: Some(TARGET_ADDRESS.to_string()),
+    };
+
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "abab069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f31",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 100_000)],
+    );
+    let vout: u32 = 0;
+    let blockhash =
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+
+    // Register alice in nBTC (needed for safe_verify_deposit attempts)
+    check!(context.storage_deposit("nbtc", "alice"));
+
+    // 1. Request refund
+    check!(
+        print "request_refund"
+        context.request_refund(
+            "alice",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            blockhash.clone(),
+            1,
+            vec![]
+        )
+    );
+
+    // 2. Set timelock to 0 and execute refund
+    context
+        .get_account_by_name("root")
+        .call(context.bridge_contract.id(), "set_refund_timelock_sec")
+        .args_json(json!({"refund_timelock_sec": 0}))
+        .deposit(near_sdk::NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+
+    let key = utxo_storage_key(&tx_bytes, vout);
+    check!(
+        print "execute_refund"
+        context.execute_refund("alice", &key)
+    );
+
+    // 3. safe_verify_deposit blocked RIGHT AFTER execute_refund (before sign)
+    check!(
+        context.safe_verify_deposit(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            blockhash.clone(),
+            1,
+            vec![]
+        ),
+        "Already deposit utxo"
+    );
+
+    // 4. Sign the refund transaction
+    let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
+    let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
+    check!(
+        print "sign_btc_transaction"
+        context.sign_btc_transaction("relayer", &pending_keys[0], 0, 0)
+    );
+
+    // 5. safe_verify_deposit STILL blocked after sign (after broadcast)
+    check!(
+        context.safe_verify_deposit(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            blockhash.clone(),
+            1,
+            vec![]
+        ),
+        "Already deposit utxo"
+    );
+
+    // 6. verify_refund — finalize the refund
+    check!(
+        print "verify_refund"
+        context.verify_refund(
+            "relayer",
+            &pending_keys[0],
+            blockhash.clone(),
+            1,
+            vec![]
+        )
+    );
+
+    // 7. Cleaned up
+    assert!(context.get_btc_pending_infos_paged().await.unwrap().is_empty());
+
+    // 8. safe_verify_deposit STILL blocked after verify_refund
+    check!(
+        context.safe_verify_deposit(
+            "relayer",
+            deposit_msg,
+            tx_bytes,
+            vout,
+            blockhash,
+            1,
+            vec![]
+        ),
+        "Already deposit utxo"
+    );
+
+    // 9. No nBTC minted
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+}
