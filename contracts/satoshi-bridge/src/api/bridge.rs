@@ -458,6 +458,29 @@ impl Contract {
         );
         self.internal_execute_refund(utxo_storage_key);
     }
+
+    #[pause(except(roles(Role::DAO)))]
+    pub fn verify_refund(
+        &mut self,
+        tx_id: String,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Promise {
+        let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id);
+        btc_pending_info.assert_refund_pending_verify_tx();
+        require!(
+            btc_pending_info.tx_bytes_with_sign.is_some(),
+            "Missing tx_bytes_with_sign"
+        );
+        self.internal_verify_refund(
+            tx_id,
+            tx_block_blockhash,
+            tx_index,
+            merkle_proof,
+            btc_pending_info,
+        )
+    }
 }
 
 impl Contract {

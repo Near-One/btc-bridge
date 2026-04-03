@@ -17,6 +17,8 @@ executes the refund — BTC is sent back to the refund address.
 | 7 | `sign_btc_transaction` | `contracts/satoshi-bridge/src/api/chain_signatures.rs:21` |
 | 8 | `sign` (MPC) | `contracts/satoshi-bridge/src/chain_signature.rs:57` |
 | 9 | `sign_btc_transaction_callback` | `contracts/satoshi-bridge/src/chain_signature.rs:135` |
+| 10 | `verify_refund` | `contracts/satoshi-bridge/src/api/bridge.rs` |
+| 11 | `verify_refund_callback` | `contracts/satoshi-bridge/src/refund.rs` |
 
 ## Sequence Diagram
 
@@ -72,5 +74,13 @@ sequenceDiagram
     Note over B: sign_btc_transaction_callback<br/>📄 chain_signature.rs:135
 
     R->>BTC: Broadcast refund transaction
-    B-->>U: BTC returned to refund_address
+    BTC-->>U: BTC returned to refund_address
+
+    R->>B: verify_refund(tx_id, tx_block_blockhash,<br/>tx_index, merkle_proof)<br/>📄 api/bridge.rs
+
+    B->>LC: verify_transaction_inclusion(tx_id, merkle_proof)<br/>📄 btc_light_client/mod.rs:113
+    LC-->>B: valid
+
+    Note over B: verify_refund_callback<br/>📄 refund.rs
+    B->>B: Remove BTCPendingInfo
 ```

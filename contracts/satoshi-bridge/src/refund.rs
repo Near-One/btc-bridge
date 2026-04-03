@@ -9,7 +9,10 @@ use crate::deposit_msg::get_deposit_path;
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::utils::{generate_utxo_storage_key, nano_to_sec};
 
+use crate::PromiseOrValue;
+
 pub const GAS_FOR_REQUEST_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
+pub const GAS_FOR_VERIFY_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
 
 /// Stored refund request. `deposit_msg` is kept as JSON string
 /// because `DepositMsg` does not implement Borsh serialization.
@@ -271,10 +274,58 @@ impl Contract {
 
         self.data_mut().refund_requests.remove(&utxo_storage_key);
     }
+
+    /// Verify refund transaction was included in Bitcoin blockchain.
+    pub fn internal_verify_refund(
+        &self,
+        tx_id: String,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+        btc_pending_info: &BTCPendingInfo,
+    ) -> Promise {
+        let config = self.internal_config();
+        let confirmations = self.get_confirmations(config, btc_pending_info.actual_received_amount);
+        self.verify_transaction_inclusion_promise(
+            config.btc_light_client_account_id.clone(),
+            tx_id.clone(),
+            tx_block_blockhash,
+            tx_index,
+            merkle_proof,
+            confirmations,
+        )
+        .then(
+            Self::ext(env::current_account_id())
+                .with_static_gas(GAS_FOR_VERIFY_REFUND_CALLBACK)
+                .verify_refund_callback(tx_id),
+        )
+    }
 }
 
 #[near]
 impl Contract {
+    #[private]
+    pub fn verify_refund_callback(&mut self, tx_id: String) -> bool {
+        let result_bytes = crate::promise_result_as_success()
+            .expect("Call verify_transaction_inclusion failed");
+        let is_valid = serde_json::from_slice::<bool>(&result_bytes)
+            .expect("verify_transaction_inclusion return not bool");
+        require!(is_valid, "verify_transaction_inclusion return false");
+
+        let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id);
+        btc_pending_info.assert_refund_pending_verify_tx();
+
+        let account_id = btc_pending_info.account_id.clone();
+
+        // Clean up: remove pending info
+        self.internal_remove_btc_pending_info(&tx_id);
+        self.internal_unwrap_mut_account(&account_id)
+            .btc_pending_verify_list
+            .remove(&tx_id);
+
+        true
+    }
+
     #[private]
     pub fn request_refund_callback(
         &mut self,

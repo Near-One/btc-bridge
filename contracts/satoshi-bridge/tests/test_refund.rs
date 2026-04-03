@@ -135,13 +135,30 @@ async fn test_refund_basic_flow() {
     let pending_values = pending_infos.values().cloned().collect::<Vec<_>>();
     pending_values[0].assert_pending_verify();
 
-    // 10. Refund request is gone (can't execute twice)
+    // 10. Verify refund transaction on-chain (like verify_withdraw but no burn)
+    let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
+    let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
+    check!(
+        print "verify_refund"
+        context.verify_refund(
+            "relayer",
+            &pending_keys[0],
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![]
+        )
+    );
+
+    // 11. Pending info cleaned up
+    assert!(context.get_btc_pending_infos_paged().await.unwrap().is_empty());
+
+    // 12. Refund request is gone (can't execute twice)
     check!(
         context.execute_refund("alice", &key),
         "Refund request not found"
     );
 
-    // 11. No nBTC was minted
+    // 13. No nBTC was minted
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
 }
 
@@ -326,7 +343,6 @@ async fn test_refund_then_deposit_fails() {
         .await
         .unwrap();
 
-    // Build BTC transaction to deposit address
     let tx_bytes = generate_transaction_bytes(
         vec![(
             "e6e6069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f23",
@@ -336,6 +352,8 @@ async fn test_refund_then_deposit_fails() {
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
+    let blockhash =
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
 
     // 1. Request refund
     check!(
@@ -345,8 +363,7 @@ async fn test_refund_then_deposit_fails() {
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d"
-                .to_string(),
+            blockhash.clone(),
             1,
             vec![]
         )
@@ -370,7 +387,21 @@ async fn test_refund_then_deposit_fails() {
         context.execute_refund("alice", &key)
     );
 
-    // 3. Sign the refund transaction
+    // 3. verify_deposit blocked RIGHT AFTER execute_refund (before sign)
+    check!(
+        context.verify_deposit(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            blockhash.clone(),
+            1,
+            vec![]
+        ),
+        "Already deposit utxo"
+    );
+
+    // 4. Sign the refund transaction
     let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
     let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
     check!(
@@ -378,84 +409,49 @@ async fn test_refund_then_deposit_fails() {
         context.sign_btc_transaction("relayer", &pending_keys[0], 0, 0)
     );
 
-    // 4. Now try verify_deposit with the same tx — should fail with "Already deposit utxo"
+    // 5. verify_deposit STILL blocked after sign (after broadcast)
     check!(
         context.verify_deposit(
             "relayer",
-            deposit_msg,
-            tx_bytes,
+            deposit_msg.clone(),
+            tx_bytes.clone(),
             vout,
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d"
-                .to_string(),
+            blockhash.clone(),
             1,
             vec![]
         ),
         "Already deposit utxo"
     );
 
-    // 5. Try verify_withdraw — should fail with "Not withdraw related tx"
-    let verify_withdraw_err = tool_err_msg(
-        &context
-            .verify_withdraw(
-                "relayer",
-                &pending_keys[0],
-                "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d"
-                    .to_string(),
-                1,
-                vec![],
-            )
-            .await,
-    );
-    println!("verify_withdraw error: {}", verify_withdraw_err);
-    assert!(
-        verify_withdraw_err.contains("Not withdraw related tx"),
-        "Expected 'Not withdraw related tx', got: {}",
-        verify_withdraw_err
+    // 6. verify_refund — finalize the refund
+    check!(
+        print "verify_refund"
+        context.verify_refund(
+            "relayer",
+            &pending_keys[0],
+            blockhash.clone(),
+            1,
+            vec![]
+        )
     );
 
-    // 6. Try withdraw_rbf — should fail
-    let rbf_err = tool_err_msg(
-        &context
-            .get_account_by_name("alice")
-            .call(context.bridge_contract.id(), "withdraw_rbf")
-            .args_json(json!({
-                "original_btc_pending_verify_id": &pending_keys[0],
-                "output": Vec::<TxOut>::new(),
-                "chain_specific_data": null,
-            }))
-            .max_gas()
-            .transact()
-            .await,
-    );
-    println!("withdraw_rbf error: {}", rbf_err);
-    assert!(
-        rbf_err.contains("Not original tx"),
-        "Expected 'Not original tx', got: {}",
-        rbf_err
+    // 7. Pending info cleaned up
+    assert!(context.get_btc_pending_infos_paged().await.unwrap().is_empty());
+
+    // 8. verify_deposit STILL blocked after verify_refund
+    check!(
+        context.verify_deposit(
+            "relayer",
+            deposit_msg,
+            tx_bytes,
+            vout,
+            blockhash,
+            1,
+            vec![]
+        ),
+        "Already deposit utxo"
     );
 
-    // 7. Try cancel_withdraw — set max_btc_tx_pending_sec=0 so time check passes
-    context
-        .get_account_by_name("root")
-        .call(context.bridge_contract.id(), "set_max_btc_tx_pending_sec")
-        .args_json(json!({"max_btc_tx_pending_sec": 0}))
-        .deposit(near_sdk::NearToken::from_yoctonear(1))
-        .max_gas()
-        .transact()
-        .await
-        .unwrap()
-        .unwrap();
-
-    let cancel_err = tool_err_msg(
-        &context.cancel_withdraw(&pending_keys[0], vec![]).await,
-    );
-    println!("cancel_withdraw error: {}", cancel_err);
-    assert!(
-        cancel_err.contains("Not original tx"),
-        "Expected 'Not original tx', got: {}",
-        cancel_err
-    );
-
-    // 8. No nBTC was minted
+    // 9. No nBTC was minted
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
 }

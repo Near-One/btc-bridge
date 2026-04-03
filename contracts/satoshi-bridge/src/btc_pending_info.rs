@@ -160,6 +160,13 @@ impl BTCPendingInfo {
         }
     }
 
+    pub fn assert_refund_pending_verify_tx(&self) {
+        match self.state.borrow() {
+            PendingInfoState::Refund(state) => state.assert_pending_verify(),
+            _ => env::panic_str("Not refund related tx"),
+        }
+    }
+
     pub fn assert_active_utxo_management_related_pending_verify_tx(&self) {
         match self.state.borrow() {
             PendingInfoState::ActiveUtxoManagementOriginal(state) => state.assert_pending_verify(),

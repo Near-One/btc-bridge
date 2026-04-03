@@ -61,6 +61,14 @@ sequenceDiagram
 
     U->>B: execute_refund(utxo_storage_key)<br/>📄 api/bridge.rs:454
 
+    rect rgb(255, 200, 200)
+        Note over R,B: verify_deposit blocked after execute_refund
+        R->>B: verify_deposit(deposit_msg, tx_proof)<br/>📄 api/bridge.rs:22
+        B->>LC: verify_transaction_inclusion(tx_id, merkle_proof)
+        LC-->>B: valid
+        Note over B: PANIC: "Already deposit utxo"
+    end
+
     R->>B: sign_btc_transaction(sign_index)<br/>📄 api/chain_signatures.rs:21
 
     B->>MPC: sign(payload, path, key_version)<br/>📄 chain_signature.rs:57
@@ -69,19 +77,29 @@ sequenceDiagram
     Note over B: sign_btc_transaction_callback<br/>📄 chain_signature.rs:135
 
     R->>BTC: Broadcast refund transaction
-    Note over BTC: Refund confirmed,<br/>original UTXO spent
+    BTC-->>U: BTC returned to refund_address
 
-    Note over R,B: Later, Relayer tries verify_deposit
+    rect rgb(255, 200, 200)
+        Note over R,B: verify_deposit still blocked after broadcast
+        R->>B: verify_deposit(deposit_msg, tx_proof)<br/>📄 api/bridge.rs:22
+        B->>LC: verify_transaction_inclusion(tx_id, merkle_proof)
+        LC-->>B: valid
+        Note over B: PANIC: "Already deposit utxo"
+    end
 
-    R->>B: verify_deposit(deposit_msg, tx_proof)<br/>📄 api/bridge.rs:22
+    R->>B: verify_refund(tx_id, tx_proof)<br/>📄 api/bridge.rs
 
     B->>LC: verify_transaction_inclusion(tx_id, merkle_proof)<br/>📄 btc_light_client/mod.rs:113
     LC-->>B: valid
 
-    Note over B: verify_deposit_callback<br/>📄 btc_light_client/deposit.rs:147
+    Note over B: verify_refund_callback<br/>📄 refund.rs
+    B->>B: Remove BTCPendingInfo
 
     rect rgb(255, 200, 200)
-        Note over B: PANIC: "Already deposit utxo"<br/>(UTXO marked during execute_refund)
-        Note over B: No nBTC minted
+        Note over R,B: verify_deposit still blocked after verify_refund
+        R->>B: verify_deposit(deposit_msg, tx_proof)<br/>📄 api/bridge.rs:22
+        B->>LC: verify_transaction_inclusion(tx_id, merkle_proof)
+        LC-->>B: valid
+        Note over B: PANIC: "Already deposit utxo"
     end
 ```

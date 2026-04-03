@@ -71,7 +71,7 @@ sequenceDiagram
     Note over B: sign_btc_transaction_callback<br/>📄 chain_signature.rs:135
 
     R->>BTC: Broadcast refund transaction
-    B-->>U: BTC returned to refund_address
+    BTC-->>U: BTC returned to refund_address
 
     Note over R,B: Attempts to use withdraw operations on refund tx
 
@@ -85,4 +85,12 @@ sequenceDiagram
         R->>B: cancel_withdraw(btc_pending_verify_id)<br/>📄 api/bridge.rs:234
         Note over B: PANIC: "Not original tx"
     end
+
+    R->>B: verify_refund(tx_id, tx_proof)<br/>📄 api/bridge.rs
+
+    B->>LC: verify_transaction_inclusion(tx_id, merkle_proof)<br/>📄 btc_light_client/mod.rs:113
+    LC-->>B: valid
+
+    Note over B: verify_refund_callback<br/>📄 refund.rs
+    B->>B: Remove BTCPendingInfo
 ```

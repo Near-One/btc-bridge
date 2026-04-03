@@ -1306,4 +1306,25 @@ impl Context {
             .transact()
             .await
     }
+
+    pub async fn verify_refund(
+        &self,
+        user: &str,
+        tx_id: &str,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "verify_refund")
+            .args_json(json!({
+                "tx_id": tx_id,
+                "tx_block_blockhash": tx_block_blockhash,
+                "tx_index": tx_index,
+                "merkle_proof": merkle_proof,
+            }))
+            .max_gas()
+            .transact()
+            .await
+    }
 }
