@@ -771,3 +771,76 @@ async fn test_refund_double_request_after_execute() {
         "UTXO already verified via deposit"
     );
 }
+
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_refund_spoofed_refund_address() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    // Alice creates a real deposit with her refund address
+    let real_deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").id().clone(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: Some(TARGET_ADDRESS.to_string()),
+    };
+
+    let deposit_address = context
+        .get_user_deposit_address(real_deposit_msg.clone())
+        .await
+        .unwrap();
+
+    // BTC transaction sends to the real deposit address
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "dbdb069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f28",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 100_000)],
+    );
+    let vout: u32 = 0;
+    let blockhash =
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+
+    // Attacker creates a spoofed deposit_msg with a DIFFERENT refund_address
+    // but same recipient_id — this changes the hash, so script_pubkey won't match
+    let spoofed_deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").id().clone(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: Some("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa".to_string()), // attacker's address
+    };
+
+    // request_refund with spoofed deposit_msg — callback should panic
+    // because script_pubkey derived from spoofed msg won't match tx output
+    check!(
+        context.request_refund(
+            "bob",
+            spoofed_deposit_msg,
+            tx_bytes.clone(),
+            vout,
+            blockhash.clone(),
+            1,
+            vec![]
+        ),
+        "Output script_pubkey does not match deposit address"
+    );
+
+    // Real request_refund still works
+    check!(
+        print "real request_refund"
+        context.request_refund(
+            "alice",
+            real_deposit_msg,
+            tx_bytes,
+            vout,
+            blockhash,
+            1,
+            vec![]
+        )
+    );
+}
