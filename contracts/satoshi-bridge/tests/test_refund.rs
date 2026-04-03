@@ -540,3 +540,69 @@ async fn test_refund_race_deposit_wins() {
     // 6. nBTC still there — deposit was the winner
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
 }
+
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_refund_after_deposit_fails() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").id().clone(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: Some(TARGET_ADDRESS.to_string()),
+    };
+
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "a8a8069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f25",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 100_000)],
+    );
+    let vout: u32 = 0;
+    let blockhash =
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+
+    // 1. verify_deposit — Relayer finalizes deposit first
+    check!(
+        print "verify_deposit"
+        context.verify_deposit(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            blockhash.clone(),
+            1,
+            vec![]
+        )
+    );
+
+    // 2. nBTC minted to alice
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
+
+    // 3. request_refund fails — UTXO already verified via deposit
+    check!(
+        context.request_refund(
+            "alice",
+            deposit_msg,
+            tx_bytes,
+            vout,
+            blockhash,
+            1,
+            vec![]
+        ),
+        "UTXO already verified via deposit"
+    );
+
+    // 4. nBTC still there
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
+}
