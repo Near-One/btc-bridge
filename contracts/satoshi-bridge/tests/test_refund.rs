@@ -606,3 +606,80 @@ async fn test_refund_after_deposit_fails() {
     // 4. nBTC still there
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
 }
+
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_refund_reject_then_deposit_succeeds() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").id().clone(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: Some(TARGET_ADDRESS.to_string()),
+    };
+
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "b9b9069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f26",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 100_000)],
+    );
+    let vout: u32 = 0;
+    let blockhash =
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+
+    // 1. Request refund
+    check!(
+        print "request_refund"
+        context.request_refund(
+            "alice",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            blockhash.clone(),
+            1,
+            vec![]
+        )
+    );
+
+    let key = utxo_storage_key(&tx_bytes, vout);
+
+    // 2. DAO rejects the refund
+    check!(
+        print "reject_refund"
+        context.reject_refund("root", &key)
+    );
+
+    // 3. execute_refund fails — request was rejected
+    check!(
+        context.execute_refund("alice", &key),
+        "Refund request not found"
+    );
+
+    // 4. verify_deposit works normally — UTXO was not marked
+    check!(
+        print "verify_deposit"
+        context.verify_deposit(
+            "relayer",
+            deposit_msg,
+            tx_bytes,
+            vout,
+            blockhash,
+            1,
+            vec![]
+        )
+    );
+
+    // 5. nBTC minted to alice
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
+}
