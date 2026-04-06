@@ -409,11 +409,12 @@ impl Contract {
 
 pub fn generate_btc_pending_sign_id(payload_preimages: &[Vec<u8>]) -> String {
     let hash_bytes = env::sha256_array(
-        &payload_preimages
+        payload_preimages
             .iter()
             .flatten()
             .copied()
-            .collect::<Vec<u8>>(),
+            .collect::<Vec<u8>>()
+            .as_slice(),
     );
     hex::encode(hash_bytes)
 }

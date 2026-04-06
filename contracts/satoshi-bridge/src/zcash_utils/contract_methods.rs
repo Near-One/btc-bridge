@@ -19,7 +19,7 @@ macro_rules! define_rbf_callback {
                 chain_specific_data: Option<ChainSpecificData>,
             ) {
                 let predecessor_account_id = env::predecessor_account_id();
-                self.get_last_block_height_promise().then(
+                let _ = self.get_last_block_height_promise().then(
                     Self::ext(env::current_account_id())
                         .with_static_gas(GAS_RBF_CALL_BACK)
                         .$callback_name(
@@ -248,7 +248,7 @@ impl Contract {
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
     ) {
-        self.get_last_block_height_promise().then(
+        let _ = self.get_last_block_height_promise().then(
             Self::ext(env::current_account_id())
                 .with_static_gas(GAS_FOR_ACTIVE_UTXO_MANAGMENT_CALLBACK)
                 .active_utxo_management_callback(account_id, input, output),
