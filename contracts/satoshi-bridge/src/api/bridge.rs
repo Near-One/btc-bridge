@@ -431,6 +431,18 @@ impl Contract {
 impl Contract {
     // ── Refund API (Bitcoin only) ──
 
+    /// Submit a refund request for a deposit that was never finalized via `verify_deposit`.
+    /// The BTC transaction is verified through the Light Client to prove the deposit exists.
+    /// After the timelock period, anyone can call `execute_refund` to initiate the return.
+    ///
+    /// # Arguments
+    ///
+    /// * `deposit_msg` - The original deposit message (must contain `refund_address`).
+    /// * `tx_bytes` - BTC transaction bytes proving the deposit.
+    /// * `vout` - Output index of the deposit in the transaction.
+    /// * `tx_block_blockhash` - Block hash containing the transaction.
+    /// * `tx_index` - Transaction index within the block.
+    /// * `merkle_proof` - Merkle proof for Light Client verification.
     #[pause(except(roles(Role::DAO)))]
     pub fn request_refund(
         &mut self,
@@ -451,6 +463,12 @@ impl Contract {
         )
     }
 
+    /// Reject a pending refund request. DAO or Operator only.
+    /// Removes the request from storage; the user cannot execute it after rejection.
+    ///
+    /// # Arguments
+    ///
+    /// * `utxo_storage_key` - The UTXO key identifying the refund request (`{tx_id}@{vout}`).
     #[payable]
     #[access_control_any(roles(Role::DAO, Role::Operator))]
     pub fn reject_refund(&mut self, utxo_storage_key: String) {
@@ -458,6 +476,14 @@ impl Contract {
         self.internal_reject_refund(utxo_storage_key);
     }
 
+    /// Execute a refund after the timelock has passed. Builds a BTC transaction
+    /// that sends the deposit UTXO back to the `refund_address` specified in the original
+    /// `DepositMsg`. Creates a `BTCPendingInfo` entry for the MPC sign pipeline.
+    /// Marks the UTXO in `verified_deposit_utxo` to prevent future `verify_deposit`.
+    ///
+    /// # Arguments
+    ///
+    /// * `utxo_storage_key` - The UTXO key identifying the refund request (`{tx_id}@{vout}`).
     #[payable]
     #[pause(except(roles(Role::DAO)))]
     pub fn execute_refund(&mut self, utxo_storage_key: String) {
@@ -468,6 +494,15 @@ impl Contract {
         self.internal_execute_refund(utxo_storage_key);
     }
 
+    /// Verify that the refund BTC transaction has been confirmed on the Bitcoin network.
+    /// Cleans up the `BTCPendingInfo` after successful verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `tx_id` - Transaction ID of the confirmed refund transaction.
+    /// * `tx_block_blockhash` - Block hash containing the transaction.
+    /// * `tx_index` - Transaction index within the block.
+    /// * `merkle_proof` - Merkle proof for Light Client verification.
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_refund(
         &mut self,
