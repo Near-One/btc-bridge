@@ -517,7 +517,7 @@ impl Contract {
     /// * `tx_index` - Transaction index within the block.
     /// * `merkle_proof` - Merkle proof for Light Client verification.
     #[pause(except(roles(Role::DAO)))]
-    pub fn verify_refund(
+    pub fn verify_refund_finalize(
         &mut self,
         tx_id: String,
         tx_block_blockhash: String,
@@ -530,7 +530,7 @@ impl Contract {
             btc_pending_info.tx_bytes_with_sign.is_some(),
             "Missing tx_bytes_with_sign"
         );
-        self.internal_verify_refund(
+        self.internal_verify_refund_finalize(
             tx_id,
             tx_block_blockhash,
             tx_index,

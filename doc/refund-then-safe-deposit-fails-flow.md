@@ -17,8 +17,8 @@ but callback panics with "Already deposit utxo".
 | 7 | `sign` (MPC) | `contracts/satoshi-bridge/src/chain_signature.rs:57` |
 | 8 | `sign_btc_transaction_callback` | `contracts/satoshi-bridge/src/chain_signature.rs:135` |
 | 9 | `safe_verify_deposit` | `contracts/satoshi-bridge/src/api/bridge.rs:95` |
-| 10 | `verify_refund` | `contracts/satoshi-bridge/src/api/bridge.rs` |
-| 11 | `verify_refund_callback` | `contracts/satoshi-bridge/src/refund.rs` |
+| 10 | `verify_refund_finalize` | `contracts/satoshi-bridge/src/api/bridge.rs` |
+| 11 | `verify_refund_finalize_callback` | `contracts/satoshi-bridge/src/refund.rs` |
 
 ## Sequence Diagram
 
@@ -90,12 +90,12 @@ sequenceDiagram
         Note over B: PANIC: "Already deposit utxo"
     end
 
-    R->>B: verify_refund(tx_id, tx_proof)<br/>📄 api/bridge.rs
+    R->>B: verify_refund_finalize(tx_id, tx_proof)<br/>📄 api/bridge.rs
 
     B->>LC: verify_transaction_inclusion(tx_id, merkle_proof)
     LC-->>B: valid
 
-    Note over B: verify_refund_callback
+    Note over B: verify_refund_finalize_callback
     B->>B: Remove BTCPendingInfo
 
     Note over R,B: Relayer tries safe_verify_deposit

@@ -284,7 +284,7 @@ impl Contract {
     }
 
     /// Verify refund transaction was included in Bitcoin blockchain.
-    pub fn internal_verify_refund(
+    pub fn internal_verify_refund_finalize(
         &self,
         tx_id: String,
         tx_block_blockhash: String,
@@ -305,7 +305,7 @@ impl Contract {
         .then(
             Self::ext(env::current_account_id())
                 .with_static_gas(GAS_FOR_VERIFY_REFUND_CALLBACK)
-                .verify_refund_callback(tx_id),
+                .verify_refund_finalize_callback(tx_id),
         )
     }
 }
@@ -313,7 +313,7 @@ impl Contract {
 #[near]
 impl Contract {
     #[private]
-    pub fn verify_refund_callback(&mut self, tx_id: String) -> bool {
+    pub fn verify_refund_finalize_callback(&mut self, tx_id: String) -> bool {
         let result_bytes = env::promise_result_checked(0, MAX_BOOL_RESULT)
             .expect("Call verify_transaction_inclusion failed");
         let is_valid = serde_json::from_slice::<bool>(&result_bytes)

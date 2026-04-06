@@ -1323,7 +1323,7 @@ impl Context {
             .await
     }
 
-    pub async fn verify_refund(
+    pub async fn verify_refund_finalize(
         &self,
         user: &str,
         tx_id: &str,
@@ -1332,7 +1332,7 @@ impl Context {
         merkle_proof: Vec<String>,
     ) -> Result<ExecutionFinalResult> {
         self.get_account_by_name(user)
-            .call(self.bridge_contract.id(), "verify_refund")
+            .call(self.bridge_contract.id(), "verify_refund_finalize")
             .args_json(json!({
                 "tx_id": tx_id,
                 "tx_block_blockhash": tx_block_blockhash,

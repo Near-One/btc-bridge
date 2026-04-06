@@ -150,8 +150,8 @@ async fn test_refund_basic_flow() {
     let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
     let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
     check!(
-        print "verify_refund"
-        context.verify_refund(
+        print "verify_refund_finalize"
+        context.verify_refund_finalize(
             "relayer",
             &pending_keys[0],
             "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
@@ -440,10 +440,10 @@ async fn test_refund_then_deposit_fails() {
         "Already deposit utxo"
     );
 
-    // 6. verify_refund — finalize the refund
+    // 6. verify_refund_finalize — finalize the refund
     check!(
-        print "verify_refund"
-        context.verify_refund(
+        print "verify_refund_finalize"
+        context.verify_refund_finalize(
             "relayer",
             &pending_keys[0],
             blockhash.clone(),
@@ -459,7 +459,7 @@ async fn test_refund_then_deposit_fails() {
         .unwrap()
         .is_empty());
 
-    // 8. verify_deposit STILL blocked after verify_refund
+    // 8. verify_deposit STILL blocked after verify_refund_finalize
     check!(
         context.verify_deposit("relayer", deposit_msg, tx_bytes, vout, blockhash, 1, vec![]),
         "Already deposit utxo"
@@ -1106,10 +1106,10 @@ async fn test_refund_then_safe_deposit_fails() {
         "Already deposit utxo"
     );
 
-    // 6. verify_refund — finalize the refund
+    // 6. verify_refund_finalize — finalize the refund
     check!(
-        print "verify_refund"
-        context.verify_refund(
+        print "verify_refund_finalize"
+        context.verify_refund_finalize(
             "relayer",
             &pending_keys[0],
             blockhash.clone(),
@@ -1125,7 +1125,7 @@ async fn test_refund_then_safe_deposit_fails() {
         .unwrap()
         .is_empty());
 
-    // 8. safe_verify_deposit STILL blocked after verify_refund
+    // 8. safe_verify_deposit STILL blocked after verify_refund_finalize
     check!(
         context.safe_verify_deposit("relayer", deposit_msg, tx_bytes, vout, blockhash, 1, vec![]),
         "Already deposit utxo"

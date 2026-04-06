@@ -86,11 +86,11 @@ sequenceDiagram
         Note over B: PANIC: "Not original tx"
     end
 
-    R->>B: verify_refund(tx_id, tx_proof)<br/>📄 api/bridge.rs
+    R->>B: verify_refund_finalize(tx_id, tx_proof)<br/>📄 api/bridge.rs
 
     B->>LC: verify_transaction_inclusion(tx_id, merkle_proof)<br/>📄 btc_light_client/mod.rs:113
     LC-->>B: valid
 
-    Note over B: verify_refund_callback<br/>📄 refund.rs
+    Note over B: verify_refund_finalize_callback<br/>📄 refund.rs
     B->>B: Remove BTCPendingInfo
 ```
