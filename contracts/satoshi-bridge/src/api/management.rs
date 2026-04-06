@@ -460,6 +460,7 @@ impl Contract {
         self.internal_mut_config().unhealthy_utxo_amount = unhealthy_utxo_amount.0;
     }
 
+    #[cfg(not(feature = "zcash"))]
     #[payable]
     #[access_control_any(roles(Role::DAO))]
     pub fn set_refund_timelock_sec(&mut self, refund_timelock_sec: u64) {

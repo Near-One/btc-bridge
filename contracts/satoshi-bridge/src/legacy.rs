@@ -192,7 +192,8 @@ impl From<ConfigV0> for Config {
             unhealthy_utxo_amount: 1000,
             #[cfg(feature = "zcash")]
             expiry_height_gap: 1000,
-            refund_timelock_sec: 0,
+            #[cfg(not(feature = "zcash"))]
+            refund_timelock_sec: 14 * 24 * 3600, // 2 weeks
         }
     }
 }
@@ -333,7 +334,8 @@ impl From<ConfigV1> for Config {
             unhealthy_utxo_amount,
             #[cfg(feature = "zcash")]
             expiry_height_gap,
-            refund_timelock_sec: 0,
+            #[cfg(not(feature = "zcash"))]
+            refund_timelock_sec: 14 * 24 * 3600, // 2 weeks
         }
     }
 }

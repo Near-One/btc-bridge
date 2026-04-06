@@ -111,7 +111,7 @@ pub struct Config {
     #[cfg(feature = "zcash")]
     pub expiry_height_gap: u32,
     // Timelock in seconds before a refund request can be executed.
-    #[serde(default)]
+    #[cfg(not(feature = "zcash"))]
     pub refund_timelock_sec: u64,
 }
 

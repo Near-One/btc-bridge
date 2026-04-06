@@ -81,6 +81,7 @@ pub fn init_contract() -> Contract {
         unhealthy_utxo_amount: 1000,
         #[cfg(feature = "zcash")]
         expiry_height_gap: 1000,
+        #[cfg(not(feature = "zcash"))]
         refund_timelock_sec: 3600,
     })
 }
