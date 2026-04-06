@@ -1,8 +1,9 @@
 use bitcoin::{Amount, OutPoint, TxOut};
 
 use crate::{
-    env, near, require, serde_json, BTCPendingInfo, Contract, ContractExt, DepositMsg, Event, Gas,
-    OriginalState, PendingInfoStage, PendingInfoState, Promise, UTXO, VUTXO,
+    env, near, promise_result_as_success, require, serde_json, BTCPendingInfo, Contract,
+    ContractExt, DepositMsg, Event, Gas, OriginalState, PendingInfoStage, PendingInfoState,
+    Promise, UTXO, VUTXO,
 };
 
 use crate::deposit_msg::get_deposit_path;
@@ -312,7 +313,7 @@ impl Contract {
     #[private]
     pub fn verify_refund_callback(&mut self, tx_id: String) -> bool {
         let result_bytes =
-            crate::promise_result_as_success().expect("Call verify_transaction_inclusion failed");
+            promise_result_as_success().expect("Call verify_transaction_inclusion failed");
         let is_valid = serde_json::from_slice::<bool>(&result_bytes)
             .expect("verify_transaction_inclusion return not bool");
         require!(is_valid, "verify_transaction_inclusion return false");
@@ -339,7 +340,7 @@ impl Contract {
         vout: usize,
     ) -> bool {
         let result_bytes =
-            crate::promise_result_as_success().expect("Call verify_transaction_inclusion failed");
+            promise_result_as_success().expect("Call verify_transaction_inclusion failed");
         let is_valid = serde_json::from_slice::<bool>(&result_bytes)
             .expect("verify_transaction_inclusion return not bool");
         require!(is_valid, "verify_transaction_inclusion return false");
