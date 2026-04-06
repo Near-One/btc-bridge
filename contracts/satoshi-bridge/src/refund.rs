@@ -104,7 +104,8 @@ impl Contract {
         );
 
         let config = self.internal_config();
-        let confirmations = self.get_confirmations(config, 0);
+        let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
+        let confirmations = self.get_confirmations(config, deposit_amount);
 
         self.verify_transaction_inclusion_promise(
             config.btc_light_client_account_id.clone(),
