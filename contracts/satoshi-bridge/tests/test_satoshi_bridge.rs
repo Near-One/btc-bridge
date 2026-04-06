@@ -2651,6 +2651,7 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         })
         .await
         .unwrap();
@@ -2664,6 +2665,7 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
                 post_actions: None,
                 extra_msg: None,
                 safe_deposit: None,
+                refund_address: None,
             },
             "tx_bytes": generate_transaction_bytes(
                 vec![(
@@ -2698,6 +2700,7 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
                 post_actions: None,
                 extra_msg: None,
                 safe_deposit: None,
+                refund_address: None,
             },
             "tx_bytes": generate_transaction_bytes(
                 vec![(

@@ -31,7 +31,7 @@ async fn test_refund_basic_flow() {
 
     // 1. Get deposit address with refund_address set
     let deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").id().clone(),
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
         safe_deposit: None,
@@ -183,7 +183,7 @@ async fn test_refund_reject() {
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
 
     let deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").id().clone(),
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
         safe_deposit: None,
@@ -242,7 +242,7 @@ async fn test_refund_no_refund_address() {
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
 
     let deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").id().clone(),
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
         safe_deposit: None,
@@ -285,7 +285,7 @@ async fn test_refund_duplicate_request() {
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
 
     let deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").id().clone(),
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
         safe_deposit: None,
@@ -343,7 +343,7 @@ async fn test_refund_then_deposit_fails() {
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
 
     let deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").id().clone(),
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
         safe_deposit: None,
@@ -470,7 +470,7 @@ async fn test_refund_race_deposit_wins() {
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
 
     let deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").id().clone(),
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
         safe_deposit: None,
@@ -554,7 +554,7 @@ async fn test_refund_after_deposit_fails() {
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
 
     let deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").id().clone(),
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
         safe_deposit: None,
@@ -611,7 +611,7 @@ async fn test_refund_reject_then_deposit_succeeds() {
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
 
     let deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").id().clone(),
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
         safe_deposit: None,
@@ -687,7 +687,7 @@ async fn test_refund_double_request_after_execute() {
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
 
     let deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").id().clone(),
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
         safe_deposit: None,
@@ -757,7 +757,7 @@ async fn test_refund_spoofed_refund_address() {
 
     // Alice creates a real deposit with her refund address
     let real_deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").id().clone(),
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
         safe_deposit: None,
@@ -784,7 +784,7 @@ async fn test_refund_spoofed_refund_address() {
     // Attacker creates a spoofed deposit_msg with a DIFFERENT refund_address
     // but same recipient_id — this changes the hash, so script_pubkey won't match
     let spoofed_deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").id().clone(),
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
         safe_deposit: None,
@@ -828,7 +828,7 @@ async fn test_refund_race_safe_deposit_wins() {
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
 
     let deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").id().clone(),
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
         safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
@@ -913,7 +913,7 @@ async fn test_refund_after_safe_deposit_fails() {
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
 
     let deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").id().clone(),
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
         safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
@@ -970,7 +970,7 @@ async fn test_refund_then_safe_deposit_fails() {
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
 
     let deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").id().clone(),
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
         safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
