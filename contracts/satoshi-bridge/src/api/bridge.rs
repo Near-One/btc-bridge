@@ -431,7 +431,7 @@ impl Contract {
 impl Contract {
     // ── Refund API (Bitcoin only) ──
 
-    /// Submit a refund request for a deposit that was never finalized via `verify_deposit`.
+    /// Submit a refund request for a deposit that was never finalized via `verify_deposit` or `safe_verify_deposit`.
     /// The BTC transaction is verified through the Light Client to prove the deposit exists.
     /// After the timelock period, anyone can call `execute_refund` to initiate the return.
     ///
@@ -443,6 +443,9 @@ impl Contract {
     /// * `tx_block_blockhash` - Block hash containing the transaction.
     /// * `tx_index` - Transaction index within the block.
     /// * `merkle_proof` - Merkle proof for Light Client verification.
+    /// * `gas_fee` - Optional custom gas fee. Only DAO or Operator can set this.
+    ///   If `None`, the default `config.max_btc_gas_fee` is used during `execute_refund`.
+    #[allow(clippy::too_many_arguments)]
     #[pause(except(roles(Role::DAO)))]
     pub fn request_refund(
         &mut self,
@@ -452,7 +455,16 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
+        gas_fee: Option<U128>,
     ) -> Promise {
+        if gas_fee.is_some() {
+            let caller = env::predecessor_account_id();
+            require!(
+                self.acl_has_role(Role::DAO.into(), caller.clone())
+                    || self.acl_has_role(Role::Operator.into(), caller),
+                "Only DAO or Operator can specify custom gas_fee"
+            );
+        }
         self.internal_request_refund(
             deposit_msg,
             tx_bytes,
@@ -460,6 +472,7 @@ impl Contract {
             tx_block_blockhash,
             tx_index,
             merkle_proof,
+            gas_fee.map(|v| v.0),
         )
     }
 

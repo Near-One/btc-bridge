@@ -69,7 +69,8 @@ async fn test_refund_basic_flow() {
             "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d"
                 .to_string(),
             1,
-            vec![]
+            vec![],
+            None
         )
     );
 
@@ -216,7 +217,8 @@ async fn test_refund_reject() {
             "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d"
                 .to_string(),
             1,
-            vec![]
+            vec![],
+            None
         )
     );
 
@@ -272,7 +274,8 @@ async fn test_refund_no_refund_address() {
             0,
             "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
             1,
-            vec![]
+            vec![],
+            None
         ),
         "DepositMsg must contain refund_address"
     );
@@ -317,7 +320,8 @@ async fn test_refund_duplicate_request() {
             "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d"
                 .to_string(),
             1,
-            vec![]
+            vec![],
+            None
         )
     );
 
@@ -330,7 +334,8 @@ async fn test_refund_duplicate_request() {
             0,
             "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
             1,
-            vec![]
+            vec![],
+            None
         ),
         "Refund request already exists for this UTXO"
     );
@@ -376,7 +381,8 @@ async fn test_refund_then_deposit_fails() {
             vout,
             blockhash.clone(),
             1,
-            vec![]
+            vec![],
+            None
         )
     );
 
@@ -503,7 +509,8 @@ async fn test_refund_race_deposit_wins() {
             vout,
             blockhash.clone(),
             1,
-            vec![]
+            vec![],
+            None
         )
     );
 
@@ -596,7 +603,16 @@ async fn test_refund_after_deposit_fails() {
 
     // 3. request_refund fails — UTXO already verified via deposit
     check!(
-        context.request_refund("alice", deposit_msg, tx_bytes, vout, blockhash, 1, vec![]),
+        context.request_refund(
+            "alice",
+            deposit_msg,
+            tx_bytes,
+            vout,
+            blockhash,
+            1,
+            vec![],
+            None
+        ),
         "UTXO already verified via deposit"
     );
 
@@ -644,7 +660,8 @@ async fn test_refund_reject_then_deposit_succeeds() {
             vout,
             blockhash.clone(),
             1,
-            vec![]
+            vec![],
+            None
         )
     );
 
@@ -720,7 +737,8 @@ async fn test_refund_double_request_after_execute() {
             vout,
             blockhash.clone(),
             1,
-            vec![]
+            vec![],
+            None
         )
     );
 
@@ -744,7 +762,16 @@ async fn test_refund_double_request_after_execute() {
 
     // 3. Second request_refund — should fail (UTXO marked in verified_deposit_utxo)
     check!(
-        context.request_refund("alice", deposit_msg, tx_bytes, vout, blockhash, 1, vec![]),
+        context.request_refund(
+            "alice",
+            deposit_msg,
+            tx_bytes,
+            vout,
+            blockhash,
+            1,
+            vec![],
+            None
+        ),
         "UTXO already verified via deposit"
     );
 }
@@ -801,7 +828,8 @@ async fn test_refund_spoofed_refund_address() {
             vout,
             blockhash.clone(),
             1,
-            vec![]
+            vec![],
+            None
         ),
         "Output script_pubkey does not match deposit address"
     );
@@ -816,7 +844,8 @@ async fn test_refund_spoofed_refund_address() {
             vout,
             blockhash,
             1,
-            vec![]
+            vec![],
+            None
         )
     );
 }
@@ -863,7 +892,8 @@ async fn test_refund_race_safe_deposit_wins() {
             vout,
             blockhash.clone(),
             1,
-            vec![]
+            vec![],
+            None
         )
     );
 
@@ -958,7 +988,16 @@ async fn test_refund_after_safe_deposit_fails() {
 
     // 3. request_refund fails — UTXO already verified
     check!(
-        context.request_refund("alice", deposit_msg, tx_bytes, vout, blockhash, 1, vec![]),
+        context.request_refund(
+            "alice",
+            deposit_msg,
+            tx_bytes,
+            vout,
+            blockhash,
+            1,
+            vec![],
+            None
+        ),
         "UTXO already verified via deposit"
     );
 }
@@ -1008,7 +1047,8 @@ async fn test_refund_then_safe_deposit_fails() {
             vout,
             blockhash.clone(),
             1,
-            vec![]
+            vec![],
+            None
         )
     );
 

@@ -23,6 +23,7 @@ pub struct RefundRequest {
     pub vout: usize,
     pub amount: u128,
     pub refund_address: String,
+    pub gas_fee: u128,
     pub created_at_sec: u32,
 }
 
@@ -62,6 +63,7 @@ impl From<RefundRequest> for VRefundRequest {
 
 impl Contract {
     /// Submit a refund request. Verifies the BTC transaction via Light Client first.
+    #[allow(clippy::too_many_arguments)]
     pub fn internal_request_refund(
         &self,
         deposit_msg: DepositMsg,
@@ -70,6 +72,7 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
+        gas_fee: Option<u128>,
     ) -> Promise {
         require!(
             deposit_msg.refund_address.is_some(),
@@ -114,7 +117,7 @@ impl Contract {
         .then(
             Self::ext(env::current_account_id())
                 .with_static_gas(GAS_FOR_REQUEST_REFUND_CALLBACK)
-                .request_refund_callback(deposit_msg, tx_bytes, vout),
+                .request_refund_callback(deposit_msg, tx_bytes, vout, gas_fee),
         )
     }
 
@@ -181,7 +184,7 @@ impl Contract {
             .expect("Invalid refund script_pubkey");
 
         // Calculate gas fee: entire remainder goes to gas
-        let gas_fee = config.max_btc_gas_fee;
+        let gas_fee = refund_request.gas_fee;
         let refund_amount = refund_request
             .amount
             .checked_sub(gas_fee)
@@ -337,6 +340,7 @@ impl Contract {
         deposit_msg: DepositMsg,
         tx_bytes: Vec<u8>,
         vout: usize,
+        gas_fee: Option<u128>,
     ) -> bool {
         let result_bytes = env::promise_result_checked(0, MAX_BOOL_RESULT)
             .expect("Call verify_transaction_inclusion failed");
@@ -381,11 +385,14 @@ impl Contract {
             .clone()
             .expect("No refund address");
 
+        let resolved_gas_fee = gas_fee.unwrap_or(config.max_btc_gas_fee);
+
         Event::RefundRequested {
             deposit_msg: deposit_msg.clone(),
             utxo_storage_key: utxo_storage_key.clone(),
             amount: amount.into(),
             refund_address: refund_address.clone(),
+            gas_fee: resolved_gas_fee.into(),
         }
         .emit();
 
@@ -396,6 +403,7 @@ impl Contract {
             vout,
             amount,
             refund_address,
+            gas_fee: resolved_gas_fee,
             created_at_sec: nano_to_sec(env::block_timestamp()),
         };
 

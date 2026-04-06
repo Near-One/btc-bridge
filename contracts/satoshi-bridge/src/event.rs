@@ -97,6 +97,7 @@ pub enum Event<'a> {
         utxo_storage_key: String,
         amount: U128,
         refund_address: String,
+        gas_fee: U128,
     },
     RefundRejected {
         utxo_storage_key: String,

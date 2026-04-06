@@ -1273,6 +1273,7 @@ impl Context {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
+        gas_fee: Option<U128>,
     ) -> Result<ExecutionFinalResult> {
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "request_refund")
@@ -1283,6 +1284,7 @@ impl Context {
                 "tx_block_blockhash": tx_block_blockhash,
                 "tx_index": tx_index,
                 "merkle_proof": merkle_proof,
+                "gas_fee": gas_fee,
             }))
             .max_gas()
             .transact()
