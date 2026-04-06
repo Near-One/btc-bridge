@@ -60,6 +60,7 @@ impl From<ContractDataV0> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
+            #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }
@@ -396,6 +397,7 @@ impl From<ContractDataV1> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
+            #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }
@@ -471,6 +473,7 @@ impl From<ContractDataV2> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
+            #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }

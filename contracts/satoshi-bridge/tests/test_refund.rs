@@ -137,7 +137,7 @@ async fn test_refund_basic_flow() {
     // 8. Sign the refund transaction (1 input)
     check!(
         print "sign_btc_transaction"
-        context.sign_btc_transaction("relayer", &pending_keys[0], 0, 0)
+        context.sign_btc_transaction("alice", &pending_keys[0], 0, 0)
     );
 
     // 9. After signing all inputs, should transition to pending_verify
@@ -160,7 +160,11 @@ async fn test_refund_basic_flow() {
     );
 
     // 11. Pending info cleaned up
-    assert!(context.get_btc_pending_infos_paged().await.unwrap().is_empty());
+    assert!(context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .is_empty());
 
     // 12. Refund request is gone (can't execute twice)
     check!(
@@ -266,8 +270,7 @@ async fn test_refund_no_refund_address() {
             deposit_msg,
             tx_bytes,
             0,
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d"
-                .to_string(),
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
             1,
             vec![]
         ),
@@ -325,8 +328,7 @@ async fn test_refund_duplicate_request() {
             deposit_msg,
             tx_bytes,
             0,
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d"
-                .to_string(),
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
             1,
             vec![]
         ),
@@ -362,8 +364,7 @@ async fn test_refund_then_deposit_fails() {
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
-    let blockhash =
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
 
     // 1. Request refund
     check!(
@@ -416,7 +417,7 @@ async fn test_refund_then_deposit_fails() {
     let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
     check!(
         print "sign_btc_transaction"
-        context.sign_btc_transaction("relayer", &pending_keys[0], 0, 0)
+        context.sign_btc_transaction("alice", &pending_keys[0], 0, 0)
     );
 
     // 5. verify_deposit STILL blocked after sign (after broadcast)
@@ -446,19 +447,15 @@ async fn test_refund_then_deposit_fails() {
     );
 
     // 7. Pending info cleaned up
-    assert!(context.get_btc_pending_infos_paged().await.unwrap().is_empty());
+    assert!(context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .is_empty());
 
     // 8. verify_deposit STILL blocked after verify_refund
     check!(
-        context.verify_deposit(
-            "relayer",
-            deposit_msg,
-            tx_bytes,
-            vout,
-            blockhash,
-            1,
-            vec![]
-        ),
+        context.verify_deposit("relayer", deposit_msg, tx_bytes, vout, blockhash, 1, vec![]),
         "Already deposit utxo"
     );
 
@@ -494,8 +491,7 @@ async fn test_refund_race_deposit_wins() {
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
-    let blockhash =
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
 
     // 1. Request refund
     check!(
@@ -579,8 +575,7 @@ async fn test_refund_after_deposit_fails() {
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
-    let blockhash =
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
 
     // 1. verify_deposit — Relayer finalizes deposit first
     check!(
@@ -601,15 +596,7 @@ async fn test_refund_after_deposit_fails() {
 
     // 3. request_refund fails — UTXO already verified via deposit
     check!(
-        context.request_refund(
-            "alice",
-            deposit_msg,
-            tx_bytes,
-            vout,
-            blockhash,
-            1,
-            vec![]
-        ),
+        context.request_refund("alice", deposit_msg, tx_bytes, vout, blockhash, 1, vec![]),
         "UTXO already verified via deposit"
     );
 
@@ -645,8 +632,7 @@ async fn test_refund_reject_then_deposit_succeeds() {
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
-    let blockhash =
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
 
     // 1. Request refund
     check!(
@@ -722,8 +708,7 @@ async fn test_refund_double_request_after_execute() {
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
-    let blockhash =
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
 
     // 1. Request refund
     check!(
@@ -759,15 +744,7 @@ async fn test_refund_double_request_after_execute() {
 
     // 3. Second request_refund — should fail (UTXO marked in verified_deposit_utxo)
     check!(
-        context.request_refund(
-            "alice",
-            deposit_msg,
-            tx_bytes,
-            vout,
-            blockhash,
-            1,
-            vec![]
-        ),
+        context.request_refund("alice", deposit_msg, tx_bytes, vout, blockhash, 1, vec![]),
         "UTXO already verified via deposit"
     );
 }
@@ -802,8 +779,7 @@ async fn test_refund_spoofed_refund_address() {
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
-    let blockhash =
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
 
     // Attacker creates a spoofed deposit_msg with a DIFFERENT refund_address
     // but same recipient_id — this changes the hash, so script_pubkey won't match
@@ -875,8 +851,7 @@ async fn test_refund_race_safe_deposit_wins() {
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
-    let blockhash =
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
 
     // 1. Request refund
     check!(
@@ -961,8 +936,7 @@ async fn test_refund_after_safe_deposit_fails() {
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
-    let blockhash =
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
 
     // 1. Register alice in nBTC and do safe_verify_deposit
     check!(context.storage_deposit("nbtc", "alice"));
@@ -984,15 +958,7 @@ async fn test_refund_after_safe_deposit_fails() {
 
     // 3. request_refund fails — UTXO already verified
     check!(
-        context.request_refund(
-            "alice",
-            deposit_msg,
-            tx_bytes,
-            vout,
-            blockhash,
-            1,
-            vec![]
-        ),
+        context.request_refund("alice", deposit_msg, tx_bytes, vout, blockhash, 1, vec![]),
         "UTXO already verified via deposit"
     );
 }
@@ -1027,8 +993,7 @@ async fn test_refund_then_safe_deposit_fails() {
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
-    let blockhash =
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
 
     // Register alice in nBTC (needed for safe_verify_deposit attempts)
     check!(context.storage_deposit("nbtc", "alice"));
@@ -1084,7 +1049,7 @@ async fn test_refund_then_safe_deposit_fails() {
     let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
     check!(
         print "sign_btc_transaction"
-        context.sign_btc_transaction("relayer", &pending_keys[0], 0, 0)
+        context.sign_btc_transaction("alice", &pending_keys[0], 0, 0)
     );
 
     // 5. safe_verify_deposit STILL blocked after sign (after broadcast)
@@ -1114,19 +1079,15 @@ async fn test_refund_then_safe_deposit_fails() {
     );
 
     // 7. Cleaned up
-    assert!(context.get_btc_pending_infos_paged().await.unwrap().is_empty());
+    assert!(context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .is_empty());
 
     // 8. safe_verify_deposit STILL blocked after verify_refund
     check!(
-        context.safe_verify_deposit(
-            "relayer",
-            deposit_msg,
-            tx_bytes,
-            vout,
-            blockhash,
-            1,
-            vec![]
-        ),
+        context.safe_verify_deposit("relayer", deposit_msg, tx_bytes, vout, blockhash, 1, vec![]),
         "Already deposit utxo"
     );
 

@@ -235,7 +235,7 @@ async fn test_base() {
                 post_actions: None,
                 extra_msg: None,
                 safe_deposit: None,
-            refund_address: None,
+                refund_address: None,
             },
             generate_transaction_bytes(
                 vec![(

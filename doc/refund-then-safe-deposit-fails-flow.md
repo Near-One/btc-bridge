@@ -72,14 +72,14 @@ sequenceDiagram
         Note over B: PANIC: "Already deposit utxo"
     end
 
-    R->>B: sign_btc_transaction(sign_index)<br/>📄 api/chain_signatures.rs:21
+    U->>B: sign_btc_transaction(sign_index)<br/>📄 api/chain_signatures.rs:21
 
     B->>MPC: sign(payload, path, key_version)<br/>📄 chain_signature.rs:57
     MPC-->>B: signature
 
     Note over B: sign_btc_transaction_callback<br/>📄 chain_signature.rs:135
 
-    R->>BTC: Broadcast refund transaction
+    U->>BTC: Broadcast refund transaction
     BTC-->>U: BTC returned to refund_address
 
     rect rgb(255, 200, 200)

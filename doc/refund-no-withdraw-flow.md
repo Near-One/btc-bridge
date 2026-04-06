@@ -63,14 +63,14 @@ sequenceDiagram
 
     U->>B: execute_refund(utxo_storage_key)<br/>📄 api/bridge.rs:454
 
-    R->>B: sign_btc_transaction(sign_index)<br/>📄 api/chain_signatures.rs:21
+    U->>B: sign_btc_transaction(sign_index)<br/>📄 api/chain_signatures.rs:21
 
     B->>MPC: sign(payload, path, key_version)<br/>📄 chain_signature.rs:57
     MPC-->>B: signature
 
     Note over B: sign_btc_transaction_callback<br/>📄 chain_signature.rs:135
 
-    R->>BTC: Broadcast refund transaction
+    U->>BTC: Broadcast refund transaction
     BTC-->>U: BTC returned to refund_address
 
     Note over R,B: Attempts to use withdraw operations on refund tx

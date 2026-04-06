@@ -419,8 +419,12 @@ impl Contract {
         let config = self.internal_config();
         config.change_address.clone()
     }
+}
 
-    // ── Refund API ──
+#[cfg(not(feature = "zcash"))]
+#[near]
+impl Contract {
+    // ── Refund API (Bitcoin only) ──
 
     #[pause(except(roles(Role::DAO)))]
     pub fn request_refund(

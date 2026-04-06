@@ -1244,7 +1244,6 @@ impl UpgradeContext {
             .unwrap()
             .json::<String>()
     }
-
 }
 
 impl Context {

@@ -9,8 +9,6 @@ use crate::deposit_msg::get_deposit_path;
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::utils::{generate_utxo_storage_key, nano_to_sec};
 
-use crate::PromiseOrValue;
-
 pub const GAS_FOR_REQUEST_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
 pub const GAS_FOR_VERIFY_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
 
@@ -82,11 +80,17 @@ impl Contract {
             crate::WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
                 .expect("Deserialization tx_bytes failed");
         let tx_id = transaction.compute_txid().to_string();
-        let utxo_storage_key = generate_utxo_storage_key(tx_id.clone(), u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")));
+        let utxo_storage_key = generate_utxo_storage_key(
+            tx_id.clone(),
+            u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
+        );
 
         // Must not be already verified/finalized
         require!(
-            !self.data().verified_deposit_utxo.contains(&utxo_storage_key),
+            !self
+                .data()
+                .verified_deposit_utxo
+                .contains(&utxo_storage_key),
             "UTXO already verified via deposit"
         );
 
@@ -162,16 +166,16 @@ impl Contract {
         let txid = transaction.compute_txid();
         let outpoint = OutPoint {
             txid,
-            vout: u32::try_from(refund_request.vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
+            vout: u32::try_from(refund_request.vout)
+                .unwrap_or_else(|_| env::panic_str("vout overflow")),
         };
 
         // The deposit UTXO output (for witness)
         let deposit_output = transaction.output()[refund_request.vout].clone();
 
         // Parse refund address
-        let refund_addr =
-            crate::network::Address::parse(&refund_address, config.chain.clone())
-                .expect("Invalid refund address");
+        let refund_addr = crate::network::Address::parse(&refund_address, config.chain.clone())
+            .expect("Invalid refund address");
         let refund_script_pubkey = refund_addr
             .script_pubkey()
             .expect("Invalid refund script_pubkey");
@@ -209,6 +213,7 @@ impl Contract {
         });
 
         // Create BTCPendingInfo
+        let psbt_hex = psbt.serialize();
         let btc_pending_id = psbt.get_pending_id();
         let caller = env::predecessor_account_id();
 
@@ -230,7 +235,7 @@ impl Contract {
             withdraw_fee: 0,
             gas_fee,
             burn_amount: gas_fee,
-            psbt_hex: psbt.serialize(),
+            psbt_hex,
             vutxos: vec![vutxo],
             signatures: vec![None; 1],
             tx_bytes_with_sign: None,
@@ -306,8 +311,8 @@ impl Contract {
 impl Contract {
     #[private]
     pub fn verify_refund_callback(&mut self, tx_id: String) -> bool {
-        let result_bytes = crate::promise_result_as_success()
-            .expect("Call verify_transaction_inclusion failed");
+        let result_bytes =
+            crate::promise_result_as_success().expect("Call verify_transaction_inclusion failed");
         let is_valid = serde_json::from_slice::<bool>(&result_bytes)
             .expect("verify_transaction_inclusion return not bool");
         require!(is_valid, "verify_transaction_inclusion return false");
@@ -333,8 +338,8 @@ impl Contract {
         tx_bytes: Vec<u8>,
         vout: usize,
     ) -> bool {
-        let result_bytes = crate::promise_result_as_success()
-            .expect("Call verify_transaction_inclusion failed");
+        let result_bytes =
+            crate::promise_result_as_success().expect("Call verify_transaction_inclusion failed");
         let is_valid = serde_json::from_slice::<bool>(&result_bytes)
             .expect("verify_transaction_inclusion return not bool");
         require!(is_valid, "verify_transaction_inclusion return false");
@@ -357,11 +362,17 @@ impl Contract {
 
         let amount = u128::from(output.value.to_sat());
         let tx_id = transaction.compute_txid().to_string();
-        let utxo_storage_key = generate_utxo_storage_key(tx_id, u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")));
+        let utxo_storage_key = generate_utxo_storage_key(
+            tx_id,
+            u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
+        );
 
         // Double-check not finalized (could have been verified between request and callback)
         require!(
-            !self.data().verified_deposit_utxo.contains(&utxo_storage_key),
+            !self
+                .data()
+                .verified_deposit_utxo
+                .contains(&utxo_storage_key),
             "UTXO already verified via deposit"
         );
 
