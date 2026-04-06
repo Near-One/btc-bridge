@@ -28,7 +28,7 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
     // Deposit for alice using Zcash transaction format
     let alice_btc_deposit_address = context
         .get_user_deposit_address(DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -61,7 +61,7 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
     check!(context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -162,7 +162,7 @@ async fn test_orchard_withdrawal_amount_mismatch() {
     // Deposit for alice using Zcash transaction format
     let alice_btc_deposit_address = context
         .get_user_deposit_address(DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
@@ -187,7 +187,7 @@ async fn test_orchard_withdrawal_amount_mismatch() {
     check!(context.verify_deposit(
         "relayer",
         DepositMsg {
-            recipient_id: context.get_account_by_name("alice").id().clone(),
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,

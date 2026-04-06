@@ -1,6 +1,6 @@
 use crate::{
-    env, near, promise_result_as_success, require, serde_json, BTCPendingInfo, Contract,
-    ContractExt, Gas, Promise, PromiseOrValue,
+    env, near, require, serde_json, BTCPendingInfo, Contract, ContractExt, Gas, Promise,
+    PromiseOrValue, MAX_BOOL_RESULT,
 };
 
 pub const GAS_FOR_VERIFY_WITHDRAW_CALL_BACK: Gas = Gas::from_tgas(50);
@@ -37,8 +37,8 @@ impl Contract {
 impl Contract {
     #[private]
     pub fn internal_verify_withdraw_callback(&mut self, tx_id: String) -> PromiseOrValue<bool> {
-        let result_bytes =
-            promise_result_as_success().expect("Call verify_transaction_inclusion failed");
+        let result_bytes = env::promise_result_checked(0, MAX_BOOL_RESULT)
+            .expect("Call verify_transaction_inclusion failed");
         let is_valid = serde_json::from_slice::<bool>(&result_bytes)
             .expect("verify_transaction_inclusion return not bool");
         require!(is_valid, "verify_transaction_inclusion return false");

@@ -1,12 +1,12 @@
-use near_sdk::{serde_json::Value, PromiseResult};
+use near_sdk::serde_json::Value;
 
 use crate::{
     burn::GAS_FOR_BURN_CALL,
     env, ext_nbtc,
     mint::{GAS_FOR_MINT_CALL, GAS_FOR_MINT_CALL_BACK},
-    near, promise_result_as_success, require, serde_json, AccountId, Contract, ContractExt,
-    DepositMsg, Event, Gas, NearToken, PendingUTXOInfo, PostAction, Promise, PromiseOrValue,
-    SafeDepositMsg, U128,
+    near, require, serde_json, AccountId, Contract, ContractExt, DepositMsg, Event, Gas, NearToken,
+    PendingUTXOInfo, PostAction, Promise, PromiseOrValue, SafeDepositMsg, MAX_BOOL_RESULT,
+    MAX_FT_TRANSFER_CALL_RESULT, U128,
 };
 
 pub const GAS_FOR_VERIFY_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(190);
@@ -118,8 +118,8 @@ impl Contract {
         recipient_id: AccountId,
         pending_utxo_info: PendingUTXOInfo,
     ) -> PromiseOrValue<bool> {
-        let result_bytes =
-            promise_result_as_success().expect("Call verify_transaction_inclusion failed");
+        let result_bytes = env::promise_result_checked(0, MAX_BOOL_RESULT)
+            .expect("Call verify_transaction_inclusion failed");
         let is_valid = serde_json::from_slice::<bool>(&result_bytes)
             .expect("verify_transaction_inclusion return not bool");
         require!(is_valid, "verify_transaction_inclusion return false");
@@ -153,8 +153,8 @@ impl Contract {
         pending_utxo_info: PendingUTXOInfo,
         post_actions: Option<Vec<PostAction>>,
     ) -> PromiseOrValue<bool> {
-        let result_bytes =
-            promise_result_as_success().expect("Call verify_transaction_inclusion failed");
+        let result_bytes = env::promise_result_checked(0, MAX_BOOL_RESULT)
+            .expect("Call verify_transaction_inclusion failed");
         let is_valid = serde_json::from_slice::<bool>(&result_bytes)
             .expect("verify_transaction_inclusion return not bool");
         require!(is_valid, "verify_transaction_inclusion return false");
@@ -183,8 +183,8 @@ impl Contract {
         msg: String,
         pending_utxo_info: PendingUTXOInfo,
     ) -> PromiseOrValue<bool> {
-        let result_bytes =
-            promise_result_as_success().expect("Call verify_transaction_inclusion failed");
+        let result_bytes = env::promise_result_checked(0, MAX_BOOL_RESULT)
+            .expect("Call verify_transaction_inclusion failed");
         let is_valid = serde_json::from_slice::<bool>(&result_bytes)
             .expect("verify_transaction_inclusion return not bool");
         require!(is_valid, "verify_transaction_inclusion return false");
@@ -238,10 +238,12 @@ impl Contract {
                     mint_amount,
                     relayer_account_id,
                     U128(0),
-                );
+                )
+                .detach();
 
             Promise::new(env::signer_account_id())
-                .transfer(self.required_balance_for_safe_deposit());
+                .transfer(self.required_balance_for_safe_deposit())
+                .detach();
         }
 
         Event::VerifyDepositDetails {
@@ -258,8 +260,8 @@ impl Contract {
 }
 
 fn is_refund_required() -> bool {
-    match env::promise_result(0) {
-        PromiseResult::Successful(value) => {
+    match env::promise_result_checked(0, MAX_FT_TRANSFER_CALL_RESULT) {
+        Ok(value) => {
             if let Ok(amount) = near_sdk::serde_json::from_slice::<U128>(&value) {
                 // Normal case: refund if the used token amount is zero
                 // The amount can be zero if the `ft_on_transfer` in the receiver contract returns an amount instead of `0`, or if it panics.
@@ -270,7 +272,7 @@ fn is_refund_required() -> bool {
             }
         }
         // Unexpected case: don't refund
-        PromiseResult::Failed => false,
+        Err(_) => false,
     }
 }
 

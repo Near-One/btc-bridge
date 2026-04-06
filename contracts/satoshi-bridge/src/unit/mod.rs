@@ -8,6 +8,7 @@ pub use near_sdk::testing_env;
 
 mod post_action;
 mod storage;
+mod utils;
 
 pub fn burrowland_id() -> AccountId {
     "burrowland_id".parse().unwrap()

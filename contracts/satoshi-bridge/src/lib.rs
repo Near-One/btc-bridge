@@ -4,13 +4,14 @@ use near_sdk::{
     borsh::{BorshDeserialize, BorshSerialize},
     env, ext_contract, is_promise_success,
     json_types::{U128, U64},
-    log, near, promise_result_as_success, require,
+    log, near, require,
     serde::{Deserialize, Serialize},
     serde_json::{self, json, Value},
     store::{IterableMap, IterableSet, LazyOption, LookupSet},
     AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, Promise, PromiseOrValue, PublicKey,
     Timestamp,
 };
+use omni_utils::macros::trusted_relayer;
 use std::collections::{HashMap, HashSet};
 
 use bitcoin::{absolute::LockTime, Amount, OutPoint, PublicKey as BtcPublicKey, ScriptBuf, TxOut};
@@ -107,6 +108,8 @@ pub enum Role {
     PauseManager,
     UpgradableCodeStager,
     UpgradableCodeDeployer,
+    UnrestrictedRelayer,
+    RelayerManager,
 }
 
 #[near(serializers = [borsh])]
@@ -155,6 +158,11 @@ pub struct Contract {
     data: VersionedContractData,
 }
 
+#[trusted_relayer(
+    bypass_roles(Role::DAO, Role::UnrestrictedRelayer),
+    manager_roles(Role::DAO, Role::RelayerManager),
+    config_roles(Role::DAO)
+)]
 #[near]
 impl Contract {
     #[init]
