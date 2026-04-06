@@ -413,8 +413,7 @@ pub fn generate_btc_pending_sign_id(payload_preimages: &[Vec<u8>]) -> String {
             .iter()
             .flatten()
             .copied()
-            .collect::<Vec<u8>>()
-            .as_slice(),
+            .collect::<Vec<u8>>(),
     );
     hex::encode(hash_bytes)
 }
