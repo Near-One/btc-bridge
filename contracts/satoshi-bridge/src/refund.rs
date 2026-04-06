@@ -1,9 +1,10 @@
 use bitcoin::{Amount, OutPoint, TxOut};
 
+use near_sdk::promise_result_as_success;
+
 use crate::{
-    env, near, promise_result_as_success, require, serde_json, BTCPendingInfo, Contract,
-    ContractExt, DepositMsg, Event, Gas, OriginalState, PendingInfoStage, PendingInfoState,
-    Promise, UTXO, VUTXO,
+    env, near, require, serde_json, BTCPendingInfo, Contract, ContractExt, DepositMsg, Event, Gas,
+    OriginalState, PendingInfoStage, PendingInfoState, Promise, UTXO, VUTXO,
 };
 
 use crate::deposit_msg::get_deposit_path;
