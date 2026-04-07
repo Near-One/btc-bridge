@@ -238,7 +238,7 @@ impl Contract {
             actual_received_amount: refund_amount,
             withdraw_fee: 0,
             gas_fee,
-            burn_amount: gas_fee,
+            burn_amount: 0,
             psbt_hex,
             vutxos: vec![vutxo],
             signatures: vec![None; 1],
