@@ -476,16 +476,25 @@ impl Contract {
         )
     }
 
-    /// Reject a pending refund request. DAO or Operator only.
-    /// Removes the request from storage; the user cannot execute it after rejection.
+    /// Reject a pending refund request.
+    /// - DAO or Operator can reject any request.
+    /// - Anyone can reject a request if the UTXO has already been verified via `verify_deposit`.
     ///
     /// # Arguments
     ///
     /// * `utxo_storage_key` - The UTXO key identifying the refund request (`{tx_id}@{vout}`).
-    #[payable]
-    #[access_control_any(roles(Role::DAO, Role::Operator))]
     pub fn reject_refund(&mut self, utxo_storage_key: String) {
-        assert_one_yocto();
+        let caller = env::predecessor_account_id();
+        let is_privileged = self.acl_has_role(Role::DAO.into(), caller.clone())
+            || self.acl_has_role(Role::Operator.into(), caller);
+        let is_already_deposited = self
+            .data()
+            .verified_deposit_utxo
+            .contains(&utxo_storage_key);
+        require!(
+            is_privileged || is_already_deposited,
+            "Only DAO/Operator can reject, or UTXO must be already verified via deposit"
+        );
         self.internal_reject_refund(utxo_storage_key);
     }
 

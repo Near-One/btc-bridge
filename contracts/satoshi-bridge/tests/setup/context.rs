@@ -211,6 +211,7 @@ impl Context {
                     "max_btc_tx_pending_sec": 3600 * 24,
                     "unhealthy_utxo_amount": 1000,
                     "expiry_height_gap": 5000,
+                    "refund_timelock_sec": 3600,
                 }
             }))
             .transact()
@@ -1155,6 +1156,7 @@ impl UpgradeContext {
                     "max_btc_tx_pending_sec": 3600 * 24,
                     "unhealthy_utxo_amount": 1000,
                     "expiry_height_gap": 1000,
+                    "refund_timelock_sec": 3600,
                 }
             }))
             .transact()
@@ -1317,7 +1319,6 @@ impl Context {
             .args_json(json!({
                 "utxo_storage_key": utxo_storage_key,
             }))
-            .deposit(NearToken::from_yoctonear(1))
             .max_gas()
             .transact()
             .await

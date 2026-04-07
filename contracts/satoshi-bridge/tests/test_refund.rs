@@ -76,11 +76,11 @@ async fn test_refund_basic_flow() {
 
     let key = utxo_storage_key(&tx_bytes, vout);
 
-    // 5. Set timelock to 2 seconds
+    // 5. Set timelock to 200 seconds
     context
         .get_account_by_name("root")
         .call(context.bridge_contract.id(), "set_refund_timelock_sec")
-        .args_json(json!({"refund_timelock_sec": 2}))
+        .args_json(json!({"refund_timelock_sec": 200}))
         .deposit(near_sdk::NearToken::from_yoctonear(1))
         .max_gas()
         .transact()
@@ -94,8 +94,8 @@ async fn test_refund_basic_flow() {
         "Refund timelock has not passed yet"
     );
 
-    // 7. Fast-forward past timelock
-    worker.fast_forward(200).await.unwrap();
+    // 7. Fast-forward past timelock (3600 seconds = ~3600 blocks)
+    worker.fast_forward(4000).await.unwrap();
 
     // 8. Execute refund — timelock passed, should succeed
 
