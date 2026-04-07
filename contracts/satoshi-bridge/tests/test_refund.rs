@@ -242,6 +242,8 @@ async fn test_refund_reject() {
 #[tokio::test]
 #[cfg(not(feature = "zcash"))]
 async fn test_refund_no_refund_address() {
+    // refund_address in DepositMsg is optional — refund_address is now a separate parameter.
+    // This test verifies that request_refund succeeds even when DepositMsg has no refund_address.
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
 
@@ -267,8 +269,9 @@ async fn test_refund_no_refund_address() {
         vec![(deposit_address.as_str(), 50_000)],
     );
 
-    // Should fail — no refund_address
+    // Should succeed — refund_address provided as separate parameter
     check!(
+        print "request_refund_no_addr_in_msg"
         context.request_refund(
             "alice",
             deposit_msg,
@@ -279,8 +282,7 @@ async fn test_refund_no_refund_address() {
             1,
             vec![],
             None
-        ),
-        "DepositMsg must contain refund_address"
+        )
     );
 }
 
@@ -843,7 +845,7 @@ async fn test_refund_spoofed_refund_address() {
             vec![],
             None
         ),
-        "Output script_pubkey does not match deposit address"
+        "refund_address does not match deposit_msg.refund_address"
     );
 
     // Real request_refund still works
