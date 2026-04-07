@@ -37,6 +37,7 @@ macro_rules! define_rbf_method {
             Event::GenerateBtcPendingInfo {
                 account_id: &account_id,
                 btc_pending_id: &btc_pending_id,
+                external_id: None,
             }
             .emit();
         }
@@ -72,6 +73,7 @@ impl Contract {
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
         _chain_specific_data: Option<ChainSpecificData>,
+        external_id: Option<String>,
     ) -> PromiseOrValue<U128> {
         self.create_btc_pending_info(
             sender_id,
@@ -79,6 +81,7 @@ impl Contract {
             target_btc_address,
             PsbtWrapper::new(input, output),
             max_gas_fee,
+            external_id,
         );
         PromiseOrValue::Value(U128(0))
     }

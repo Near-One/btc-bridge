@@ -7,7 +7,7 @@ use near_sdk::{
     log, near, require,
     serde::{Deserialize, Serialize},
     serde_json::{self, json, Value},
-    store::{IterableMap, IterableSet, LazyOption, LookupSet},
+    store::{IterableMap, IterableSet, LazyOption, LookupMap, LookupSet},
     AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, Promise, PromiseOrValue, PublicKey,
     Timestamp,
 };
@@ -92,6 +92,7 @@ enum StorageKey {
     LostFound,
     PostActionMsgTemplates,
     ExtraMsgRelayerWhiteList,
+    BTCPendingInfosByExternalId,
 }
 
 #[derive(AccessControlRole, Deserialize, Serialize, Copy, Clone)]
@@ -114,6 +115,7 @@ pub struct ContractData {
     pub unavailable_utxos: IterableMap<String, VUTXO>,
     pub verified_deposit_utxo: LookupSet<String>,
     pub btc_pending_infos: IterableMap<String, VBTCPendingInfo>,
+    pub btc_pending_infos_by_external_id: LookupMap<String, String>,
     pub rbf_txs: IterableMap<String, HashSet<String>>,
     pub relayer_white_list: IterableSet<AccountId>,
     pub extra_msg_relayer_white_list: IterableSet<AccountId>,
@@ -132,6 +134,7 @@ pub enum VersionedContractData {
     V0(ContractDataV0),
     V1(ContractDataV1),
     V2(ContractDataV2),
+    V3(ContractDataV3),
     Current(ContractData),
 }
 
@@ -176,6 +179,9 @@ impl Contract {
                 unavailable_utxos: IterableMap::new(StorageKey::UnavailableUTXOs),
                 verified_deposit_utxo: LookupSet::new(StorageKey::VerifiedDepositUtxos),
                 btc_pending_infos: IterableMap::new(StorageKey::BTCPendingInfos),
+                btc_pending_infos_by_external_id: LookupMap::new(
+                    StorageKey::BTCPendingInfosByExternalId,
+                ),
                 rbf_txs: IterableMap::new(StorageKey::RbfTxs),
                 relayer_white_list: IterableSet::new(StorageKey::RelayerWhiteList),
                 extra_msg_relayer_white_list: IterableSet::new(

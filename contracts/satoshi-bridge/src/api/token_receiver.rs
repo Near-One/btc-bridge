@@ -14,6 +14,7 @@ pub enum TokenReceiverMessage {
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
         chain_specific_data: Option<ChainSpecificData>,
+        external_id: Option<String>,
     },
 }
 
@@ -54,14 +55,16 @@ impl FungibleTokenReceiver for Contract {
                 output,
                 max_gas_fee,
                 chain_specific_data,
+                external_id,
             } => self.ft_on_transfer_withdraw_chain_specific(
-                sender_id,
+                sender_id.clone(),
                 amount,
                 target_btc_address,
                 input,
                 output,
                 max_gas_fee,
                 chain_specific_data,
+                external_id.map(|id| format!("{sender_id}:{id}")),
             ),
         }
     }
@@ -75,6 +78,7 @@ impl Contract {
         target_btc_address: String,
         mut psbt: PsbtWrapper,
         max_gas_fee: Option<U128>,
+        external_id: Option<String>,
     ) {
         let (utxo_storage_keys, vutxos) = self.generate_vutxos(&mut psbt);
         require!(
@@ -128,12 +132,20 @@ impl Contract {
                 .is_none(),
             "pending info already exist"
         );
+
+        if let Some(external_id) = &external_id {
+            self.data_mut()
+                .btc_pending_infos_by_external_id
+                .insert(external_id.clone(), btc_pending_id.clone());
+        }
+
         self.internal_unwrap_mut_account(&sender_id)
             .btc_pending_sign_id = Some(btc_pending_id.clone());
         Event::UtxoRemoved { utxo_storage_keys }.emit();
         Event::GenerateBtcPendingInfo {
             account_id: &sender_id,
             btc_pending_id: &btc_pending_id,
+            external_id,
         }
         .emit();
     }
