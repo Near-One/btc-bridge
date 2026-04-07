@@ -113,6 +113,7 @@ impl Contract {
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
         chain_specific_data: Option<ChainSpecificData>,
+        external_id: Option<String>,
         #[callback_unwrap] last_block_height: u32,
     ) -> U128 {
         let expiry_height = self.get_expiry_height(&chain_specific_data, last_block_height);
@@ -128,7 +129,14 @@ impl Contract {
             self.internal_config(),
         );
 
-        self.create_btc_pending_info(sender_id, amount.0, target_btc_address, psbt, max_gas_fee);
+        self.create_btc_pending_info(
+            sender_id,
+            amount.0,
+            target_btc_address,
+            psbt,
+            max_gas_fee,
+            external_id,
+        );
 
         U128(0)
     }

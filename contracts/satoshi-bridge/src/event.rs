@@ -43,6 +43,7 @@ pub enum Event<'a> {
     GenerateBtcPendingInfo {
         account_id: &'a AccountId,
         btc_pending_id: &'a String,
+        external_id: Option<String>,
     },
     BtcInputSignature {
         account_id: &'a AccountId,
