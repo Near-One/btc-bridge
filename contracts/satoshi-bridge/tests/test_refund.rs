@@ -1287,8 +1287,7 @@ async fn test_refund_address_mismatch() {
             wrong_address,
             tx_bytes,
             0,
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d"
-                .to_string(),
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
             1,
             vec![],
             None
