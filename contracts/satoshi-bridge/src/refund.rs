@@ -63,10 +63,13 @@ impl From<RefundRequest> for VRefundRequest {
 
 impl Contract {
     /// Submit a refund request. Verifies the BTC transaction via Light Client first.
+    /// If `deposit_msg.refund_address` is set, it must match the provided `refund_address`.
+    /// If `deposit_msg.refund_address` is None, the provided `refund_address` is used.
     #[allow(clippy::too_many_arguments)]
     pub fn internal_request_refund(
         &self,
         deposit_msg: DepositMsg,
+        refund_address: String,
         tx_bytes: Vec<u8>,
         vout: usize,
         tx_block_blockhash: String,
@@ -74,10 +77,12 @@ impl Contract {
         merkle_proof: Vec<String>,
         gas_fee: Option<u128>,
     ) -> Promise {
-        require!(
-            deposit_msg.refund_address.is_some(),
-            "DepositMsg must contain refund_address"
-        );
+        if let Some(msg_refund_address) = &deposit_msg.refund_address {
+            require!(
+                msg_refund_address == &refund_address,
+                "refund_address does not match deposit_msg.refund_address"
+            );
+        }
 
         let transaction =
             crate::WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
@@ -118,7 +123,7 @@ impl Contract {
         .then(
             Self::ext(env::current_account_id())
                 .with_static_gas(GAS_FOR_REQUEST_REFUND_CALLBACK)
-                .request_refund_callback(deposit_msg, tx_bytes, vout, gas_fee),
+                .request_refund_callback(deposit_msg, refund_address, tx_bytes, vout, gas_fee),
         )
     }
 
@@ -339,6 +344,7 @@ impl Contract {
     pub fn request_refund_callback(
         &mut self,
         deposit_msg: DepositMsg,
+        refund_address: String,
         tx_bytes: Vec<u8>,
         vout: usize,
         gas_fee: Option<u128>,
@@ -380,11 +386,6 @@ impl Contract {
                 .contains(&utxo_storage_key),
             "UTXO already verified via deposit"
         );
-
-        let refund_address = deposit_msg
-            .refund_address
-            .clone()
-            .expect("No refund address");
 
         let resolved_gas_fee = gas_fee.unwrap_or(config.max_btc_gas_fee);
 

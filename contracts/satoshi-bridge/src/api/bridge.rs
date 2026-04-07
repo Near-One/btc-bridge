@@ -450,6 +450,7 @@ impl Contract {
     pub fn request_refund(
         &mut self,
         deposit_msg: DepositMsg,
+        refund_address: String,
         tx_bytes: Vec<u8>,
         vout: usize,
         tx_block_blockhash: String,
@@ -467,6 +468,7 @@ impl Contract {
         }
         self.internal_request_refund(
             deposit_msg,
+            refund_address,
             tx_bytes,
             vout,
             tx_block_blockhash,

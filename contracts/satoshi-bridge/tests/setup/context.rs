@@ -1270,6 +1270,7 @@ impl Context {
         &self,
         user: &str,
         deposit_msg: DepositMsg,
+        refund_address: &str,
         tx_bytes: Vec<u8>,
         vout: u32,
         tx_block_blockhash: String,
@@ -1281,6 +1282,7 @@ impl Context {
             .call(self.bridge_contract.id(), "request_refund")
             .args_json(json!({
                 "deposit_msg": deposit_msg,
+                "refund_address": refund_address,
                 "tx_bytes": tx_bytes,
                 "vout": vout,
                 "tx_block_blockhash": tx_block_blockhash,
