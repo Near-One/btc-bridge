@@ -20,14 +20,39 @@ pub struct Account {
     pub btc_pending_verify_list: HashSet<String>,
 }
 
+/// Old Account format (v0.7.5 and earlier) with single pending sign id.
+#[near(serializers = [borsh])]
+#[derive(Clone)]
+pub struct AccountV0 {
+    pub account_id: AccountId,
+    pub btc_pending_sign_id: Option<String>,
+    pub btc_pending_verify_list: HashSet<String>,
+}
+
+impl From<AccountV0> for Account {
+    fn from(v: AccountV0) -> Self {
+        let mut btc_pending_sign_ids = HashSet::new();
+        if let Some(id) = v.btc_pending_sign_id {
+            btc_pending_sign_ids.insert(id);
+        }
+        Self {
+            account_id: v.account_id,
+            btc_pending_sign_ids,
+            btc_pending_verify_list: v.btc_pending_verify_list,
+        }
+    }
+}
+
 #[near(serializers = [borsh])]
 pub enum VAccount {
+    V0(AccountV0),
     Current(Account),
 }
 
 impl From<VAccount> for Account {
     fn from(v: VAccount) -> Self {
         match v {
+            VAccount::V0(c) => c.into(),
             VAccount::Current(c) => c,
         }
     }
@@ -36,6 +61,7 @@ impl From<VAccount> for Account {
 impl From<&VAccount> for Account {
     fn from(v: &VAccount) -> Self {
         match v {
+            VAccount::V0(c) => c.clone().into(),
             VAccount::Current(c) => c.clone(),
         }
     }
@@ -43,16 +69,14 @@ impl From<&VAccount> for Account {
 
 impl<'a> From<&'a mut VAccount> for &'a mut Account {
     fn from(v: &'a mut VAccount) -> Self {
-        match v {
-            VAccount::Current(c) => c,
+        // Lazy migrate V0 -> Current on first mutable access
+        if let VAccount::V0(old) = v {
+            let migrated: Account = old.clone().into();
+            *v = VAccount::Current(migrated);
         }
-    }
-}
-
-impl<'a> From<&'a VAccount> for &'a Account {
-    fn from(v: &'a VAccount) -> Self {
         match v {
             VAccount::Current(c) => c,
+            _ => unreachable!(),
         }
     }
 }
@@ -78,15 +102,12 @@ impl Contract {
         self.data().accounts.contains_key(account_id)
     }
 
-    pub fn internal_get_account(&self, account_id: &AccountId) -> Option<&Account> {
-        self.data().accounts.get(account_id).map(Into::into)
+    pub fn internal_get_account(&self, account_id: &AccountId) -> Option<Account> {
+        self.data().accounts.get(account_id).map(Account::from)
     }
 
-    pub fn internal_unwrap_account(&self, account_id: &AccountId) -> &Account {
-        self.data()
-            .accounts
-            .get(account_id)
-            .map(|o| o.into())
+    pub fn internal_unwrap_account(&self, account_id: &AccountId) -> Account {
+        self.internal_get_account(account_id)
             .unwrap_or_else(|| {
                 env::panic_str(&format!("ERR_ACCOUNT_NOT_REGISTERED: {}", account_id))
             })
