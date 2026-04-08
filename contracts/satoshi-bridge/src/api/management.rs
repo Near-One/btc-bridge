@@ -183,6 +183,35 @@ impl Contract {
 
     #[payable]
     #[access_control_any(roles(Role::DAO))]
+    pub fn extend_unlimited_txs_white_list(&mut self, account_ids: Vec<AccountId>) {
+        assert_one_yocto();
+        for account_id in account_ids {
+            let is_success = self
+                .data_mut()
+                .unlimited_txs_white_list
+                .insert(account_id.clone());
+            require!(
+                is_success,
+                format!("Already exist account_id: {}", account_id)
+            );
+        }
+    }
+
+    #[payable]
+    #[access_control_any(roles(Role::DAO))]
+    pub fn remove_unlimited_txs_white_list(&mut self, account_ids: Vec<AccountId>) {
+        assert_one_yocto();
+        for account_id in account_ids {
+            let is_success = self
+                .data_mut()
+                .unlimited_txs_white_list
+                .remove(&account_id);
+            require!(is_success, format!("Invalid account_id: {}", account_id));
+        }
+    }
+
+    #[payable]
+    #[access_control_any(roles(Role::DAO))]
     pub fn extend_post_action_msg_templates(
         &mut self,
         contract_id: AccountId,

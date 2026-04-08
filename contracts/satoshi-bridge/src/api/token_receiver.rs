@@ -77,10 +77,10 @@ impl Contract {
         max_gas_fee: Option<U128>,
     ) {
         let (utxo_storage_keys, vutxos) = self.generate_vutxos(&mut psbt);
+        let is_unlimited = self.data().unlimited_txs_white_list.contains(&sender_id);
+        let account = self.internal_unwrap_or_create_mut_account(&sender_id);
         require!(
-            self.internal_unwrap_or_create_mut_account(&sender_id)
-                .btc_pending_sign_ids
-                .is_empty(),
+            is_unlimited || account.btc_pending_sign_ids.is_empty(),
             "Previous btc tx has not been signed"
         );
 
