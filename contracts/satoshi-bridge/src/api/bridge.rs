@@ -213,8 +213,8 @@ impl Contract {
         let account_id = env::predecessor_account_id();
         require!(
             self.internal_unwrap_account(&account_id)
-                .btc_pending_sign_id
-                .is_none(),
+                .btc_pending_sign_ids
+                .is_empty(),
             "Previous btc tx has not been signed"
         );
 
@@ -243,8 +243,8 @@ impl Contract {
             .clone();
         require!(
             self.internal_unwrap_account(&user_account_id)
-                .btc_pending_sign_id
-                .is_none(),
+                .btc_pending_sign_ids
+                .is_empty(),
             "Assisted user previous btc tx has not been signed"
         );
 
@@ -331,8 +331,8 @@ impl Contract {
         let account_id = env::predecessor_account_id();
         require!(
             self.internal_unwrap_account(&account_id)
-                .btc_pending_sign_id
-                .is_none(),
+                .btc_pending_sign_ids
+                .is_empty(),
             "Previous btc tx has not been signed"
         );
         self.active_utxo_management_rbf_chain_specific(
@@ -364,8 +364,8 @@ impl Contract {
             .clone();
         require!(
             self.internal_unwrap_account(&user_account_id)
-                .btc_pending_sign_id
-                .is_none(),
+                .btc_pending_sign_ids
+                .is_empty(),
             "Assisted user previous btc tx has not been signed"
         );
         self.cancel_active_utxo_management_chain_specific(
@@ -434,7 +434,7 @@ impl Contract {
     ) {
         let account = self.internal_unwrap_account(&account_id);
         require!(
-            account.btc_pending_sign_id.is_none(),
+            account.btc_pending_sign_ids.is_empty(),
             "Previous btc tx has not been signed"
         );
 
@@ -480,7 +480,8 @@ impl Contract {
             "pending info already exist"
         );
         self.internal_unwrap_mut_account(&account_id)
-            .btc_pending_sign_id = Some(btc_pending_id.clone());
+            .btc_pending_sign_ids
+            .insert(btc_pending_id.clone());
         Event::UtxoRemoved { utxo_storage_keys }.emit();
         Event::GenerateBtcPendingInfo {
             account_id: &account_id,

@@ -16,7 +16,7 @@ pub struct OutstandingInfo {
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 pub struct Account {
     pub account_id: AccountId,
-    pub btc_pending_sign_id: Option<String>,
+    pub btc_pending_sign_ids: HashSet<String>,
     pub btc_pending_verify_list: HashSet<String>,
 }
 
@@ -67,7 +67,7 @@ impl Account {
     pub fn new(account_id: &AccountId) -> Self {
         Self {
             account_id: account_id.clone(),
-            btc_pending_sign_id: None,
+            btc_pending_sign_ids: HashSet::new(),
             btc_pending_verify_list: HashSet::new(),
         }
     }

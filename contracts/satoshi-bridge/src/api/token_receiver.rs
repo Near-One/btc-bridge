@@ -79,8 +79,8 @@ impl Contract {
         let (utxo_storage_keys, vutxos) = self.generate_vutxos(&mut psbt);
         require!(
             self.internal_unwrap_or_create_mut_account(&sender_id)
-                .btc_pending_sign_id
-                .is_none(),
+                .btc_pending_sign_ids
+                .is_empty(),
             "Previous btc tx has not been signed"
         );
 
@@ -129,7 +129,8 @@ impl Contract {
             "pending info already exist"
         );
         self.internal_unwrap_mut_account(&sender_id)
-            .btc_pending_sign_id = Some(btc_pending_id.clone());
+            .btc_pending_sign_ids
+            .insert(btc_pending_id.clone());
         Event::UtxoRemoved { utxo_storage_keys }.emit();
         Event::GenerateBtcPendingInfo {
             account_id: &sender_id,
