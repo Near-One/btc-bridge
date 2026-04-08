@@ -3,7 +3,7 @@
 // Source: https://github.com/near/mpc/blob/main/crates/near-mpc-contract-interface/src/types/foreign_chain.rs
 
 use crate::{ext_contract, require, Contract, Gas, Promise};
-use near_sdk::serde::{Serialize, Serializer};
+use near_sdk::serde::{Deserialize, Serialize, Serializer};
 use near_sdk::NearToken;
 
 #[derive(Clone)]
@@ -58,6 +58,15 @@ pub struct VerifyForeignTransactionRequestArgs {
     pub request: ForeignChainRpcRequest,
     pub domain_id: DomainId,
     pub payload_version: ForeignTxPayloadVersion,
+}
+
+/// Minimal deserialization of the MPC `verify_foreign_transaction` response.
+/// Only `payload_hash` is checked; the `signature` field is ignored via `deny_unknown_fields = false` (default).
+#[derive(Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct VerifyForeignTransactionResponse {
+    /// Hex-encoded Hash256 of the signed payload.
+    pub payload_hash: String,
 }
 
 // Must match the domain configured in the MPC contract for this bridge.

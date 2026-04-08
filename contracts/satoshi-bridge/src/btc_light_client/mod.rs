@@ -30,7 +30,9 @@ pub(crate) fn assert_verification_succeeded() {
 
     #[cfg(feature = "dash")]
     {
-        let _ = result_bytes;
+        let _response: crate::mpc_verifier::VerifyForeignTransactionResponse =
+            crate::serde_json::from_slice(&result_bytes)
+                .expect("ERR_MPC_VERIFY: failed to deserialize response");
     }
 }
 
