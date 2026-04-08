@@ -442,6 +442,8 @@ mod tests {
             ("tmJpMbYtRf9Hgi8HUJ4FGkoM3FUSHsu28wM", Chain::ZcashTestnet),
             ("DKNmffVbxrBcNvQ9uJEDLe8f6prxSmH2Vm", Chain::DogecoinMainnet),
             ("njyMWWyh1L7tSX6QkWRgetMVCVyVtfoDta", Chain::DogecoinTestnet),
+            ("XoEnDiUTs3x8BmmQdBwWRxrhLmVvEu1Htw", Chain::DashMainnet),
+            ("yYsPEfYuJbcCXWgxC3FuTzH3d3zHjgWz7m", Chain::DashTestnet),
         ] {
             let parse_address = Address::parse(address, chain.clone()).unwrap();
             let script_pubkey = parse_address.script_pubkey().unwrap();
