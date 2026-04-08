@@ -107,6 +107,19 @@ async fn test_btc_bridge_upgrade_from_v0_7_5_account_migration() {
         upgrade_context.root.id().as_str()
     );
     assert!(account.btc_pending_sign_ids.is_empty());
+
+    // get_accounts_paged must also handle V0 accounts without panicking.
+    let accounts: std::collections::HashMap<near_sdk::AccountId, Account> = upgrade_context
+        .previous_satoshi_bridge_contract
+        .call("get_accounts_paged")
+        .args_json(json!({}))
+        .view()
+        .await
+        .unwrap()
+        .json()
+        .unwrap();
+
+    assert_eq!(accounts.len(), 1);
 }
 
 #[tokio::test]
