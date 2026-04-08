@@ -25,7 +25,9 @@ impl PsbtWrapper {
         require!(!input.is_empty(), "empty input");
         require!(!output.is_empty(), "empty output");
 
-        let sequence = bitcoin::Sequence::ENABLE_RBF_NO_LOCKTIME;
+        // Dash does not support RBF (replacement txs are rejected with txn-mempool-conflict).
+        // Use MAX to signal the transaction is final.
+        let sequence = bitcoin::Sequence::MAX;
         let input_count = input.len();
 
         let transaction = BtcTransaction {
@@ -53,7 +55,7 @@ impl PsbtWrapper {
         original_psbt: crate::psbt_wrapper::PsbtWrapper,
         output: Vec<TxOut>,
     ) -> Self {
-        let sequence = bitcoin::Sequence::ENABLE_RBF_NO_LOCKTIME;
+        let sequence = bitcoin::Sequence::MAX;
         let input_count = original_psbt.unsigned_tx.input.len();
 
         let transaction = BtcTransaction {
