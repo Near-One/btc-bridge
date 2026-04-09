@@ -95,6 +95,10 @@ impl Account {
             btc_pending_verify_list: HashSet::new(),
         }
     }
+
+    pub fn pending_sign_count(&self) -> u32 {
+        u32::try_from(self.btc_pending_sign_ids.len()).unwrap_or(u32::MAX)
+    }
 }
 
 impl Contract {

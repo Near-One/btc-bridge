@@ -92,7 +92,7 @@ enum StorageKey {
     LostFound,
     PostActionMsgTemplates,
     ExtraMsgRelayerWhiteList,
-    UnlimitedTxsWhiteList,
+    MultiTxsWhiteList,
 }
 
 #[derive(AccessControlRole, Deserialize, Serialize, Copy, Clone)]
@@ -120,7 +120,7 @@ pub struct ContractData {
     pub extra_msg_relayer_white_list: IterableSet<AccountId>,
     pub post_action_receiver_id_white_list: IterableSet<AccountId>,
     pub post_action_msg_templates: IterableMap<AccountId, HashSet<String>>,
-    pub unlimited_txs_white_list: IterableSet<AccountId>,
+    pub multi_txs_white_list: IterableSet<AccountId>,
     pub lost_found: IterableMap<AccountId, u128>,
     pub acc_collected_protocol_fee: u128,
     pub cur_available_protocol_fee: u128,
@@ -188,7 +188,7 @@ impl Contract {
                     StorageKey::PostActionReceiverIdWhiteListWhiteList,
                 ),
                 post_action_msg_templates: IterableMap::new(StorageKey::PostActionMsgTemplates),
-                unlimited_txs_white_list: IterableSet::new(StorageKey::UnlimitedTxsWhiteList),
+                multi_txs_white_list: IterableSet::new(StorageKey::MultiTxsWhiteList),
                 lost_found: IterableMap::new(StorageKey::LostFound),
                 acc_collected_protocol_fee: 0,
                 cur_available_protocol_fee: 0,

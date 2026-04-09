@@ -183,12 +183,12 @@ impl Contract {
 
     #[payable]
     #[access_control_any(roles(Role::DAO))]
-    pub fn extend_unlimited_txs_white_list(&mut self, account_ids: Vec<AccountId>) {
+    pub fn extend_multi_txs_white_list(&mut self, account_ids: Vec<AccountId>) {
         assert_one_yocto();
         for account_id in account_ids {
             let is_success = self
                 .data_mut()
-                .unlimited_txs_white_list
+                .multi_txs_white_list
                 .insert(account_id.clone());
             require!(
                 is_success,
@@ -199,10 +199,10 @@ impl Contract {
 
     #[payable]
     #[access_control_any(roles(Role::DAO))]
-    pub fn remove_unlimited_txs_white_list(&mut self, account_ids: Vec<AccountId>) {
+    pub fn remove_multi_txs_white_list(&mut self, account_ids: Vec<AccountId>) {
         assert_one_yocto();
         for account_id in account_ids {
-            let is_success = self.data_mut().unlimited_txs_white_list.remove(&account_id);
+            let is_success = self.data_mut().multi_txs_white_list.remove(&account_id);
             require!(is_success, format!("Invalid account_id: {}", account_id));
         }
     }
@@ -473,6 +473,14 @@ impl Contract {
     pub fn set_max_btc_tx_pending_sec(&mut self, max_btc_tx_pending_sec: u32) {
         assert_one_yocto();
         self.internal_mut_config().max_btc_tx_pending_sec = max_btc_tx_pending_sec;
+    }
+
+    #[payable]
+    #[access_control_any(roles(Role::DAO))]
+    pub fn set_max_pending_sign_txs(&mut self, max_pending_sign_txs: u32) {
+        assert_one_yocto();
+        require!(max_pending_sign_txs >= 1, "Invalid max_pending_sign_txs");
+        self.internal_mut_config().max_pending_sign_txs = max_pending_sign_txs;
     }
 
     #[payable]

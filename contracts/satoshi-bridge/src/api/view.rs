@@ -17,7 +17,7 @@ pub struct Metadata {
     pub relayer_white_list: Vec<AccountId>,
     pub extra_msg_relayer_white_list: Vec<AccountId>,
     pub post_action_receiver_id_white_list: Vec<AccountId>,
-    pub unlimited_txs_white_list: Vec<AccountId>,
+    pub multi_txs_white_list: Vec<AccountId>,
     #[serde(with = "u128_dec_format")]
     pub acc_collected_protocol_fee: u128,
     #[serde(with = "u128_dec_format")]
@@ -58,8 +58,8 @@ impl Contract {
                 .iter()
                 .cloned()
                 .collect(),
-            unlimited_txs_white_list: root_state
-                .unlimited_txs_white_list
+            multi_txs_white_list: root_state
+                .multi_txs_white_list
                 .iter()
                 .cloned()
                 .collect(),
