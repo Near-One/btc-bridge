@@ -437,7 +437,10 @@ impl Contract {
     ///
     /// # Arguments
     ///
-    /// * `deposit_msg` - The original deposit message (must contain `refund_address`).
+    /// * `deposit_msg` - The original deposit message. If `deposit_msg.refund_address` is set,
+    ///   it must match the provided `refund_address`.
+    /// * `refund_address` - BTC address to send the refund to. If `deposit_msg.refund_address`
+    ///   is `None`, this value is used directly.
     /// * `tx_bytes` - BTC transaction bytes proving the deposit.
     /// * `vout` - Output index of the deposit in the transaction.
     /// * `tx_block_blockhash` - Block hash containing the transaction.
