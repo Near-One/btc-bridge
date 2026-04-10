@@ -130,10 +130,7 @@ async fn test_refund_basic_flow() {
     );
 
     // Verify that required_balance_for_execute_refund covers actual storage cost
-    let required_balance = context
-        .required_balance_for_execute_refund()
-        .await
-        .unwrap();
+    let required_balance = context.required_balance_for_execute_refund().await.unwrap();
     println!(
         "==> required_balance_for_execute_refund: {} yoctoNEAR ({:.4} NEAR)",
         required_balance.as_yoctonear(),
