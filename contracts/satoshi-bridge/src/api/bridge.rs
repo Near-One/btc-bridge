@@ -29,6 +29,8 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
+        coinbase_tx_id: String,
+        coinbase_merkle_proof: Vec<String>,
     ) -> Promise {
         require!(
             deposit_msg.safe_deposit.is_none(),
@@ -68,6 +70,8 @@ impl Contract {
             tx_block_blockhash,
             tx_index,
             merkle_proof,
+            coinbase_tx_id,
+            coinbase_merkle_proof,
             PendingUTXOInfo {
                 tx_id,
                 utxo_storage_key,
@@ -103,6 +107,8 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
+        coinbase_tx_id: String,
+        coinbase_merkle_proof: Vec<String>,
     ) -> Promise {
         require!(
             env::attached_deposit() >= self.required_balance_for_safe_deposit(),
@@ -145,6 +151,8 @@ impl Contract {
             tx_block_blockhash,
             tx_index,
             merkle_proof,
+            coinbase_tx_id,
+            coinbase_merkle_proof,
             PendingUTXOInfo {
                 tx_id,
                 utxo_storage_key,
@@ -175,6 +183,8 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
+        coinbase_tx_id: String,
+        coinbase_merkle_proof: Vec<String>,
     ) -> Promise {
         let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id);
         btc_pending_info.assert_withdraw_related_pending_verify_tx();
@@ -193,6 +203,8 @@ impl Contract {
             tx_block_blockhash,
             tx_index,
             merkle_proof,
+            coinbase_tx_id,
+            coinbase_merkle_proof,
             btc_pending_info,
         )
     }
@@ -276,6 +288,8 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
+        coinbase_tx_id: String,
+        coinbase_merkle_proof: Vec<String>,
     ) -> Promise {
         let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id);
         btc_pending_info.assert_active_utxo_management_related_pending_verify_tx();
@@ -294,6 +308,8 @@ impl Contract {
             tx_block_blockhash,
             tx_index,
             merkle_proof,
+            coinbase_tx_id,
+            coinbase_merkle_proof,
             btc_pending_info,
         )
     }

@@ -13,6 +13,8 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
+        coinbase_tx_id: String,
+        coinbase_merkle_proof: Vec<String>,
         btc_pending_info: &BTCPendingInfo,
     ) -> Promise {
         let config = self.internal_config();
@@ -23,6 +25,8 @@ impl Contract {
             tx_block_blockhash,
             tx_index,
             merkle_proof,
+            coinbase_tx_id,
+            coinbase_merkle_proof,
             confirmations,
         )
         .then(

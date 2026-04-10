@@ -825,6 +825,8 @@ impl Context {
                 "tx_block_blockhash": tx_block_blockhash,
                 "tx_index": tx_index,
                 "merkle_proof": merkle_proof,
+                "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
+                "coinbase_merkle_proof": merkle_proof,
             }))
             .max_gas()
             .transact()
@@ -865,6 +867,8 @@ impl Context {
                 "tx_block_blockhash": tx_block_blockhash,
                 "tx_index": tx_index,
                 "merkle_proof": merkle_proof,
+                "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
+                "coinbase_merkle_proof": merkle_proof,
             }))
             .max_gas()
             .transact()
@@ -886,6 +890,8 @@ impl Context {
                 "tx_block_blockhash": tx_block_blockhash,
                 "tx_index": tx_index,
                 "merkle_proof": merkle_proof,
+                "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
+                "coinbase_merkle_proof": merkle_proof,
             }))
             .max_gas()
             .transact()
