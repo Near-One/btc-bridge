@@ -129,6 +129,23 @@ async fn test_refund_basic_flow() {
         storage_cost_yocto as f64 / 1e24
     );
 
+    // Verify that required_balance_for_execute_refund covers actual storage cost
+    let required_balance = context
+        .required_balance_for_execute_refund()
+        .await
+        .unwrap();
+    println!(
+        "==> required_balance_for_execute_refund: {} yoctoNEAR ({:.4} NEAR)",
+        required_balance.as_yoctonear(),
+        required_balance.as_yoctonear() as f64 / 1e24
+    );
+    assert!(
+        required_balance.as_yoctonear() >= storage_cost_yocto,
+        "required_balance_for_execute_refund ({}) is less than actual storage cost ({})",
+        required_balance.as_yoctonear(),
+        storage_cost_yocto,
+    );
+
     // 7. BTCPendingInfo should exist, pending sign
     let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
     assert_eq!(pending_infos.len(), 1);

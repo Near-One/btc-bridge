@@ -1295,6 +1295,16 @@ impl Context {
             .await
     }
 
+    pub async fn required_balance_for_execute_refund(&self) -> Result<NearToken> {
+        self.bridge_contract
+            .call("required_balance_for_execute_refund")
+            .args_json(json!({}))
+            .view()
+            .await
+            .unwrap()
+            .json::<NearToken>()
+    }
+
     pub async fn execute_refund(
         &self,
         user: &str,
