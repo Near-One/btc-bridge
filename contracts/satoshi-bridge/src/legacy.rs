@@ -54,7 +54,7 @@ impl From<ContractDataV0> for ContractData {
             extra_msg_relayer_white_list: IterableSet::new(StorageKey::ExtraMsgRelayerWhiteList),
             post_action_receiver_id_white_list,
             post_action_msg_templates: IterableMap::new(StorageKey::PostActionMsgTemplates),
-            multi_txs_white_list: IterableSet::new(StorageKey::MultiTxsWhiteList),
+            multi_txs_white_list: IterableMap::new(StorageKey::MultiTxsWhiteList),
             lost_found,
             acc_collected_protocol_fee,
             cur_available_protocol_fee,
@@ -189,7 +189,6 @@ impl From<ConfigV0> for Config {
             rbf_num_limit,
             max_btc_tx_pending_sec,
             unhealthy_utxo_amount: 1000,
-            max_pending_sign_txs: 1,
             #[cfg(feature = "zcash")]
             expiry_height_gap: 1000,
         }
@@ -330,7 +329,6 @@ impl From<ConfigV1> for Config {
             rbf_num_limit,
             max_btc_tx_pending_sec,
             unhealthy_utxo_amount,
-            max_pending_sign_txs: 1,
             #[cfg(feature = "zcash")]
             expiry_height_gap,
         }
@@ -390,7 +388,7 @@ impl From<ContractDataV1> for ContractData {
             extra_msg_relayer_white_list: IterableSet::new(StorageKey::ExtraMsgRelayerWhiteList),
             post_action_receiver_id_white_list,
             post_action_msg_templates,
-            multi_txs_white_list: IterableSet::new(StorageKey::MultiTxsWhiteList),
+            multi_txs_white_list: IterableMap::new(StorageKey::MultiTxsWhiteList),
             lost_found,
             acc_collected_protocol_fee,
             cur_available_protocol_fee,
@@ -465,7 +463,7 @@ impl From<ContractDataV2> for ContractData {
             extra_msg_relayer_white_list,
             post_action_receiver_id_white_list,
             post_action_msg_templates,
-            multi_txs_white_list: IterableSet::new(StorageKey::MultiTxsWhiteList),
+            multi_txs_white_list: IterableMap::new(StorageKey::MultiTxsWhiteList),
             lost_found,
             acc_collected_protocol_fee,
             cur_available_protocol_fee,
@@ -542,7 +540,6 @@ impl From<ConfigV2> for Config {
             rbf_num_limit: c.rbf_num_limit,
             max_btc_tx_pending_sec: c.max_btc_tx_pending_sec,
             unhealthy_utxo_amount: c.unhealthy_utxo_amount,
-            max_pending_sign_txs: 1,
             #[cfg(feature = "zcash")]
             expiry_height_gap: c.expiry_height_gap,
         }
@@ -607,7 +604,7 @@ impl From<ContractDataV3> for ContractData {
             extra_msg_relayer_white_list,
             post_action_receiver_id_white_list,
             post_action_msg_templates,
-            multi_txs_white_list: IterableSet::new(StorageKey::MultiTxsWhiteList),
+            multi_txs_white_list: IterableMap::new(StorageKey::MultiTxsWhiteList),
             lost_found,
             acc_collected_protocol_fee,
             cur_available_protocol_fee,

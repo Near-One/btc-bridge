@@ -77,11 +77,7 @@ impl Contract {
         max_gas_fee: Option<U128>,
     ) {
         let (utxo_storage_keys, vutxos) = self.generate_vutxos(&mut psbt);
-        let max_pending = if self.data().multi_txs_white_list.contains(&sender_id) {
-            self.internal_config().max_pending_sign_txs
-        } else {
-            1
-        };
+        let max_pending = self.get_max_pending_sign_txs(&sender_id);
         let account = self.internal_unwrap_or_create_mut_account(&sender_id);
         require!(
             account.pending_sign_count() < max_pending,

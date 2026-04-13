@@ -1,4 +1,4 @@
-use crate::{near, u128_dec_format, AccountId, Contract};
+use crate::{near, require, u128_dec_format, AccountId, Contract};
 use near_sdk::env;
 use std::collections::HashSet;
 
@@ -102,6 +102,23 @@ impl Account {
 }
 
 impl Contract {
+    pub fn get_max_pending_sign_txs(&self, account_id: &AccountId) -> u32 {
+        self.data()
+            .multi_txs_white_list
+            .get(account_id)
+            .copied()
+            .unwrap_or(1)
+    }
+
+    pub fn require_pending_sign_capacity(&self, account_id: &AccountId) {
+        require!(
+            self.internal_unwrap_account(account_id)
+                .pending_sign_count()
+                < self.get_max_pending_sign_txs(account_id),
+            "Too many pending sign transactions"
+        );
+    }
+
     pub fn check_account_exists(&self, account_id: &AccountId) -> bool {
         self.data().accounts.contains_key(account_id)
     }

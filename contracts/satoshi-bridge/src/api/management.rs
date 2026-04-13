@@ -1,6 +1,6 @@
 use crate::{
     assert_one_yocto, env, near, require, AccessControllable, Account, AccountId, BridgeFee,
-    Contract, ContractExt, HashSet, Promise, Role, U128, U64,
+    Contract, ContractExt, HashMap, HashSet, Promise, Role, U128, U64,
 };
 
 use near_plugins::access_control_any;
@@ -183,17 +183,16 @@ impl Contract {
 
     #[payable]
     #[access_control_any(roles(Role::DAO))]
-    pub fn extend_multi_txs_white_list(&mut self, account_ids: Vec<AccountId>) {
+    pub fn extend_multi_txs_white_list(
+        &mut self,
+        entries: HashMap<AccountId, u32>,
+    ) {
         assert_one_yocto();
-        for account_id in account_ids {
-            let is_success = self
-                .data_mut()
+        for (account_id, max_pending) in entries {
+            require!(max_pending >= 1, "Invalid max_pending value");
+            self.data_mut()
                 .multi_txs_white_list
-                .insert(account_id.clone());
-            require!(
-                is_success,
-                format!("Already exist account_id: {}", account_id)
-            );
+                .insert(account_id, max_pending);
         }
     }
 
@@ -202,8 +201,8 @@ impl Contract {
     pub fn remove_multi_txs_white_list(&mut self, account_ids: Vec<AccountId>) {
         assert_one_yocto();
         for account_id in account_ids {
-            let is_success = self.data_mut().multi_txs_white_list.remove(&account_id);
-            require!(is_success, format!("Invalid account_id: {}", account_id));
+            let prev = self.data_mut().multi_txs_white_list.remove(&account_id);
+            require!(prev.is_some(), format!("Invalid account_id: {}", account_id));
         }
     }
 
@@ -473,14 +472,6 @@ impl Contract {
     pub fn set_max_btc_tx_pending_sec(&mut self, max_btc_tx_pending_sec: u32) {
         assert_one_yocto();
         self.internal_mut_config().max_btc_tx_pending_sec = max_btc_tx_pending_sec;
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_max_pending_sign_txs(&mut self, max_pending_sign_txs: u32) {
-        assert_one_yocto();
-        require!(max_pending_sign_txs >= 1, "Invalid max_pending_sign_txs");
-        self.internal_mut_config().max_pending_sign_txs = max_pending_sign_txs;
     }
 
     #[payable]

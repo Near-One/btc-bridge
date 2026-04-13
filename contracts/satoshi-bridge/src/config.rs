@@ -5,10 +5,6 @@ use crate::{
 
 pub const MAX_RATIO: u32 = 10000;
 
-fn default_max_pending_sign_txs() -> u32 {
-    1
-}
-
 #[near(serializers = [borsh, json])]
 #[derive(Clone)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
@@ -112,9 +108,6 @@ pub struct Config {
     pub max_btc_tx_pending_sec: u32,
     // UTXOs less than or equal to this amount are allowed to be merged through active management.
     pub unhealthy_utxo_amount: u64,
-    // The maximum number of pending-sign transactions allowed per whitelisted account.
-    #[serde(default = "default_max_pending_sign_txs")]
-    pub max_pending_sign_txs: u32,
     #[cfg(feature = "zcash")]
     pub expiry_height_gap: u32,
 }
