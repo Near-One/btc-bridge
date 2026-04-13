@@ -183,10 +183,7 @@ impl Contract {
 
     #[payable]
     #[access_control_any(roles(Role::DAO))]
-    pub fn extend_multi_txs_white_list(
-        &mut self,
-        entries: HashMap<AccountId, u32>,
-    ) {
+    pub fn extend_multi_txs_white_list(&mut self, entries: HashMap<AccountId, u32>) {
         assert_one_yocto();
         for (account_id, max_pending) in entries {
             require!(max_pending >= 1, "Invalid max_pending value");
@@ -202,7 +199,10 @@ impl Contract {
         assert_one_yocto();
         for account_id in account_ids {
             let prev = self.data_mut().multi_txs_white_list.remove(&account_id);
-            require!(prev.is_some(), format!("Invalid account_id: {}", account_id));
+            require!(
+                prev.is_some(),
+                format!("Invalid account_id: {}", account_id)
+            );
         }
     }
 
