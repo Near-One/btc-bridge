@@ -611,12 +611,14 @@ impl Context {
         protocol_fee_rate: u32,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_withdraw_bridge_fee")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "withdraw_bridge_fee": {
-                    "fee_min": fee_min.to_string(),
-                    "fee_rate": fee_rate,
-                    "protocol_fee_rate": protocol_fee_rate,
+                "update": {
+                    "withdraw_bridge_fee": {
+                        "fee_min": fee_min.to_string(),
+                        "fee_rate": fee_rate,
+                        "protocol_fee_rate": protocol_fee_rate,
+                    },
                 },
             }))
             .max_gas()
@@ -632,12 +634,14 @@ impl Context {
         protocol_fee_rate: u32,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_deposit_bridge_fee")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "deposit_bridge_fee": {
-                    "fee_min": fee_min.to_string(),
-                    "fee_rate": fee_rate,
-                    "protocol_fee_rate": protocol_fee_rate,
+                "update": {
+                    "deposit_bridge_fee": {
+                        "fee_min": fee_min.to_string(),
+                        "fee_rate": fee_rate,
+                        "protocol_fee_rate": protocol_fee_rate,
+                    },
                 },
             }))
             .max_gas()
@@ -667,10 +671,12 @@ impl Context {
         active_management_upper_limit: u32,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_active_management_limit")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "active_management_lower_limit": active_management_lower_limit,
-                "active_management_upper_limit": active_management_upper_limit,
+                "update": {
+                    "active_management_lower_limit": active_management_lower_limit,
+                    "active_management_upper_limit": active_management_upper_limit,
+                },
             }))
             .max_gas()
             .deposit(NearToken::from_yoctonear(1))
@@ -684,10 +690,12 @@ impl Context {
         passive_management_upper_limit: u32,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_passive_management_limit")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "passive_management_lower_limit": passive_management_lower_limit,
-                "passive_management_upper_limit": passive_management_upper_limit,
+                "update": {
+                    "passive_management_lower_limit": passive_management_lower_limit,
+                    "passive_management_upper_limit": passive_management_upper_limit,
+                },
             }))
             .max_gas()
             .deposit(NearToken::from_yoctonear(1))
@@ -701,10 +709,12 @@ impl Context {
         max_btc_gas_fee: u128,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_btc_gas_fee_valid_range")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "min_btc_gas_fee": min_btc_gas_fee.to_string(),
-                "max_btc_gas_fee": max_btc_gas_fee.to_string(),
+                "update": {
+                    "min_btc_gas_fee": min_btc_gas_fee.to_string(),
+                    "max_btc_gas_fee": max_btc_gas_fee.to_string(),
+                },
             }))
             .max_gas()
             .deposit(NearToken::from_yoctonear(1))
@@ -717,9 +727,11 @@ impl Context {
         max_btc_tx_pending_sec: u32,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_max_btc_tx_pending_sec")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "max_btc_tx_pending_sec": max_btc_tx_pending_sec,
+                "update": {
+                    "max_btc_tx_pending_sec": max_btc_tx_pending_sec,
+                },
             }))
             .max_gas()
             .deposit(NearToken::from_yoctonear(1))
@@ -729,9 +741,11 @@ impl Context {
 
     pub async fn set_nbtc_account_id(&self) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_nbtc_account_id")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "nbtc_account_id": self.get_account_by_name("nbtc").id(),
+                "update": {
+                    "nbtc_account_id": self.get_account_by_name("nbtc").id(),
+                },
             }))
             .max_gas()
             .deposit(NearToken::from_yoctonear(1))

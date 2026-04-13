@@ -73,6 +73,32 @@ pub mod u128_dec_format {
     }
 }
 
+pub mod u128_dec_format_option {
+    use near_sdk::serde::de;
+    use near_sdk::serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(value: &Option<u128>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match value {
+            Some(num) => serializer.serialize_some(&num.to_string()),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<u128>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: Option<String> = Option::deserialize(deserializer)?;
+        match s {
+            Some(s) => s.parse().map(Some).map_err(de::Error::custom),
+            None => Ok(None),
+        }
+    }
+}
+
 pub fn verify_secp256k1_signature(public_key: &Vec<u8>, message: &str, signature: &[u8]) -> bool {
     let mut recovery_id = signature[0];
     if recovery_id >= 31 {

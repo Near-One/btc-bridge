@@ -1,6 +1,6 @@
 use crate::{
-    assert_one_yocto, env, near, require, AccessControllable, Account, AccountId, BridgeFee,
-    Contract, ContractExt, HashSet, Promise, Role, U128, U64,
+    assert_one_yocto, env, near, require, AccessControllable, Account, AccountId, ConfigUpdate,
+    Contract, ContractExt, HashSet, Promise, Role, U128,
 };
 
 use near_plugins::access_control_any;
@@ -254,16 +254,9 @@ impl Contract {
 
     #[payable]
     #[access_control_any(roles(Role::DAO))]
-    pub fn set_btc_light_client_account_id(&mut self, btc_light_client_account_id: AccountId) {
+    pub fn update_config(&mut self, update: ConfigUpdate) {
         assert_one_yocto();
-        self.internal_mut_config().btc_light_client_account_id = btc_light_client_account_id;
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_nbtc_account_id(&mut self, nbtc_account_id: AccountId) {
-        assert_one_yocto();
-        self.internal_mut_config().nbtc_account_id = nbtc_account_id;
+        update.apply(self.internal_mut_config());
     }
 
     #[payable]
@@ -293,178 +286,5 @@ impl Contract {
             !self.internal_config().confirmations_strategy.is_empty(),
             "confirmations_strategy must not be empty"
         );
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_confirmations_delta(&mut self, confirmations_delta: u8) {
-        assert_one_yocto();
-        self.internal_mut_config().confirmations_delta = confirmations_delta;
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_extra_msg_confirmations_delta(&mut self, extra_msg_confirmations_delta: u8) {
-        assert_one_yocto();
-        self.internal_mut_config().extra_msg_confirmations_delta = extra_msg_confirmations_delta;
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_deposit_bridge_fee(&mut self, deposit_bridge_fee: BridgeFee) {
-        assert_one_yocto();
-        deposit_bridge_fee.assert_valid();
-        self.internal_mut_config().deposit_bridge_fee = deposit_bridge_fee;
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_withdraw_bridge_fee(&mut self, withdraw_bridge_fee: BridgeFee) {
-        assert_one_yocto();
-        withdraw_bridge_fee.assert_valid();
-        self.internal_mut_config().withdraw_bridge_fee = withdraw_bridge_fee;
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_min_deposit_amount(&mut self, min_deposit_amount: U128) {
-        assert_one_yocto();
-        self.internal_mut_config().min_deposit_amount = min_deposit_amount.into();
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_min_withdraw_amount(&mut self, min_withdraw_amount: U128) {
-        assert_one_yocto();
-        self.internal_mut_config().min_withdraw_amount = min_withdraw_amount.into();
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_change_amount_range(&mut self, min_change_amount: U128, max_change_amount: U128) {
-        assert_one_yocto();
-        require!(
-            min_change_amount.0 < max_change_amount.0,
-            "min_change_amount must be less than max_change_amount"
-        );
-        let config = self.internal_mut_config();
-        config.min_change_amount = min_change_amount.into();
-        config.max_change_amount = max_change_amount.into();
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_btc_gas_fee_valid_range(&mut self, min_btc_gas_fee: U128, max_btc_gas_fee: U128) {
-        assert_one_yocto();
-        require!(
-            min_btc_gas_fee.0 < max_btc_gas_fee.0,
-            "min_btc_gas_fee must be less than max_btc_gas_fee"
-        );
-        let config = self.internal_mut_config();
-        config.min_btc_gas_fee = min_btc_gas_fee.into();
-        config.max_btc_gas_fee = max_btc_gas_fee.into();
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_max_withdrawal_input_number(&mut self, max_withdrawal_input_number: u8) {
-        assert_one_yocto();
-        self.internal_mut_config().max_withdrawal_input_number = max_withdrawal_input_number;
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_max_change_number(&mut self, max_change_number: u8) {
-        assert_one_yocto();
-        self.internal_mut_config().max_change_number = max_change_number;
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_max_active_utxo_management_input_number(
-        &mut self,
-        max_active_utxo_management_input_number: u8,
-    ) {
-        assert_one_yocto();
-        self.internal_mut_config()
-            .max_active_utxo_management_input_number = max_active_utxo_management_input_number;
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_max_active_utxo_management_output_number(
-        &mut self,
-        max_active_utxo_management_output_number: u8,
-    ) {
-        assert_one_yocto();
-        self.internal_mut_config()
-            .max_active_utxo_management_output_number = max_active_utxo_management_output_number;
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_active_management_limit(
-        &mut self,
-        active_management_lower_limit: u32,
-        active_management_upper_limit: u32,
-    ) {
-        assert_one_yocto();
-        require!(
-            active_management_lower_limit < active_management_upper_limit,
-            "active_management_lower_limit must be less than active_management_upper_limit"
-        );
-        let config = self.internal_mut_config();
-        config.active_management_lower_limit = active_management_lower_limit;
-        config.active_management_upper_limit = active_management_upper_limit;
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_passive_management_limit(
-        &mut self,
-        passive_management_lower_limit: u32,
-        passive_management_upper_limit: u32,
-    ) {
-        assert_one_yocto();
-        require!(
-            passive_management_lower_limit < passive_management_upper_limit,
-            "passive_management_lower_limit must be less than passive_management_upper_limit"
-        );
-        let config = self.internal_mut_config();
-        config.passive_management_lower_limit = passive_management_lower_limit;
-        config.passive_management_upper_limit = passive_management_upper_limit;
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_rbf_num_limit(&mut self, rbf_num_limit: u8) {
-        assert_one_yocto();
-        self.internal_mut_config().rbf_num_limit = rbf_num_limit;
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_max_btc_tx_pending_sec(&mut self, max_btc_tx_pending_sec: u32) {
-        assert_one_yocto();
-        self.internal_mut_config().max_btc_tx_pending_sec = max_btc_tx_pending_sec;
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_unhealthy_utxo_amount(&mut self, unhealthy_utxo_amount: U64) {
-        assert_one_yocto();
-        require!(
-            u128::from(unhealthy_utxo_amount.0) > self.internal_config().min_change_amount,
-            "Invalid unhealthy_utxo_amount"
-        );
-        self.internal_mut_config().unhealthy_utxo_amount = unhealthy_utxo_amount.0;
-    }
-
-    #[cfg(not(feature = "zcash"))]
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn set_refund_timelock_sec(&mut self, refund_timelock_sec: u64) {
-        assert_one_yocto();
-        self.internal_mut_config().refund_timelock_sec = refund_timelock_sec;
     }
 }

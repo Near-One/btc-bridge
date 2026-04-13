@@ -88,10 +88,6 @@ impl Contract {
             crate::WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
                 .expect("Deserialization tx_bytes failed");
         let tx_id = transaction.compute_txid().to_string();
-        let utxo_storage_key = generate_utxo_storage_key(
-            tx_id.clone(),
-            u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
-        );
 
         let config = self.internal_config();
         let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());

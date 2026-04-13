@@ -80,8 +80,8 @@ async fn test_refund_basic_flow() {
     // 5. Set timelock to 200 seconds
     context
         .get_account_by_name("root")
-        .call(context.bridge_contract.id(), "set_refund_timelock_sec")
-        .args_json(json!({"refund_timelock_sec": 200}))
+        .call(context.bridge_contract.id(), "update_config")
+        .args_json(json!({"update": {"refund_timelock_sec": 200}}))
         .deposit(near_sdk::NearToken::from_yoctonear(1))
         .max_gas()
         .transact()
@@ -411,8 +411,8 @@ async fn test_refund_then_deposit_fails() {
     // 2. Set timelock to 0 and execute refund
     context
         .get_account_by_name("root")
-        .call(context.bridge_contract.id(), "set_refund_timelock_sec")
-        .args_json(json!({"refund_timelock_sec": 0}))
+        .call(context.bridge_contract.id(), "update_config")
+        .args_json(json!({"update": {"refund_timelock_sec": 0}}))
         .deposit(near_sdk::NearToken::from_yoctonear(1))
         .max_gas()
         .transact()
@@ -557,8 +557,8 @@ async fn test_refund_race_deposit_wins() {
     // 4. Set timelock to 0
     context
         .get_account_by_name("root")
-        .call(context.bridge_contract.id(), "set_refund_timelock_sec")
-        .args_json(json!({"refund_timelock_sec": 0}))
+        .call(context.bridge_contract.id(), "update_config")
+        .args_json(json!({"update": {"refund_timelock_sec": 0}}))
         .deposit(near_sdk::NearToken::from_yoctonear(1))
         .max_gas()
         .transact()
@@ -771,8 +771,8 @@ async fn test_refund_double_request_after_execute() {
     // 2. Set timelock to 0 and execute refund
     context
         .get_account_by_name("root")
-        .call(context.bridge_contract.id(), "set_refund_timelock_sec")
-        .args_json(json!({"refund_timelock_sec": 0}))
+        .call(context.bridge_contract.id(), "update_config")
+        .args_json(json!({"update": {"refund_timelock_sec": 0}}))
         .deposit(near_sdk::NearToken::from_yoctonear(1))
         .max_gas()
         .transact()
@@ -949,8 +949,8 @@ async fn test_refund_race_safe_deposit_wins() {
     // 4. Set timelock to 0
     context
         .get_account_by_name("root")
-        .call(context.bridge_contract.id(), "set_refund_timelock_sec")
-        .args_json(json!({"refund_timelock_sec": 0}))
+        .call(context.bridge_contract.id(), "update_config")
+        .args_json(json!({"update": {"refund_timelock_sec": 0}}))
         .deposit(near_sdk::NearToken::from_yoctonear(1))
         .max_gas()
         .transact()
@@ -1087,8 +1087,8 @@ async fn test_refund_then_safe_deposit_fails() {
     // 2. Set timelock to 0 and execute refund
     context
         .get_account_by_name("root")
-        .call(context.bridge_contract.id(), "set_refund_timelock_sec")
-        .args_json(json!({"refund_timelock_sec": 0}))
+        .call(context.bridge_contract.id(), "update_config")
+        .args_json(json!({"update": {"refund_timelock_sec": 0}}))
         .deposit(near_sdk::NearToken::from_yoctonear(1))
         .max_gas()
         .transact()
