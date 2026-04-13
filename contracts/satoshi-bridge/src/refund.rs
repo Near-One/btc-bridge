@@ -93,21 +93,6 @@ impl Contract {
             u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
         );
 
-        // Must not be already verified/finalized
-        require!(
-            !self
-                .data()
-                .verified_deposit_utxo
-                .contains(&utxo_storage_key),
-            "UTXO already verified via deposit"
-        );
-
-        // Must not have a pending refund request already
-        require!(
-            !self.data().refund_requests.contains_key(&utxo_storage_key),
-            "Refund request already exists for this UTXO"
-        );
-
         let config = self.internal_config();
         let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
         let confirmations = self.get_confirmations(config, deposit_amount);
@@ -385,6 +370,12 @@ impl Contract {
                 .verified_deposit_utxo
                 .contains(&utxo_storage_key),
             "UTXO already verified via deposit"
+        );
+
+        // Double-check no duplicate (another request_refund could have landed between our check and callback)
+        require!(
+            !self.data().refund_requests.contains_key(&utxo_storage_key),
+            "Refund request already exists for this UTXO"
         );
 
         let resolved_gas_fee = gas_fee.unwrap_or(config.max_btc_gas_fee);
