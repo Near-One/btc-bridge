@@ -211,11 +211,16 @@ impl Contract {
         chain_specific_data: Option<ChainSpecificData>,
     ) {
         let account_id = env::predecessor_account_id();
+        let max_pending = if self.data().multi_txs_white_list.contains(&account_id) {
+            self.internal_config().max_pending_sign_txs
+        } else {
+            1
+        };
         require!(
             self.internal_unwrap_account(&account_id)
-                .btc_pending_sign_ids
-                .is_empty(),
-            "Previous btc tx has not been signed"
+                .pending_sign_count()
+                < max_pending,
+            "Too many pending sign transactions"
         );
 
         self.withdraw_rbf_chain_specific(
@@ -241,11 +246,17 @@ impl Contract {
             .internal_unwrap_btc_pending_info(&original_btc_pending_verify_id)
             .account_id
             .clone();
+        let max_pending =
+            if self.data().multi_txs_white_list.contains(&user_account_id) {
+                self.internal_config().max_pending_sign_txs
+            } else {
+                1
+            };
         require!(
             self.internal_unwrap_account(&user_account_id)
-                .btc_pending_sign_ids
-                .is_empty(),
-            "Assisted user previous btc tx has not been signed"
+                .pending_sign_count()
+                < max_pending,
+            "Too many pending sign transactions"
         );
 
         self.cancel_withdraw_chain_specific(
@@ -329,11 +340,16 @@ impl Contract {
     ) {
         assert_one_yocto();
         let account_id = env::predecessor_account_id();
+        let max_pending = if self.data().multi_txs_white_list.contains(&account_id) {
+            self.internal_config().max_pending_sign_txs
+        } else {
+            1
+        };
         require!(
             self.internal_unwrap_account(&account_id)
-                .btc_pending_sign_ids
-                .is_empty(),
-            "Previous btc tx has not been signed"
+                .pending_sign_count()
+                < max_pending,
+            "Too many pending sign transactions"
         );
         self.active_utxo_management_rbf_chain_specific(
             account_id,
@@ -362,11 +378,17 @@ impl Contract {
             .internal_unwrap_btc_pending_info(&original_btc_pending_verify_id)
             .account_id
             .clone();
+        let max_pending =
+            if self.data().multi_txs_white_list.contains(&user_account_id) {
+                self.internal_config().max_pending_sign_txs
+            } else {
+                1
+            };
         require!(
             self.internal_unwrap_account(&user_account_id)
-                .btc_pending_sign_ids
-                .is_empty(),
-            "Assisted user previous btc tx has not been signed"
+                .pending_sign_count()
+                < max_pending,
+            "Too many pending sign transactions"
         );
         self.cancel_active_utxo_management_chain_specific(
             user_account_id,
@@ -432,10 +454,15 @@ impl Contract {
         account_id: AccountId,
         mut psbt: PsbtWrapper,
     ) {
+        let max_pending = if self.data().multi_txs_white_list.contains(&account_id) {
+            self.internal_config().max_pending_sign_txs
+        } else {
+            1
+        };
         let account = self.internal_unwrap_account(&account_id);
         require!(
-            account.btc_pending_sign_ids.is_empty(),
-            "Previous btc tx has not been signed"
+            account.pending_sign_count() < max_pending,
+            "Too many pending sign transactions"
         );
 
         let (utxo_storage_keys, vutxos) = self.generate_vutxos(&mut psbt);
