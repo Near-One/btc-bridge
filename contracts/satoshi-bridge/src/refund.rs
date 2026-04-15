@@ -1,8 +1,9 @@
 use bitcoin::{Amount, OutPoint, TxOut};
 
 use crate::{
-    env, near, require, serde_json, BTCPendingInfo, Contract, ContractExt, DepositMsg, Event, Gas,
-    OriginalState, PendingInfoStage, PendingInfoState, Promise, MAX_BOOL_RESULT, UTXO, VUTXO,
+    env, near, require, serde_json, AccessControllable, BTCPendingInfo, Contract, ContractExt,
+    DepositMsg, Event, Gas, OriginalState, PendingInfoStage, PendingInfoState, Promise, Role,
+    MAX_BOOL_RESULT, UTXO, VUTXO,
 };
 
 use crate::deposit_msg::get_deposit_path;
@@ -131,12 +132,18 @@ impl Contract {
 
         let config = self.internal_config();
 
-        // Check timelock
-        let now = nano_to_sec(env::block_timestamp());
-        require!(
-            u64::from(now) >= u64::from(refund_request.created_at_sec) + config.refund_timelock_sec,
-            "Refund timelock has not passed yet"
-        );
+        // Check timelock (DAO/Operator can skip)
+        let caller = env::predecessor_account_id();
+        let is_privileged = self.acl_has_role(Role::DAO.into(), caller.clone())
+            || self.acl_has_role(Role::Operator.into(), caller);
+        if !is_privileged {
+            let now = nano_to_sec(env::block_timestamp());
+            require!(
+                u64::from(now)
+                    >= u64::from(refund_request.created_at_sec) + config.refund_timelock_sec,
+                "Refund timelock has not passed yet"
+            );
+        }
 
         // Must still not be finalized
         require!(
