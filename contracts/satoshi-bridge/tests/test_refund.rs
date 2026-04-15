@@ -1379,9 +1379,11 @@ async fn test_refund_operator_skips_timelock() {
     );
 
     // 4. Grant Operator role to alice
-    check!(
-        context.bridge_acl_grant_role("root", "Operator", &context.get_account_by_name("alice").sdk_id())
-    );
+    check!(context.bridge_acl_grant_role(
+        "root",
+        "Operator",
+        &context.get_account_by_name("alice").sdk_id()
+    ));
 
     // 5. Operator (alice) — timelock skipped, execute succeeds
     check!(
