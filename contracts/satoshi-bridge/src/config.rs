@@ -320,3 +320,34 @@ impl Contract {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::*;
+
+    #[test]
+    fn test_config_update_changes_only_specified_field() {
+        let mut unit_env = init_unit_env();
+        testing_env!(unit_env
+            .context
+            .predecessor_account_id(owner_id())
+            .attached_deposit(NearToken::from_yoctonear(1))
+            .build());
+
+        let setup: ConfigUpdate =
+            serde_json::from_str(r#"{ "min_change_amount": "500" }"#).unwrap();
+        unit_env.contract.update_config(setup);
+
+        let config_before = unit_env.contract.internal_config().clone();
+        assert_ne!(config_before.min_change_amount, 0);
+
+        let update: ConfigUpdate =
+            serde_json::from_str(r#"{ "min_deposit_amount": "21000" }"#).unwrap();
+        unit_env.contract.update_config(update);
+
+        let config_after = unit_env.contract.internal_config();
+
+        assert_eq!(config_after.min_deposit_amount, 21000);
+        assert_eq!(config_after.min_change_amount, 500);
+    }
+}
