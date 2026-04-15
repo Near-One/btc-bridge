@@ -112,7 +112,7 @@ impl Contract {
 
     pub fn require_pending_sign_capacity(&self, account_id: &AccountId) {
         require!(
-            self.internal_get_account(account_id)
+            self.get_account(account_id)
                 .unwrap_or_else(|| {
                     env::panic_str(&format!("ERR_ACCOUNT_NOT_REGISTERED: {}", account_id))
                 })
@@ -124,10 +124,6 @@ impl Contract {
 
     pub fn check_account_exists(&self, account_id: &AccountId) -> bool {
         self.data().accounts.contains_key(account_id)
-    }
-
-    pub fn internal_get_account(&self, account_id: &AccountId) -> Option<Account> {
-        self.data().accounts.get(account_id).map(Account::from)
     }
 
     pub fn internal_unwrap_mut_account(&mut self, account_id: &AccountId) -> &mut Account {

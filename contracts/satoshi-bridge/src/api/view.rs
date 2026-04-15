@@ -78,8 +78,8 @@ impl Contract {
         self.internal_config().clone()
     }
 
-    pub fn get_account(&self, account_id: AccountId) -> Option<Account> {
-        self.internal_get_account(&account_id)
+    pub fn get_account(&self, account_id: &AccountId) -> Option<Account> {
+        self.data().accounts.get(account_id).map(Account::from)
     }
 
     pub fn list_accounts(
@@ -88,7 +88,10 @@ impl Contract {
     ) -> HashMap<AccountId, Option<Account>> {
         account_ids
             .into_iter()
-            .map(|key| (key.clone(), self.internal_get_account(&key)))
+            .map(|key| {
+                let account = self.get_account(&key);
+                (key, account)
+            })
             .collect()
     }
 
