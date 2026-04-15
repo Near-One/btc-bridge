@@ -1,6 +1,6 @@
 use crate::{
     assert_one_yocto, env, near, require, AccessControllable, Account, AccountId, BridgeFee,
-    Contract, ContractExt, HashMap, HashSet, Promise, Role, U128, U64,
+    Contract, ContractExt, HashSet, Promise, Role, U128, U64,
 };
 
 use near_plugins::access_control_any;
@@ -183,27 +183,23 @@ impl Contract {
 
     #[payable]
     #[access_control_any(roles(Role::DAO))]
-    pub fn extend_multi_txs_white_list(&mut self, entries: HashMap<AccountId, u32>) {
+    pub fn set_pending_tx_limit(&mut self, account_id: AccountId, max_pending: u32) {
         assert_one_yocto();
-        for (account_id, max_pending) in entries {
-            require!(max_pending >= 1, "Invalid max_pending value");
-            self.data_mut()
-                .multi_txs_white_list
-                .insert(account_id, max_pending);
-        }
+        require!(max_pending >= 1, "Invalid max_pending value");
+        self.data_mut()
+            .pending_tx_limits
+            .insert(account_id, max_pending);
     }
 
     #[payable]
     #[access_control_any(roles(Role::DAO))]
-    pub fn remove_multi_txs_white_list(&mut self, account_ids: Vec<AccountId>) {
+    pub fn reset_pending_tx_limit(&mut self, account_id: AccountId) {
         assert_one_yocto();
-        for account_id in account_ids {
-            let prev = self.data_mut().multi_txs_white_list.remove(&account_id);
-            require!(
-                prev.is_some(),
-                format!("Invalid account_id: {}", account_id)
-            );
-        }
+        let prev = self.data_mut().pending_tx_limits.remove(&account_id);
+        require!(
+            prev.is_some(),
+            format!("Invalid account_id: {}", account_id)
+        );
     }
 
     #[payable]

@@ -104,7 +104,7 @@ impl Account {
 impl Contract {
     pub fn get_max_pending_sign_txs(&self, account_id: &AccountId) -> u32 {
         self.data()
-            .multi_txs_white_list
+            .pending_tx_limits
             .get(account_id)
             .copied()
             .unwrap_or(1)
