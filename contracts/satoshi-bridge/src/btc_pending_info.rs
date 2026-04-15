@@ -256,9 +256,7 @@ impl BTCPendingInfo {
             PendingInfoState::ActiveUtxoManagementCancelRbf(state) => {
                 state.stage = PendingInfoStage::PendingBurn;
             }
-            PendingInfoState::Refund(state) => {
-                state.stage = PendingInfoStage::PendingBurn;
-            }
+            PendingInfoState::Refund(_state) => unreachable!(),
         }
     }
 
