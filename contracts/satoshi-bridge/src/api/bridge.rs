@@ -518,7 +518,10 @@ impl Contract {
             env::attached_deposit() >= self.required_balance_for_execute_refund(),
             "Insufficient deposit for storage"
         );
-        self.internal_execute_refund(utxo_storage_key);
+        let caller = env::predecessor_account_id();
+        let skip_timelock = self.acl_has_role(Role::DAO.into(), caller.clone())
+            || self.acl_has_role(Role::Operator.into(), caller);
+        self.internal_execute_refund(utxo_storage_key, skip_timelock);
     }
 
     /// Verify that the refund BTC transaction has been confirmed on the Bitcoin network.
