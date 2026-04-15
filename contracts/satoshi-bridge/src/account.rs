@@ -112,7 +112,10 @@ impl Contract {
 
     pub fn require_pending_sign_capacity(&self, account_id: &AccountId) {
         require!(
-            self.internal_unwrap_account(account_id)
+            self.internal_get_account(account_id)
+                .unwrap_or_else(|| {
+                    env::panic_str(&format!("ERR_ACCOUNT_NOT_REGISTERED: {}", account_id))
+                })
                 .pending_sign_count()
                 < self.get_max_pending_sign_txs(account_id),
             "Too many pending sign transactions"
@@ -125,12 +128,6 @@ impl Contract {
 
     pub fn internal_get_account(&self, account_id: &AccountId) -> Option<Account> {
         self.data().accounts.get(account_id).map(Account::from)
-    }
-
-    pub fn internal_unwrap_account(&self, account_id: &AccountId) -> Account {
-        self.internal_get_account(account_id).unwrap_or_else(|| {
-            env::panic_str(&format!("ERR_ACCOUNT_NOT_REGISTERED: {}", account_id))
-        })
     }
 
     pub fn internal_unwrap_mut_account(&mut self, account_id: &AccountId) -> &mut Account {
