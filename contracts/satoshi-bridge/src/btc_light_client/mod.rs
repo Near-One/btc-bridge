@@ -162,16 +162,6 @@ pub trait BtcLightClient {
     fn get_last_block_height(&self) -> u32;
 }
 
-/// Transaction inclusion proof with coinbase verification (v2).
-#[near(serializers = [json])]
-pub struct TxInclusionProof {
-    pub tx_block_blockhash: String,
-    pub tx_index: u64,
-    pub merkle_proof: Vec<String>,
-    pub coinbase_tx_id: String,
-    pub coinbase_merkle_proof: Vec<String>,
-}
-
 impl Contract {
     pub fn verify_transaction_inclusion_promise(
         &self,

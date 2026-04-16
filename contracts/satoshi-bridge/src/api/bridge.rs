@@ -1,4 +1,3 @@
-use crate::btc_light_client::TxInclusionProof;
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 use near_plugins::{access_control_any, pause};
@@ -6,7 +5,8 @@ use near_plugins::{access_control_any, pause};
 #[trusted_relayer]
 #[near]
 impl Contract {
-    /// Verify that the user has transferred BTC to the deposit address, and mint nBTC.
+    /// Verify that the user has transferred BTC asset to the protocol's designated BTC deposit account,
+    /// and mint NBTC to the user's NEAR account.
     ///
     /// # Deprecated
     /// Use `verify_deposit_v2` instead, which includes coinbase proof for stronger verification.
@@ -45,7 +45,8 @@ impl Contract {
         )
     }
 
-    /// Verify that the user has transferred BTC to the deposit address, and mint nBTC.
+    /// Verify that the user has transferred BTC asset to the protocol's designated BTC deposit account,
+    /// and mint NBTC to the user's NEAR account.
     /// Includes coinbase proof for stronger transaction inclusion verification.
     ///
     /// # Arguments
@@ -78,8 +79,8 @@ impl Contract {
         )
     }
 
-    /// Safe version of verify_deposit. Reverts the entire transaction if mint fails (no lost & found).
-    /// Does not charge deposit fees. User must attach NEAR for storage.
+    /// Safe version of verify_deposit, only supports minting nBTC with safe_deposit message and revert the deposit on failed XCC calls.
+    /// It doesn't charge deposit fee, and doesn't pay the token storage for the user
     ///
     /// # Deprecated
     /// Use `safe_verify_deposit_v2` instead, which includes coinbase proof for stronger verification.
