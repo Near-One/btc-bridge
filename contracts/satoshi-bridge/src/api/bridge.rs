@@ -6,6 +6,23 @@ use near_plugins::{access_control_any, pause};
 #[trusted_relayer]
 #[near]
 impl Contract {
+    /// Verify that the user has transferred BTC to the deposit address, and mint nBTC.
+    ///
+    /// # Deprecated
+    /// Use `verify_deposit_v2` instead, which includes coinbase proof for stronger verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `deposit_msg` - Information used to generate the deposit address path.
+    /// * `tx_bytes` - Successfully confirmed BTC transaction bytes.
+    /// * `vout` - The index of the output where the user sent BTC to the deposit address.
+    /// * `tx_block_blockhash` - The block hash where the transaction is located.
+    /// * `tx_index` - The index of the transaction in the block.
+    /// * `merkle_proof` - Merkle proof of the transaction.
+    ///
+    /// # Returns
+    ///
+    /// bool - Whether nBTC minting was successful.
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_deposit(
@@ -28,6 +45,19 @@ impl Contract {
         )
     }
 
+    /// Verify that the user has transferred BTC to the deposit address, and mint nBTC.
+    /// Includes coinbase proof for stronger transaction inclusion verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `deposit_msg` - Information used to generate the deposit address path.
+    /// * `tx_bytes` - Successfully confirmed BTC transaction bytes.
+    /// * `vout` - The index of the output where the user sent BTC to the deposit address.
+    /// * `proof` - Transaction inclusion proof with coinbase verification.
+    ///
+    /// # Returns
+    ///
+    /// bool - Whether nBTC minting was successful.
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_deposit_v2(
@@ -48,6 +78,24 @@ impl Contract {
         )
     }
 
+    /// Safe version of verify_deposit. Reverts the entire transaction if mint fails (no lost & found).
+    /// Does not charge deposit fees. User must attach NEAR for storage.
+    ///
+    /// # Deprecated
+    /// Use `safe_verify_deposit_v2` instead, which includes coinbase proof for stronger verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `deposit_msg` - Information used to generate the deposit address path. Must contain `safe_deposit`.
+    /// * `tx_bytes` - Successfully confirmed BTC transaction bytes.
+    /// * `vout` - The index of the output where the user sent BTC to the deposit address.
+    /// * `tx_block_blockhash` - The block hash where the transaction is located.
+    /// * `tx_index` - The index of the transaction in the block.
+    /// * `merkle_proof` - Merkle proof of the transaction.
+    ///
+    /// # Returns
+    ///
+    /// bool - Whether nBTC minting was successful.
     #[payable]
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
@@ -71,6 +119,20 @@ impl Contract {
         )
     }
 
+    /// Safe version of verify_deposit. Reverts the entire transaction if mint fails (no lost & found).
+    /// Does not charge deposit fees. User must attach NEAR for storage.
+    /// Includes coinbase proof for stronger transaction inclusion verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `deposit_msg` - Information used to generate the deposit address path. Must contain `safe_deposit`.
+    /// * `tx_bytes` - Successfully confirmed BTC transaction bytes.
+    /// * `vout` - The index of the output where the user sent BTC to the deposit address.
+    /// * `proof` - Transaction inclusion proof with coinbase verification.
+    ///
+    /// # Returns
+    ///
+    /// bool - Whether nBTC minting was successful.
     #[payable]
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
@@ -92,6 +154,21 @@ impl Contract {
         )
     }
 
+    /// Verify that the user's withdrawal has been successful, and burn the corresponding amount of tokens.
+    ///
+    /// # Deprecated
+    /// Use `verify_withdraw_v2` instead, which includes coinbase proof for stronger verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `tx_id` - The transaction ID of the successfully on-chain withdrawal.
+    /// * `tx_block_blockhash` - The block hash where the transaction is located.
+    /// * `tx_index` - The index of the transaction in the block.
+    /// * `merkle_proof` - Merkle proof of the transaction.
+    ///
+    /// # Returns
+    ///
+    /// bool - Whether nBTC burning was successful.
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_withdraw(
@@ -104,6 +181,17 @@ impl Contract {
         self.internal_verify_withdraw_entry(tx_id, tx_block_blockhash, tx_index, merkle_proof, None)
     }
 
+    /// Verify that the user's withdrawal has been successful, and burn the corresponding amount of tokens.
+    /// Includes coinbase proof for stronger transaction inclusion verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `tx_id` - The transaction ID of the successfully on-chain withdrawal.
+    /// * `proof` - Transaction inclusion proof with coinbase verification.
+    ///
+    /// # Returns
+    ///
+    /// bool - Whether nBTC burning was successful.
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_withdraw_v2(&mut self, tx_id: String, proof: TxInclusionProof) -> Promise {
@@ -175,6 +263,21 @@ impl Contract {
         );
     }
 
+    /// Verify that the active UTXO management has been successful, and burn the gas fee.
+    ///
+    /// # Deprecated
+    /// Use `verify_active_utxo_management_v2` instead, which includes coinbase proof for stronger verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `tx_id` - The transaction ID of the successfully on-chain UTXO management.
+    /// * `tx_block_blockhash` - The block hash where the transaction is located.
+    /// * `tx_index` - The index of the transaction in the block.
+    /// * `merkle_proof` - Merkle proof of the transaction.
+    ///
+    /// # Returns
+    ///
+    /// bool - Whether nBTC burning was successful.
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_active_utxo_management(
@@ -193,6 +296,17 @@ impl Contract {
         )
     }
 
+    /// Verify that the active UTXO management has been successful, and burn the gas fee.
+    /// Includes coinbase proof for stronger transaction inclusion verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `tx_id` - The transaction ID of the successfully on-chain UTXO management.
+    /// * `proof` - Transaction inclusion proof with coinbase verification.
+    ///
+    /// # Returns
+    ///
+    /// bool - Whether nBTC burning was successful.
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_active_utxo_management_v2(
