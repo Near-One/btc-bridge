@@ -519,8 +519,10 @@ impl Contract {
             "Insufficient deposit for storage"
         );
         let caller = env::predecessor_account_id();
-        let skip_timelock = self.acl_has_role(Role::DAO.into(), caller.clone())
-            || self.acl_has_role(Role::Operator.into(), caller);
+        let skip_timelock = self.acl_has_any_role(
+            vec![Role::DAO.into(), Role::RefundOperator.into()],
+            caller,
+        );
         self.internal_execute_refund(utxo_storage_key, skip_timelock);
     }
 

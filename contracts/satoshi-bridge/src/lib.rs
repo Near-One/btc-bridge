@@ -110,6 +110,7 @@ pub enum Role {
     UpgradableCodeDeployer,
     UnrestrictedRelayer,
     RelayerManager,
+    RefundOperator,
 }
 
 #[near(serializers = [borsh])]
