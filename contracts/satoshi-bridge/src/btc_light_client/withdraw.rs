@@ -33,6 +33,36 @@ impl Contract {
                 .internal_verify_withdraw_callback(tx_id),
         )
     }
+
+    pub(crate) fn internal_verify_withdraw_entry(
+        &mut self,
+        tx_id: String,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+        coinbase_proof: Option<(String, Vec<String>)>,
+    ) -> Promise {
+        let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id);
+        btc_pending_info.assert_withdraw_related_pending_verify_tx();
+        if let Some(original_tx_id) = btc_pending_info.get_original_tx_id() {
+            require!(
+                self.check_btc_pending_info_exists(original_tx_id),
+                "original tx already verified"
+            );
+        }
+        require!(
+            btc_pending_info.tx_bytes_with_sign.is_some(),
+            "Missing tx_bytes_with_sign"
+        );
+        self.internal_verify_withdraw(
+            tx_id,
+            tx_block_blockhash,
+            tx_index,
+            merkle_proof,
+            coinbase_proof,
+            btc_pending_info,
+        )
+    }
 }
 
 #[near]
