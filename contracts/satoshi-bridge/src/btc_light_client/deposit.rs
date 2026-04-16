@@ -1,7 +1,6 @@
 use near_sdk::serde_json::Value;
 
 use crate::{
-    btc_light_client::CoinbaseProof,
     burn::GAS_FOR_BURN_CALL,
     env, ext_nbtc,
     mint::{GAS_FOR_MINT_CALL, GAS_FOR_MINT_CALL_BACK},
@@ -20,7 +19,7 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
-        coinbase_proof: Option<CoinbaseProof>,
+        coinbase_proof: Option<(String, Vec<String>)>,
         pending_utxo_info: PendingUTXOInfo,
         deposit_msg: DepositMsg,
     ) -> Promise {
@@ -76,7 +75,7 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
-        coinbase_proof: Option<CoinbaseProof>,
+        coinbase_proof: Option<(String, Vec<String>)>,
         pending_utxo_info: PendingUTXOInfo,
         recipient_id: AccountId,
         deposit_msg: SafeDepositMsg,

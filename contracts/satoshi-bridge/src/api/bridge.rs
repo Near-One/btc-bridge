@@ -1,4 +1,4 @@
-use crate::btc_light_client::CoinbaseProof;
+use crate::btc_light_client::TxInclusionProof;
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 use near_plugins::{access_control_any, pause};
@@ -35,20 +35,16 @@ impl Contract {
         deposit_msg: DepositMsg,
         tx_bytes: Vec<u8>,
         vout: usize,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-        coinbase_tx_id: String,
-        coinbase_merkle_proof: Vec<String>,
+        proof: TxInclusionProof,
     ) -> Promise {
         self.internal_verify_deposit_entry(
             deposit_msg,
             tx_bytes,
             vout,
-            tx_block_blockhash,
-            tx_index,
-            merkle_proof,
-            Some((coinbase_tx_id, coinbase_merkle_proof)),
+            proof.tx_block_blockhash,
+            proof.tx_index,
+            proof.merkle_proof,
+            Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
         )
     }
 
@@ -83,20 +79,16 @@ impl Contract {
         deposit_msg: DepositMsg,
         tx_bytes: Vec<u8>,
         vout: usize,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-        coinbase_tx_id: String,
-        coinbase_merkle_proof: Vec<String>,
+        proof: TxInclusionProof,
     ) -> Promise {
         self.internal_safe_verify_deposit_entry(
             deposit_msg,
             tx_bytes,
             vout,
-            tx_block_blockhash,
-            tx_index,
-            merkle_proof,
-            Some((coinbase_tx_id, coinbase_merkle_proof)),
+            proof.tx_block_blockhash,
+            proof.tx_index,
+            proof.merkle_proof,
+            Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
         )
     }
 
@@ -114,21 +106,13 @@ impl Contract {
 
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
-    pub fn verify_withdraw_v2(
-        &mut self,
-        tx_id: String,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-        coinbase_tx_id: String,
-        coinbase_merkle_proof: Vec<String>,
-    ) -> Promise {
+    pub fn verify_withdraw_v2(&mut self, tx_id: String, proof: TxInclusionProof) -> Promise {
         self.internal_verify_withdraw_entry(
             tx_id,
-            tx_block_blockhash,
-            tx_index,
-            merkle_proof,
-            Some((coinbase_tx_id, coinbase_merkle_proof)),
+            proof.tx_block_blockhash,
+            proof.tx_index,
+            proof.merkle_proof,
+            Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
         )
     }
 
@@ -214,18 +198,14 @@ impl Contract {
     pub fn verify_active_utxo_management_v2(
         &mut self,
         tx_id: String,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-        coinbase_tx_id: String,
-        coinbase_merkle_proof: Vec<String>,
+        proof: TxInclusionProof,
     ) -> Promise {
         self.internal_verify_active_utxo_management_entry(
             tx_id,
-            tx_block_blockhash,
-            tx_index,
-            merkle_proof,
-            Some((coinbase_tx_id, coinbase_merkle_proof)),
+            proof.tx_block_blockhash,
+            proof.tx_index,
+            proof.merkle_proof,
+            Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
         )
     }
 
@@ -428,7 +408,7 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
-        coinbase_proof: Option<CoinbaseProof>,
+        coinbase_proof: Option<(String, Vec<String>)>,
     ) -> Promise {
         require!(
             deposit_msg.safe_deposit.is_none(),
@@ -486,7 +466,7 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
-        coinbase_proof: Option<CoinbaseProof>,
+        coinbase_proof: Option<(String, Vec<String>)>,
     ) -> Promise {
         require!(
             env::attached_deposit() >= self.required_balance_for_safe_deposit(),
@@ -546,7 +526,7 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
-        coinbase_proof: Option<CoinbaseProof>,
+        coinbase_proof: Option<(String, Vec<String>)>,
     ) -> Promise {
         let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id);
         btc_pending_info.assert_withdraw_related_pending_verify_tx();
@@ -576,7 +556,7 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
-        coinbase_proof: Option<CoinbaseProof>,
+        coinbase_proof: Option<(String, Vec<String>)>,
     ) -> Promise {
         let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id);
         btc_pending_info.assert_active_utxo_management_related_pending_verify_tx();

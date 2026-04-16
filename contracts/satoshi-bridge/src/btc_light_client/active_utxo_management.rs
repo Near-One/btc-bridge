@@ -1,6 +1,6 @@
 use crate::{
-    btc_light_client::CoinbaseProof, env, near, require, serde_json, BTCPendingInfo, Contract,
-    ContractExt, Gas, Promise, PromiseOrValue, MAX_BOOL_RESULT,
+    env, near, require, serde_json, BTCPendingInfo, Contract, ContractExt, Gas, Promise,
+    PromiseOrValue, MAX_BOOL_RESULT,
 };
 
 pub const GAS_FOR_VERIFY_ACTIVE_UTXO_MANAGEMENT_CALL_BACK: Gas = Gas::from_tgas(50);
@@ -12,7 +12,7 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
-        coinbase_proof: Option<CoinbaseProof>,
+        coinbase_proof: Option<(String, Vec<String>)>,
         btc_pending_info: &BTCPendingInfo,
     ) -> Promise {
         let config = self.internal_config();
