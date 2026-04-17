@@ -77,19 +77,24 @@ impl Contract {
         merkle_proof: Vec<String>,
         gas_fee: Option<u128>,
     ) -> Promise {
+        let config = self.internal_config();
+        let transaction = crate::WrappedTransaction::decode(&tx_bytes, &config.chain)
+            .expect("Deserialization tx_bytes failed");
+
         if let Some(msg_refund_address) = &deposit_msg.refund_address {
             require!(
                 msg_refund_address == &refund_address,
                 "refund_address does not match deposit_msg.refund_address"
             );
+        } else {
+            // If no refund_address in deposit_msg, verify that refund_address
+            // matches one of the transaction input addresses (sender addresses).
+            require!(
+                transaction.has_input_from_address(&refund_address, &config.chain),
+                "refund_address does not match any transaction input address"
+            );
         }
-
-        let transaction =
-            crate::WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
-                .expect("Deserialization tx_bytes failed");
         let tx_id = transaction.compute_txid().to_string();
-
-        let config = self.internal_config();
         let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
         let confirmations = self.get_confirmations(config, deposit_amount);
 
