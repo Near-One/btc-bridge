@@ -212,6 +212,7 @@ impl Context {
                     "unhealthy_utxo_amount": 1000,
                     "max_pending_sign_txs": 1,
                     "expiry_height_gap": 5000,
+                    "refund_timelock_sec": 3600,
                 }
             }))
             .transact()
@@ -611,12 +612,14 @@ impl Context {
         protocol_fee_rate: u32,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_withdraw_bridge_fee")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "withdraw_bridge_fee": {
-                    "fee_min": fee_min.to_string(),
-                    "fee_rate": fee_rate,
-                    "protocol_fee_rate": protocol_fee_rate,
+                "update": {
+                    "withdraw_bridge_fee": {
+                        "fee_min": fee_min.to_string(),
+                        "fee_rate": fee_rate,
+                        "protocol_fee_rate": protocol_fee_rate,
+                    },
                 },
             }))
             .max_gas()
@@ -632,12 +635,14 @@ impl Context {
         protocol_fee_rate: u32,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_deposit_bridge_fee")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "deposit_bridge_fee": {
-                    "fee_min": fee_min.to_string(),
-                    "fee_rate": fee_rate,
-                    "protocol_fee_rate": protocol_fee_rate,
+                "update": {
+                    "deposit_bridge_fee": {
+                        "fee_min": fee_min.to_string(),
+                        "fee_rate": fee_rate,
+                        "protocol_fee_rate": protocol_fee_rate,
+                    },
                 },
             }))
             .max_gas()
@@ -667,10 +672,12 @@ impl Context {
         active_management_upper_limit: u32,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_active_management_limit")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "active_management_lower_limit": active_management_lower_limit,
-                "active_management_upper_limit": active_management_upper_limit,
+                "update": {
+                    "active_management_lower_limit": active_management_lower_limit,
+                    "active_management_upper_limit": active_management_upper_limit,
+                },
             }))
             .max_gas()
             .deposit(NearToken::from_yoctonear(1))
@@ -684,10 +691,12 @@ impl Context {
         passive_management_upper_limit: u32,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_passive_management_limit")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "passive_management_lower_limit": passive_management_lower_limit,
-                "passive_management_upper_limit": passive_management_upper_limit,
+                "update": {
+                    "passive_management_lower_limit": passive_management_lower_limit,
+                    "passive_management_upper_limit": passive_management_upper_limit,
+                },
             }))
             .max_gas()
             .deposit(NearToken::from_yoctonear(1))
@@ -701,10 +710,12 @@ impl Context {
         max_btc_gas_fee: u128,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_btc_gas_fee_valid_range")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "min_btc_gas_fee": min_btc_gas_fee.to_string(),
-                "max_btc_gas_fee": max_btc_gas_fee.to_string(),
+                "update": {
+                    "min_btc_gas_fee": min_btc_gas_fee.to_string(),
+                    "max_btc_gas_fee": max_btc_gas_fee.to_string(),
+                },
             }))
             .max_gas()
             .deposit(NearToken::from_yoctonear(1))
@@ -717,9 +728,11 @@ impl Context {
         max_btc_tx_pending_sec: u32,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_max_btc_tx_pending_sec")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "max_btc_tx_pending_sec": max_btc_tx_pending_sec,
+                "update": {
+                    "max_btc_tx_pending_sec": max_btc_tx_pending_sec,
+                },
             }))
             .max_gas()
             .deposit(NearToken::from_yoctonear(1))
@@ -729,9 +742,11 @@ impl Context {
 
     pub async fn set_nbtc_account_id(&self) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_nbtc_account_id")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "nbtc_account_id": self.get_account_by_name("nbtc").id(),
+                "update": {
+                    "nbtc_account_id": self.get_account_by_name("nbtc").id(),
+                },
             }))
             .max_gas()
             .deposit(NearToken::from_yoctonear(1))
@@ -1156,6 +1171,7 @@ impl UpgradeContext {
                     "max_btc_tx_pending_sec": 3600 * 24,
                     "unhealthy_utxo_amount": 1000,
                     "expiry_height_gap": 1000,
+                    "refund_timelock_sec": 3600,
                 }
             }))
             .transact()
@@ -1259,5 +1275,126 @@ impl UpgradeContext {
             .await
             .unwrap()
             .json::<String>()
+    }
+}
+
+impl Context {
+    // ── Refund helpers ──
+
+    pub async fn request_refund(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        refund_address: &str,
+        tx_bytes: Vec<u8>,
+        vout: u32,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+        gas_fee: Option<U128>,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "request_refund")
+            .args_json(json!({
+                "deposit_msg": deposit_msg,
+                "refund_address": refund_address,
+                "tx_bytes": tx_bytes,
+                "vout": vout,
+                "tx_block_blockhash": tx_block_blockhash,
+                "tx_index": tx_index,
+                "merkle_proof": merkle_proof,
+                "gas_fee": gas_fee,
+            }))
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn required_balance_for_execute_refund(&self) -> Result<NearToken> {
+        self.bridge_contract
+            .call("required_balance_for_execute_refund")
+            .args_json(json!({}))
+            .view()
+            .await
+            .unwrap()
+            .json::<NearToken>()
+    }
+
+    pub async fn execute_refund(
+        &self,
+        user: &str,
+        utxo_storage_key: &str,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "execute_refund")
+            .args_json(json!({
+                "utxo_storage_key": utxo_storage_key,
+            }))
+            .deposit(NearToken::from_millinear(100))
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn reject_refund(
+        &self,
+        user: &str,
+        utxo_storage_key: &str,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "reject_refund")
+            .args_json(json!({
+                "utxo_storage_key": utxo_storage_key,
+            }))
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn verify_refund_finalize(
+        &self,
+        user: &str,
+        tx_id: &str,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "verify_refund_finalize")
+            .args_json(json!({
+                "tx_id": tx_id,
+                "tx_block_blockhash": tx_block_blockhash,
+                "tx_index": tx_index,
+                "merkle_proof": merkle_proof,
+            }))
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn safe_verify_deposit(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        tx_bytes: Vec<u8>,
+        vout: u32,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "safe_verify_deposit")
+            .args_json(json!({
+                "deposit_msg": deposit_msg,
+                "tx_bytes": tx_bytes,
+                "vout": vout,
+                "tx_block_blockhash": tx_block_blockhash,
+                "tx_index": tx_index,
+                "merkle_proof": merkle_proof,
+            }))
+            .deposit(NearToken::from_millinear(2))
+            .max_gas()
+            .transact()
+            .await
     }
 }

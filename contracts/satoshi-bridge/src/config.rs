@@ -1,6 +1,6 @@
 use crate::{
-    env, near, network, network::Address, require, u128_dec_format, AccountId, Contract, HashMap,
-    PublicKey, ScriptBuf,
+    env, near, network, network::Address, require, u128_dec_format, u128_dec_format_option,
+    AccountId, Contract, HashMap, PublicKey, ScriptBuf,
 };
 
 pub const MAX_RATIO: u32 = 10000;
@@ -110,6 +110,9 @@ pub struct Config {
     pub unhealthy_utxo_amount: u64,
     #[cfg(feature = "zcash")]
     pub expiry_height_gap: u32,
+    // Timelock in seconds before a refund request can be executed.
+    #[cfg(not(feature = "zcash"))]
+    pub refund_timelock_sec: u64,
 }
 
 impl Config {
@@ -138,6 +141,10 @@ impl Config {
         require!(
             self.passive_management_lower_limit < self.passive_management_upper_limit,
             "passive_management_lower_limit must be less than passive_management_upper_limit"
+        );
+        require!(
+            u128::from(self.unhealthy_utxo_amount) > self.min_change_amount,
+            "unhealthy_utxo_amount must be greater than min_change_amount"
         );
     }
 
@@ -189,6 +196,87 @@ impl Config {
     }
 }
 
+#[near(serializers = [json])]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub struct ConfigUpdate {
+    pub btc_light_client_account_id: Option<AccountId>,
+    pub nbtc_account_id: Option<AccountId>,
+    pub confirmations_delta: Option<u8>,
+    pub extra_msg_confirmations_delta: Option<u8>,
+    pub deposit_bridge_fee: Option<BridgeFee>,
+    pub withdraw_bridge_fee: Option<BridgeFee>,
+    #[serde(with = "u128_dec_format_option")]
+    #[serde(default)]
+    pub min_deposit_amount: Option<u128>,
+    #[serde(with = "u128_dec_format_option")]
+    #[serde(default)]
+    pub min_withdraw_amount: Option<u128>,
+    #[serde(with = "u128_dec_format_option")]
+    #[serde(default)]
+    pub min_change_amount: Option<u128>,
+    #[serde(with = "u128_dec_format_option")]
+    #[serde(default)]
+    pub max_change_amount: Option<u128>,
+    #[serde(with = "u128_dec_format_option")]
+    #[serde(default)]
+    pub min_btc_gas_fee: Option<u128>,
+    #[serde(with = "u128_dec_format_option")]
+    #[serde(default)]
+    pub max_btc_gas_fee: Option<u128>,
+    pub max_withdrawal_input_number: Option<u8>,
+    pub max_change_number: Option<u8>,
+    pub max_active_utxo_management_input_number: Option<u8>,
+    pub max_active_utxo_management_output_number: Option<u8>,
+    pub active_management_lower_limit: Option<u32>,
+    pub active_management_upper_limit: Option<u32>,
+    pub passive_management_lower_limit: Option<u32>,
+    pub passive_management_upper_limit: Option<u32>,
+    pub rbf_num_limit: Option<u8>,
+    pub max_btc_tx_pending_sec: Option<u32>,
+    pub unhealthy_utxo_amount: Option<u64>,
+    #[cfg(not(feature = "zcash"))]
+    pub refund_timelock_sec: Option<u64>,
+}
+
+impl ConfigUpdate {
+    pub fn apply(self, config: &mut Config) {
+        macro_rules! set_if_some {
+            ($field:ident) => {
+                if let Some(v) = self.$field {
+                    config.$field = v;
+                }
+            };
+        }
+        set_if_some!(btc_light_client_account_id);
+        set_if_some!(nbtc_account_id);
+        set_if_some!(confirmations_delta);
+        set_if_some!(extra_msg_confirmations_delta);
+        set_if_some!(deposit_bridge_fee);
+        set_if_some!(withdraw_bridge_fee);
+        set_if_some!(min_deposit_amount);
+        set_if_some!(min_withdraw_amount);
+        set_if_some!(min_change_amount);
+        set_if_some!(max_change_amount);
+        set_if_some!(min_btc_gas_fee);
+        set_if_some!(max_btc_gas_fee);
+        set_if_some!(max_withdrawal_input_number);
+        set_if_some!(max_change_number);
+        set_if_some!(max_active_utxo_management_input_number);
+        set_if_some!(max_active_utxo_management_output_number);
+        set_if_some!(active_management_lower_limit);
+        set_if_some!(active_management_upper_limit);
+        set_if_some!(passive_management_lower_limit);
+        set_if_some!(passive_management_upper_limit);
+        set_if_some!(rbf_num_limit);
+        set_if_some!(max_btc_tx_pending_sec);
+        set_if_some!(unhealthy_utxo_amount);
+        #[cfg(not(feature = "zcash"))]
+        set_if_some!(refund_timelock_sec);
+
+        config.assert_valid();
+    }
+}
+
 impl Contract {
     pub fn internal_mut_config(&mut self) -> &mut Config {
         self.data_mut()
@@ -230,5 +318,36 @@ impl Contract {
             config.get_confirmations(satoshi_amount)
                 + u64::from(config.extra_msg_confirmations_delta)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::*;
+
+    #[test]
+    fn test_config_update_changes_only_specified_field() {
+        let mut unit_env = init_unit_env();
+        testing_env!(unit_env
+            .context
+            .predecessor_account_id(owner_id())
+            .attached_deposit(NearToken::from_yoctonear(1))
+            .build());
+
+        let setup: ConfigUpdate =
+            serde_json::from_str(r#"{ "min_change_amount": "500" }"#).unwrap();
+        unit_env.contract.update_config(setup);
+
+        let config_before = unit_env.contract.internal_config().clone();
+        assert_ne!(config_before.min_change_amount, 0);
+
+        let update: ConfigUpdate =
+            serde_json::from_str(r#"{ "min_deposit_amount": "21000" }"#).unwrap();
+        unit_env.contract.update_config(update);
+
+        let config_after = unit_env.contract.internal_config();
+
+        assert_eq!(config_after.min_deposit_amount, 21000);
+        assert_eq!(config_after.min_change_amount, 500);
     }
 }

@@ -61,6 +61,8 @@ impl From<ContractDataV0> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
+            #[cfg(not(feature = "zcash"))]
+            refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }
 }
@@ -191,6 +193,8 @@ impl From<ConfigV0> for Config {
             unhealthy_utxo_amount: 1000,
             #[cfg(feature = "zcash")]
             expiry_height_gap: 1000,
+            #[cfg(not(feature = "zcash"))]
+            refund_timelock_sec: 14 * 24 * 3600, // 2 weeks
         }
     }
 }
@@ -331,6 +335,8 @@ impl From<ConfigV1> for Config {
             unhealthy_utxo_amount,
             #[cfg(feature = "zcash")]
             expiry_height_gap,
+            #[cfg(not(feature = "zcash"))]
+            refund_timelock_sec: 14 * 24 * 3600, // 2 weeks
         }
     }
 }
@@ -395,6 +401,8 @@ impl From<ContractDataV1> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
+            #[cfg(not(feature = "zcash"))]
+            refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }
 }
@@ -470,6 +478,8 @@ impl From<ContractDataV2> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
+            #[cfg(not(feature = "zcash"))]
+            refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }
 }
@@ -536,6 +546,8 @@ impl From<ContractDataV3> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
+            #[cfg(not(feature = "zcash"))]
+            refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }
 }

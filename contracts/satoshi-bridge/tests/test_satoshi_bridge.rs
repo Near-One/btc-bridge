@@ -114,6 +114,7 @@ async fn test_base() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         })
         .await
         .unwrap();
@@ -123,6 +124,7 @@ async fn test_base() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         })
         .await
         .unwrap();
@@ -134,6 +136,7 @@ async fn test_base() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         generate_transaction_bytes(
             vec![(
@@ -182,6 +185,7 @@ async fn test_base() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         generate_transaction_bytes(
             vec![(
@@ -231,6 +235,7 @@ async fn test_base() {
                 post_actions: None,
                 extra_msg: None,
                 safe_deposit: None,
+                refund_address: None,
             },
             generate_transaction_bytes(
                 vec![(
@@ -264,6 +269,7 @@ async fn test_base() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         generate_transaction_bytes(
             vec![(
@@ -483,6 +489,7 @@ async fn test_fix_bridge_fee_and_relayer() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         })
         .await
         .unwrap();
@@ -494,6 +501,7 @@ async fn test_fix_bridge_fee_and_relayer() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         generate_transaction_bytes(
             vec![(
@@ -623,6 +631,7 @@ async fn test_ratio_bridge_fee_and_relayer() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         })
         .await
         .unwrap();
@@ -634,6 +643,7 @@ async fn test_ratio_bridge_fee_and_relayer() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         generate_transaction_bytes(
             vec![(
@@ -766,6 +776,7 @@ async fn test_directly_withdraw() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         })
         .await
         .unwrap();
@@ -777,6 +788,7 @@ async fn test_directly_withdraw() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         generate_transaction_bytes(
             vec![(
@@ -895,6 +907,7 @@ async fn test_one_click() {
             }]),
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         };
         let alice_btc_deposit_address = context
             .get_user_deposit_address(deposit_msg.clone())
@@ -955,6 +968,7 @@ async fn test_one_click() {
             }]),
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         };
         let alice_btc_deposit_address = context
             .get_user_deposit_address(deposit_msg.clone())
@@ -1012,6 +1026,7 @@ async fn test_one_click() {
             }]),
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         };
         let alice_btc_deposit_address = context
             .get_user_deposit_address(deposit_msg.clone())
@@ -1078,6 +1093,7 @@ async fn test_one_click() {
             ]),
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         };
         let alice_btc_deposit_address = context
             .get_user_deposit_address(deposit_msg.clone())
@@ -1151,6 +1167,7 @@ async fn test_one_click() {
             ]),
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         };
         let alice_btc_deposit_address = context
             .get_user_deposit_address(deposit_msg.clone())
@@ -1208,6 +1225,7 @@ async fn test_one_click() {
             }]),
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         };
         let alice_btc_deposit_address = context
             .get_user_deposit_address(deposit_msg.clone())
@@ -1274,6 +1292,7 @@ async fn test_one_click() {
             ]),
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         };
         let alice_btc_deposit_address = context
             .get_user_deposit_address(deposit_msg.clone())
@@ -1341,6 +1360,7 @@ async fn test_one_click() {
             ]),
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         };
         let alice_btc_deposit_address = context
             .get_user_deposit_address(deposit_msg.clone())
@@ -1403,6 +1423,7 @@ async fn test_utxo_passive_management() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         })
         .await
         .unwrap();
@@ -1415,6 +1436,7 @@ async fn test_utxo_passive_management() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         generate_transaction_bytes(
             vec![(
@@ -1439,6 +1461,7 @@ async fn test_utxo_passive_management() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         generate_transaction_bytes(
             vec![(
@@ -1625,6 +1648,7 @@ async fn test_cancel_withdraw() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         })
         .await
         .unwrap();
@@ -1636,6 +1660,7 @@ async fn test_cancel_withdraw() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         generate_transaction_bytes(
             vec![(
@@ -1860,6 +1885,7 @@ async fn test_cancel_withdraw2() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         })
         .await
         .unwrap();
@@ -1871,6 +1897,7 @@ async fn test_cancel_withdraw2() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         generate_transaction_bytes(
             vec![(
@@ -2044,6 +2071,7 @@ async fn test_utxo_active_management() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         })
         .await
         .unwrap();
@@ -2056,6 +2084,7 @@ async fn test_utxo_active_management() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         generate_transaction_bytes(
             vec![(
@@ -2080,6 +2109,7 @@ async fn test_utxo_active_management() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         generate_transaction_bytes(
             vec![(
@@ -2413,6 +2443,7 @@ async fn test_utxo_active_management2() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         })
         .await
         .unwrap();
@@ -2425,6 +2456,7 @@ async fn test_utxo_active_management2() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         generate_transaction_bytes(
             vec![(
@@ -2449,6 +2481,7 @@ async fn test_utxo_active_management2() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         generate_transaction_bytes(
             vec![(
@@ -2618,6 +2651,7 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         })
         .await
         .unwrap();
@@ -2631,6 +2665,7 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
                 post_actions: None,
                 extra_msg: None,
                 safe_deposit: None,
+                refund_address: None,
             },
             "tx_bytes": generate_transaction_bytes(
                 vec![(
@@ -2665,6 +2700,7 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
                 post_actions: None,
                 extra_msg: None,
                 safe_deposit: None,
+                refund_address: None,
             },
             "tx_bytes": generate_transaction_bytes(
                 vec![(

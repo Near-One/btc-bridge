@@ -3,7 +3,7 @@ use near_sdk::{
     assert_one_yocto,
     borsh::{BorshDeserialize, BorshSerialize},
     env, ext_contract, is_promise_success,
-    json_types::{U128, U64},
+    json_types::U128,
     log, near, require,
     serde::{Deserialize, Serialize},
     serde_json::{self, json, Value},
@@ -36,6 +36,8 @@ pub mod nbtc;
 pub mod network;
 pub mod psbt;
 pub mod rbf;
+#[cfg(not(feature = "zcash"))]
+pub mod refund;
 pub mod token_transfer;
 #[cfg(test)]
 mod unit;
@@ -54,6 +56,8 @@ pub use crate::json_utils::*;
 pub use crate::legacy::*;
 pub use crate::nbtc::*;
 pub use crate::rbf::*;
+#[cfg(not(feature = "zcash"))]
+pub use crate::refund::*;
 pub use crate::token_transfer::*;
 pub use crate::utils::*;
 pub use crate::utxo::*;
@@ -93,6 +97,8 @@ enum StorageKey {
     PostActionMsgTemplates,
     ExtraMsgRelayerWhiteList,
     PendingTxLimits,
+    #[cfg(not(feature = "zcash"))]
+    RefundRequests,
 }
 
 #[derive(AccessControlRole, Deserialize, Serialize, Copy, Clone)]
@@ -105,6 +111,7 @@ pub enum Role {
     UpgradableCodeDeployer,
     UnrestrictedRelayer,
     RelayerManager,
+    RefundOperator,
 }
 
 #[near(serializers = [borsh])]
@@ -127,6 +134,8 @@ pub struct ContractData {
     pub acc_claimed_protocol_fee: u128,
     pub cur_reserved_protocol_fee: u128,
     pub acc_protocol_fee_for_gas: u128,
+    #[cfg(not(feature = "zcash"))]
+    pub refund_requests: IterableMap<String, VRefundRequest>,
 }
 
 #[near(serializers = [borsh])]
@@ -190,6 +199,8 @@ impl Contract {
                 post_action_msg_templates: IterableMap::new(StorageKey::PostActionMsgTemplates),
                 pending_tx_limits: IterableMap::new(StorageKey::PendingTxLimits),
                 lost_found: IterableMap::new(StorageKey::LostFound),
+                #[cfg(not(feature = "zcash"))]
+                refund_requests: IterableMap::new(StorageKey::RefundRequests),
                 acc_collected_protocol_fee: 0,
                 cur_available_protocol_fee: 0,
                 acc_claimed_protocol_fee: 0,
