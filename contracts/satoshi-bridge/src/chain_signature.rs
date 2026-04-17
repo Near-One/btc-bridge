@@ -196,9 +196,10 @@ impl Contract {
 
                 let is_original_tx = btc_pending_info.get_original_tx_id().is_none();
                 let account = self.internal_unwrap_mut_account(&account_id);
-                let clear_account_btc_pending_sign_id =
-                    account.btc_pending_sign_id.take() == Some(btc_pending_sign_id.clone());
-                require!(clear_account_btc_pending_sign_id, "Internal error");
+                require!(
+                    account.btc_pending_sign_ids.remove(&btc_pending_sign_id),
+                    "Internal error"
+                );
                 if is_original_tx {
                     account
                         .btc_pending_verify_list

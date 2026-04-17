@@ -183,6 +183,24 @@ impl Contract {
 
     #[payable]
     #[access_control_any(roles(Role::DAO))]
+    pub fn set_pending_tx_limit(&mut self, account_id: AccountId, max_pending: Option<u32>) {
+        assert_one_yocto();
+        if let Some(max_pending) = max_pending {
+            require!(max_pending >= 1, "Invalid max_pending value");
+            self.data_mut()
+                .pending_tx_limits
+                .insert(account_id, max_pending);
+        } else {
+            let prev = self.data_mut().pending_tx_limits.remove(&account_id);
+            require!(
+                prev.is_some(),
+                format!("Invalid account_id: {}", account_id)
+            );
+        }
+    }
+
+    #[payable]
+    #[access_control_any(roles(Role::DAO))]
     pub fn extend_post_action_msg_templates(
         &mut self,
         contract_id: AccountId,

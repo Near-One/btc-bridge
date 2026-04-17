@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::zcash_utils::types::ChainSpecificData;
 use crate::*;
@@ -19,7 +21,7 @@ macro_rules! define_rbf_callback {
                 chain_specific_data: Option<ChainSpecificData>,
             ) {
                 let predecessor_account_id = env::predecessor_account_id();
-                self.get_last_block_height_promise().then(
+                let _ = self.get_last_block_height_promise().then(
                     Self::ext(env::current_account_id())
                         .with_static_gas(GAS_RBF_CALL_BACK)
                         .$callback_name(
@@ -67,7 +69,8 @@ macro_rules! define_rbf_callback {
                 );
 
                 self.internal_unwrap_mut_account(&account_id)
-                    .btc_pending_sign_id = Some(btc_pending_id.clone());
+                    .btc_pending_sign_ids
+                    .insert(btc_pending_id.clone());
 
                 Event::GenerateBtcPendingInfo {
                     account_id: &account_id,
@@ -248,7 +251,7 @@ impl Contract {
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
     ) {
-        self.get_last_block_height_promise().then(
+        let _ = self.get_last_block_height_promise().then(
             Self::ext(env::current_account_id())
                 .with_static_gas(GAS_FOR_ACTIVE_UTXO_MANAGMENT_CALLBACK)
                 .active_utxo_management_callback(account_id, input, output),
