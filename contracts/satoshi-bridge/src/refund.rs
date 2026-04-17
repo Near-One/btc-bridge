@@ -213,12 +213,7 @@ impl Contract {
         if !self.check_account_exists(&caller) {
             self.internal_set_account(&caller, crate::Account::new(&caller));
         }
-        require!(
-            self.internal_unwrap_account(&caller)
-                .btc_pending_sign_id
-                .is_none(),
-            "Previous btc tx has not been signed"
-        );
+        self.require_pending_sign_capacity(&caller);
 
         let btc_pending_info = BTCPendingInfo {
             account_id: caller.clone(),
@@ -250,7 +245,8 @@ impl Contract {
             "pending info already exist"
         );
         self.internal_unwrap_mut_account(&caller)
-            .btc_pending_sign_id = Some(btc_pending_id.clone());
+            .btc_pending_sign_ids
+            .insert(btc_pending_id.clone());
 
         // Mark UTXO as verified to prevent verify_deposit later
         self.data_mut()
