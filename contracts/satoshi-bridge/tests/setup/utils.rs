@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use bitcoin::{
     absolute::LockTime, consensus::serialize, psbt::Input, transaction::Version, Address, Amount,
-    Psbt, Transaction as BtcTransaction, TxIn, TxOut, Witness,
+    Psbt, Transaction as BtcTransaction, TxIn, TxOut,
 };
 use near_workspaces::{result::ExecutionFinalResult, Result};
 use satoshi_bridge::network::Chain;
@@ -103,76 +103,6 @@ pub fn generate_transaction_bytes(
         input: tx_ins
             .into_iter()
             .map(|(tx_id, vout, script_addr)| generate_tx_in(tx_id, vout, script_addr))
-            .collect(),
-        output: tx_outs
-            .into_iter()
-            .map(|(script_addr, value)| generate_tx_out(value, script_addr, Chain::BitcoinMainnet))
-            .collect(),
-    })
-}
-
-/// Generate transaction bytes with P2WPKH witness data on inputs.
-/// `pubkey_hex` is a compressed public key (33 bytes hex-encoded).
-/// This allows `has_input_from_address` to extract the sender address from witness.
-#[cfg(not(feature = "zcash"))]
-pub fn generate_transaction_bytes_with_witness(
-    tx_ins: Vec<(&str, u32)>,
-    tx_outs: Vec<(&str, u64)>,
-    pubkey_hex: &str,
-) -> Vec<u8> {
-    let pubkey_bytes = hex::decode(pubkey_hex).expect("Invalid pubkey hex");
-    let fake_sig = vec![0x30; 71]; // plausible DER signature length
-    serialize(&BtcTransaction {
-        version: Version::TWO,
-        lock_time: LockTime::ZERO,
-        input: tx_ins
-            .into_iter()
-            .map(|(tx_id, vout)| {
-                let mut tx_in = TxIn::default();
-                tx_in.previous_output.txid = tx_id.parse().unwrap();
-                tx_in.previous_output.vout = vout;
-                tx_in.sequence.0 = 4294967293;
-                tx_in.witness = Witness::from_slice(&[&fake_sig, &pubkey_bytes]);
-                tx_in
-            })
-            .collect(),
-        output: tx_outs
-            .into_iter()
-            .map(|(script_addr, value)| generate_tx_out(value, script_addr, Chain::BitcoinMainnet))
-            .collect(),
-    })
-}
-
-/// Generate transaction bytes with P2PKH script_sig on inputs.
-/// `pubkey_hex` is a compressed public key (33 bytes hex-encoded).
-/// script_sig format: <push sig_len> <fake_sig> <0x21> <33-byte pubkey>
-#[cfg(not(feature = "zcash"))]
-pub fn generate_transaction_bytes_with_p2pkh_scriptsig(
-    tx_ins: Vec<(&str, u32)>,
-    tx_outs: Vec<(&str, u64)>,
-    pubkey_hex: &str,
-) -> Vec<u8> {
-    let pubkey_bytes = hex::decode(pubkey_hex).expect("Invalid pubkey hex");
-    let fake_sig = vec![0x30; 71];
-    // script_sig: <push sig_len> <sig> <0x21> <33-byte pubkey>
-    let mut script_bytes = vec![fake_sig.len() as u8];
-    script_bytes.extend_from_slice(&fake_sig);
-    script_bytes.push(0x21);
-    script_bytes.extend_from_slice(&pubkey_bytes);
-    let script_sig = bitcoin::ScriptBuf::from_bytes(script_bytes);
-    serialize(&BtcTransaction {
-        version: Version::TWO,
-        lock_time: LockTime::ZERO,
-        input: tx_ins
-            .into_iter()
-            .map(|(tx_id, vout)| {
-                let mut tx_in = TxIn::default();
-                tx_in.previous_output.txid = tx_id.parse().unwrap();
-                tx_in.previous_output.vout = vout;
-                tx_in.sequence.0 = 4294967293;
-                tx_in.script_sig = script_sig.clone();
-                tx_in
-            })
             .collect(),
         output: tx_outs
             .into_iter()
