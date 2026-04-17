@@ -520,8 +520,16 @@ impl Contract {
             "Insufficient deposit for storage"
         );
         let caller = env::predecessor_account_id();
-        let skip_timelock =
+        let is_privileged =
             self.acl_has_any_role(vec![Role::DAO.into(), Role::RefundOperator.into()], caller);
+        let refund_request: crate::RefundRequest = self
+            .data()
+            .refund_requests
+            .get(&utxo_storage_key)
+            .expect("Refund request not found")
+            .into();
+        let has_refund_address = refund_request.deposit_msg().refund_address.is_some();
+        let skip_timelock = is_privileged && has_refund_address;
         self.internal_execute_refund(utxo_storage_key, skip_timelock);
     }
 

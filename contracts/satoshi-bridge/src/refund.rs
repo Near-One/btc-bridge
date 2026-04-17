@@ -121,7 +121,7 @@ impl Contract {
     }
 
     /// Execute an approved refund request after timelock has passed.
-    /// `skip_timelock` — if true, the timelock check is bypassed (for DAO/Operator).
+    /// `skip_timelock` — if true, the timelock check is bypassed.
     pub fn internal_execute_refund(&mut self, utxo_storage_key: String, skip_timelock: bool) {
         let refund_request: RefundRequest = self
             .data()
