@@ -427,6 +427,7 @@ impl Contract {
 }
 
 #[cfg(not(feature = "zcash"))]
+#[trusted_relayer]
 #[near]
 impl Contract {
     // ── Refund API (Bitcoin only) ──
@@ -533,6 +534,7 @@ impl Contract {
     /// * `tx_block_blockhash` - Block hash containing the transaction.
     /// * `tx_index` - Transaction index within the block.
     /// * `merkle_proof` - Merkle proof for Light Client verification.
+    #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_refund_finalize(
         &mut self,
