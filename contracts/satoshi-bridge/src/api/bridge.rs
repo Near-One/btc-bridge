@@ -211,12 +211,7 @@ impl Contract {
         chain_specific_data: Option<ChainSpecificData>,
     ) {
         let account_id = env::predecessor_account_id();
-        require!(
-            self.internal_unwrap_account(&account_id)
-                .btc_pending_sign_id
-                .is_none(),
-            "Previous btc tx has not been signed"
-        );
+        self.require_pending_sign_capacity(&account_id);
 
         self.withdraw_rbf_chain_specific(
             account_id,
@@ -241,12 +236,7 @@ impl Contract {
             .internal_unwrap_btc_pending_info(&original_btc_pending_verify_id)
             .account_id
             .clone();
-        require!(
-            self.internal_unwrap_account(&user_account_id)
-                .btc_pending_sign_id
-                .is_none(),
-            "Assisted user previous btc tx has not been signed"
-        );
+        self.require_pending_sign_capacity(&user_account_id);
 
         self.cancel_withdraw_chain_specific(
             user_account_id,
@@ -329,12 +319,7 @@ impl Contract {
     ) {
         assert_one_yocto();
         let account_id = env::predecessor_account_id();
-        require!(
-            self.internal_unwrap_account(&account_id)
-                .btc_pending_sign_id
-                .is_none(),
-            "Previous btc tx has not been signed"
-        );
+        self.require_pending_sign_capacity(&account_id);
         self.active_utxo_management_rbf_chain_specific(
             account_id,
             original_btc_pending_verify_id,
@@ -362,12 +347,7 @@ impl Contract {
             .internal_unwrap_btc_pending_info(&original_btc_pending_verify_id)
             .account_id
             .clone();
-        require!(
-            self.internal_unwrap_account(&user_account_id)
-                .btc_pending_sign_id
-                .is_none(),
-            "Assisted user previous btc tx has not been signed"
-        );
+        self.require_pending_sign_capacity(&user_account_id);
         self.cancel_active_utxo_management_chain_specific(
             user_account_id,
             original_btc_pending_verify_id,
@@ -573,11 +553,7 @@ impl Contract {
         account_id: AccountId,
         mut psbt: PsbtWrapper,
     ) {
-        let account = self.internal_unwrap_account(&account_id);
-        require!(
-            account.btc_pending_sign_id.is_none(),
-            "Previous btc tx has not been signed"
-        );
+        self.require_pending_sign_capacity(&account_id);
 
         let (utxo_storage_keys, vutxos) = self.generate_vutxos(&mut psbt);
         let (actual_received_amount, gas_fee) =
@@ -621,7 +597,8 @@ impl Contract {
             "pending info already exist"
         );
         self.internal_unwrap_mut_account(&account_id)
-            .btc_pending_sign_id = Some(btc_pending_id.clone());
+            .btc_pending_sign_ids
+            .insert(btc_pending_id.clone());
         Event::UtxoRemoved { utxo_storage_keys }.emit();
         Event::GenerateBtcPendingInfo {
             account_id: &account_id,

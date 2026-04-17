@@ -17,6 +17,7 @@ pub struct Metadata {
     pub relayer_white_list: Vec<AccountId>,
     pub extra_msg_relayer_white_list: Vec<AccountId>,
     pub post_action_receiver_id_white_list: Vec<AccountId>,
+    pub pending_tx_limits: HashMap<AccountId, u32>,
     #[serde(with = "u128_dec_format")]
     pub acc_collected_protocol_fee: u128,
     #[serde(with = "u128_dec_format")]
@@ -57,6 +58,11 @@ impl Contract {
                 .iter()
                 .cloned()
                 .collect(),
+            pending_tx_limits: root_state
+                .pending_tx_limits
+                .iter()
+                .map(|(k, v)| (k.clone(), *v))
+                .collect(),
             acc_collected_protocol_fee: root_state.acc_collected_protocol_fee,
             cur_available_protocol_fee: root_state.cur_available_protocol_fee,
             acc_claimed_protocol_fee: root_state.acc_claimed_protocol_fee,
@@ -72,8 +78,8 @@ impl Contract {
         self.internal_config().clone()
     }
 
-    pub fn get_account(&self, account_id: AccountId) -> Option<Account> {
-        self.internal_get_account(&account_id).cloned()
+    pub fn get_account(&self, account_id: &AccountId) -> Option<Account> {
+        self.data().accounts.get(account_id).map(Account::from)
     }
 
     pub fn list_accounts(
@@ -82,7 +88,10 @@ impl Contract {
     ) -> HashMap<AccountId, Option<Account>> {
         account_ids
             .into_iter()
-            .map(|key| (key.clone(), self.internal_get_account(&key).cloned()))
+            .map(|key| {
+                let account = self.get_account(&key);
+                (key, account)
+            })
             .collect()
     }
 

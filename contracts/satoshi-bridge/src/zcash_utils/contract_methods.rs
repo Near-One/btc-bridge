@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::zcash_utils::types::ChainSpecificData;
 use crate::*;
@@ -67,7 +69,8 @@ macro_rules! define_rbf_callback {
                 );
 
                 self.internal_unwrap_mut_account(&account_id)
-                    .btc_pending_sign_id = Some(btc_pending_id.clone());
+                    .btc_pending_sign_ids
+                    .insert(btc_pending_id.clone());
 
                 Event::GenerateBtcPendingInfo {
                     account_id: &account_id,

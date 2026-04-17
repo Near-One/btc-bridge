@@ -96,6 +96,7 @@ enum StorageKey {
     LostFound,
     PostActionMsgTemplates,
     ExtraMsgRelayerWhiteList,
+    PendingTxLimits,
     #[cfg(not(feature = "zcash"))]
     RefundRequests,
 }
@@ -126,6 +127,7 @@ pub struct ContractData {
     pub extra_msg_relayer_white_list: IterableSet<AccountId>,
     pub post_action_receiver_id_white_list: IterableSet<AccountId>,
     pub post_action_msg_templates: IterableMap<AccountId, HashSet<String>>,
+    pub pending_tx_limits: IterableMap<AccountId, u32>,
     pub lost_found: IterableMap<AccountId, u128>,
     pub acc_collected_protocol_fee: u128,
     pub cur_available_protocol_fee: u128,
@@ -141,6 +143,7 @@ pub enum VersionedContractData {
     V0(ContractDataV0),
     V1(ContractDataV1),
     V2(ContractDataV2),
+    V3(ContractDataV3),
     Current(ContractData),
 }
 
@@ -194,6 +197,7 @@ impl Contract {
                     StorageKey::PostActionReceiverIdWhiteListWhiteList,
                 ),
                 post_action_msg_templates: IterableMap::new(StorageKey::PostActionMsgTemplates),
+                pending_tx_limits: IterableMap::new(StorageKey::PendingTxLimits),
                 lost_found: IterableMap::new(StorageKey::LostFound),
                 #[cfg(not(feature = "zcash"))]
                 refund_requests: IterableMap::new(StorageKey::RefundRequests),

@@ -370,13 +370,13 @@ async fn test_base() {
     ); //40000
     assert!(context.get_utxos_paged().await.unwrap().is_empty());
 
-    assert!(context
+    assert!(!context
         .get_account("alice")
         .await
         .unwrap()
         .unwrap()
-        .btc_pending_sign_id
-        .is_some());
+        .btc_pending_sign_ids
+        .is_empty());
     assert_eq!(
         context
             .get_account("alice")
@@ -414,8 +414,8 @@ async fn test_base() {
         .await
         .unwrap()
         .unwrap()
-        .btc_pending_sign_id
-        .is_none());
+        .btc_pending_sign_ids
+        .is_empty());
     assert_eq!(
         context
             .get_account("alice")
@@ -461,8 +461,8 @@ async fn test_base() {
         .await
         .unwrap()
         .unwrap()
-        .btc_pending_sign_id
-        .is_none());
+        .btc_pending_sign_ids
+        .is_empty());
     assert_eq!(
         context
             .get_account("alice")

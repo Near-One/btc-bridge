@@ -28,12 +28,12 @@ impl Contract {
         btc_pending_info.assert_pending_sign();
         if let Some(original_tx_id) = btc_pending_info.get_original_tx_id() {
             if !self.check_btc_pending_info_exists(original_tx_id) {
-                let clear_account_btc_pending_sign_id = self
-                    .internal_unwrap_mut_account(&btc_pending_info.account_id.clone())
-                    .btc_pending_sign_id
-                    .take()
-                    == Some(btc_pending_sign_id.clone());
-                require!(clear_account_btc_pending_sign_id, "Internal error");
+                require!(
+                    self.internal_unwrap_mut_account(&btc_pending_info.account_id.clone())
+                        .btc_pending_sign_ids
+                        .remove(&btc_pending_sign_id),
+                    "Internal error"
+                );
                 self.internal_remove_btc_pending_info(&btc_pending_sign_id);
                 return PromiseOrValue::Value(true);
             }
