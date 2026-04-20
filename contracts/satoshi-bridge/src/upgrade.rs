@@ -1,8 +1,4 @@
-use crate::{
-    env, legacy::ConfigV2, near, Config, Contract, ContractExt, StorageKey, VersionedContractData,
-};
-use near_sdk::borsh::{self, BorshDeserialize};
-use near_sdk::IntoStorageKey;
+use crate::{env, near, Contract, ContractExt, VersionedContractData};
 
 #[near]
 impl Contract {
@@ -20,25 +16,6 @@ impl Contract {
             VersionedContractData::Current(data) => VersionedContractData::Current(data),
         };
         contract
-    }
-
-    /// Migrates only the stored `Config` bytes from the previous schema (`ConfigV2`)
-    /// to the current `Config`, without touching the rest of the contract state.
-    ///
-    /// Use when the versioned state is already at `Current` but the on-storage
-    /// `Config` still has the old byte layout (e.g. a new field was added to
-    /// `Config` and a previous migration did not rewrite it).
-    #[private]
-    pub fn migrate_config(&mut self) {
-        let storage_key = StorageKey::Config.into_storage_key();
-        let bytes = env::storage_read(&storage_key).expect("ERR_CONFIG: not found in storage");
-        let old_config = ConfigV2::try_from_slice(&bytes)
-            .expect("ERR_CONFIG: failed to deserialize as ConfigV2");
-        let new_config: Config = old_config.into();
-        env::storage_write(
-            &storage_key,
-            &borsh::to_vec(&new_config).expect("ERR_CONFIG: failed to serialize Config"),
-        );
     }
 
     /// Returns semver of this contract.
