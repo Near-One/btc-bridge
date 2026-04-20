@@ -191,10 +191,9 @@ impl From<ConfigV0> for Config {
             rbf_num_limit,
             max_btc_tx_pending_sec,
             unhealthy_utxo_amount: 1000,
+            refund_timelock_sec: 14 * 24 * 3600, // 2 weeks
             #[cfg(feature = "zcash")]
             expiry_height_gap: 1000,
-            #[cfg(not(feature = "zcash"))]
-            refund_timelock_sec: 14 * 24 * 3600, // 2 weeks
         }
     }
 }
@@ -335,7 +334,6 @@ impl From<ConfigV1> for Config {
             unhealthy_utxo_amount,
             #[cfg(feature = "zcash")]
             expiry_height_gap,
-            #[cfg(not(feature = "zcash"))]
             refund_timelock_sec: 14 * 24 * 3600, // 2 weeks
         }
     }
@@ -410,7 +408,7 @@ impl From<ContractDataV1> for ContractData {
 #[near(serializers = [borsh])]
 pub struct ContractDataV2 {
     #[cfg(feature = "zcash")]
-    pub config: LazyOption<Config>,
+    pub config: LazyOption<ConfigV2>,
     #[cfg(not(feature = "zcash"))]
     pub config: LazyOption<ConfigV1>,
     pub accounts: IterableMap<AccountId, VAccount>,
@@ -454,9 +452,6 @@ impl From<ContractDataV2> for ContractData {
         } = c;
 
         Self {
-            #[cfg(feature = "zcash")]
-            config,
-            #[cfg(not(feature = "zcash"))]
             config: LazyOption::new(
                 StorageKey::Config,
                 Some(config.get().clone().unwrap().into()),
@@ -485,8 +480,114 @@ impl From<ContractDataV2> for ContractData {
 }
 
 #[near(serializers = [borsh])]
+#[derive(Clone)]
+pub struct ConfigV2 {
+    pub chain: crate::network::Chain,
+    pub btc_light_client_account_id: AccountId,
+    pub nbtc_account_id: AccountId,
+    pub chain_signatures_account_id: AccountId,
+    pub chain_signatures_root_public_key: Option<PublicKey>,
+    pub change_address: Option<String>,
+    pub confirmations_strategy: HashMap<String, u8>,
+    pub confirmations_delta: u8,
+    pub extra_msg_confirmations_delta: u8,
+    pub deposit_bridge_fee: BridgeFee,
+    pub withdraw_bridge_fee: BridgeFee,
+    pub min_deposit_amount: u128,
+    pub min_withdraw_amount: u128,
+    pub min_change_amount: u128,
+    pub max_change_amount: u128,
+    pub min_btc_gas_fee: u128,
+    pub max_btc_gas_fee: u128,
+    pub max_withdrawal_input_number: u8,
+    pub max_change_number: u8,
+    pub max_active_utxo_management_input_number: u8,
+    pub max_active_utxo_management_output_number: u8,
+    pub active_management_lower_limit: u32,
+    pub active_management_upper_limit: u32,
+    pub passive_management_lower_limit: u32,
+    pub passive_management_upper_limit: u32,
+    pub rbf_num_limit: u8,
+    pub max_btc_tx_pending_sec: u32,
+    pub unhealthy_utxo_amount: u64,
+    #[cfg(feature = "zcash")]
+    pub expiry_height_gap: u32,
+}
+
+impl From<ConfigV2> for Config {
+    fn from(c: ConfigV2) -> Self {
+        let ConfigV2 {
+            chain,
+            btc_light_client_account_id,
+            nbtc_account_id,
+            chain_signatures_account_id,
+            chain_signatures_root_public_key,
+            change_address,
+            confirmations_strategy,
+            confirmations_delta,
+            extra_msg_confirmations_delta,
+            deposit_bridge_fee,
+            withdraw_bridge_fee,
+            min_deposit_amount,
+            min_withdraw_amount,
+            min_change_amount,
+            max_change_amount,
+            min_btc_gas_fee,
+            max_btc_gas_fee,
+            max_withdrawal_input_number,
+            max_change_number,
+            max_active_utxo_management_input_number,
+            max_active_utxo_management_output_number,
+            active_management_lower_limit,
+            active_management_upper_limit,
+            passive_management_lower_limit,
+            passive_management_upper_limit,
+            rbf_num_limit,
+            max_btc_tx_pending_sec,
+            unhealthy_utxo_amount,
+            #[cfg(feature = "zcash")]
+            expiry_height_gap,
+        } = c;
+
+        Self {
+            chain,
+            btc_light_client_account_id,
+            nbtc_account_id,
+            chain_signatures_account_id,
+            chain_signatures_root_public_key,
+            change_address,
+            confirmations_strategy,
+            confirmations_delta,
+            extra_msg_confirmations_delta,
+            deposit_bridge_fee,
+            withdraw_bridge_fee,
+            min_deposit_amount,
+            min_withdraw_amount,
+            min_change_amount,
+            max_change_amount,
+            min_btc_gas_fee,
+            max_btc_gas_fee,
+            max_withdrawal_input_number,
+            max_change_number,
+            max_active_utxo_management_input_number,
+            max_active_utxo_management_output_number,
+            active_management_lower_limit,
+            active_management_upper_limit,
+            passive_management_lower_limit,
+            passive_management_upper_limit,
+            rbf_num_limit,
+            max_btc_tx_pending_sec,
+            unhealthy_utxo_amount,
+            refund_timelock_sec: 14 * 24 * 3600, // 2 weeks
+            #[cfg(feature = "zcash")]
+            expiry_height_gap,
+        }
+    }
+}
+
+#[near(serializers = [borsh])]
 pub struct ContractDataV3 {
-    pub config: LazyOption<Config>,
+    pub config: LazyOption<ConfigV2>,
     pub accounts: IterableMap<AccountId, VAccount>,
     pub utxos: IterableMap<String, VUTXO>,
     pub unavailable_utxos: IterableMap<String, VUTXO>,
@@ -528,7 +629,10 @@ impl From<ContractDataV3> for ContractData {
         } = c;
 
         Self {
-            config,
+            config: LazyOption::new(
+                StorageKey::Config,
+                Some(config.get().clone().unwrap().into()),
+            ),
             accounts,
             utxos,
             unavailable_utxos,

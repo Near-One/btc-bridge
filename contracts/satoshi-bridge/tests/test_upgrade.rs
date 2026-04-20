@@ -1,6 +1,6 @@
 mod setup;
 use near_sdk::serde_json::json;
-use satoshi_bridge::Account;
+use satoshi_bridge::{Account, Config};
 use setup::*;
 
 #[tokio::test]
@@ -120,6 +120,20 @@ async fn test_btc_bridge_upgrade_from_v0_7_5_account_migration() {
         .unwrap();
 
     assert_eq!(accounts.len(), 1);
+
+    // get_config must deserialize into the new Config layout, proving the
+    // V3 config migration populated `refund_timelock_sec` with the default
+    // (v0.7.5 had no such field).
+    let config: Config = upgrade_context
+        .previous_satoshi_bridge_contract
+        .call("get_config")
+        .view()
+        .await
+        .unwrap()
+        .json()
+        .unwrap();
+
+    assert_eq!(config.refund_timelock_sec, 14 * 24 * 3600);
 }
 
 #[tokio::test]
