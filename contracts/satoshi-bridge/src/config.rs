@@ -108,11 +108,10 @@ pub struct Config {
     pub max_btc_tx_pending_sec: u32,
     // UTXOs less than or equal to this amount are allowed to be merged through active management.
     pub unhealthy_utxo_amount: u64,
+    // Timelock in seconds before a refund request can be executed.
+    pub refund_timelock_sec: u64,
     #[cfg(feature = "zcash")]
     pub expiry_height_gap: u32,
-    // Timelock in seconds before a refund request can be executed.
-    #[cfg(not(feature = "zcash"))]
-    pub refund_timelock_sec: u64,
 }
 
 impl Config {
@@ -234,7 +233,6 @@ pub struct ConfigUpdate {
     pub rbf_num_limit: Option<u8>,
     pub max_btc_tx_pending_sec: Option<u32>,
     pub unhealthy_utxo_amount: Option<u64>,
-    #[cfg(not(feature = "zcash"))]
     pub refund_timelock_sec: Option<u64>,
 }
 
@@ -270,7 +268,6 @@ impl ConfigUpdate {
         set_if_some!(rbf_num_limit);
         set_if_some!(max_btc_tx_pending_sec);
         set_if_some!(unhealthy_utxo_amount);
-        #[cfg(not(feature = "zcash"))]
         set_if_some!(refund_timelock_sec);
 
         config.assert_valid();

@@ -211,8 +211,8 @@ impl Context {
                     "max_btc_tx_pending_sec": 3600 * 24,
                     "unhealthy_utxo_amount": 1000,
                     "max_pending_sign_txs": 1,
-                    "expiry_height_gap": 5000,
                     "refund_timelock_sec": 3600,
+                    "expiry_height_gap": 5000,
                 }
             }))
             .transact()
@@ -1170,8 +1170,8 @@ impl UpgradeContext {
                     "rbf_num_limit": 99,
                     "max_btc_tx_pending_sec": 3600 * 24,
                     "unhealthy_utxo_amount": 1000,
-                    "expiry_height_gap": 1000,
                     "refund_timelock_sec": 3600,
+                    "expiry_height_gap": 1000,
                 }
             }))
             .transact()

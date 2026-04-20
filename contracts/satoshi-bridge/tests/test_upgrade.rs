@@ -1,6 +1,6 @@
 mod setup;
 use near_sdk::serde_json::json;
-use satoshi_bridge::Account;
+use satoshi_bridge::{Account, Config};
 use setup::*;
 
 #[tokio::test]
@@ -43,6 +43,17 @@ async fn test_zcash_bridge_upgrade_from_v0_6_0() {
     check!(view upgrade_context.get_satoshi_bridge_version());
     check!(upgrade_context.upgrade_satoshi_bridge("../../res/zcash_bridge.wasm"));
     check!(view upgrade_context.get_satoshi_bridge_version());
+
+    let config: Config = upgrade_context
+        .previous_satoshi_bridge_contract
+        .call("get_config")
+        .view()
+        .await
+        .unwrap()
+        .json()
+        .unwrap();
+
+    assert_eq!(config.refund_timelock_sec, 14 * 24 * 3600);
 }
 
 #[tokio::test]
@@ -77,6 +88,7 @@ async fn test_nbtc_upgrade_from_v0_5_1() {
 /// to the current version (btc_pending_sign_ids: HashSet<String>),
 /// reading an account created by the old contract must still work.
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_btc_bridge_upgrade_from_v0_7_5_account_migration() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let upgrade_context = UpgradeContext::new(
@@ -120,6 +132,20 @@ async fn test_btc_bridge_upgrade_from_v0_7_5_account_migration() {
         .unwrap();
 
     assert_eq!(accounts.len(), 1);
+
+    // get_config must deserialize into the new Config layout, proving the
+    // V3 config migration populated `refund_timelock_sec` with the default
+    // (v0.7.5 had no such field).
+    let config: Config = upgrade_context
+        .previous_satoshi_bridge_contract
+        .call("get_config")
+        .view()
+        .await
+        .unwrap()
+        .json()
+        .unwrap();
+
+    assert_eq!(config.refund_timelock_sec, 14 * 24 * 3600);
 }
 
 #[tokio::test]
