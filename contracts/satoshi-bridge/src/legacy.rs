@@ -332,9 +332,9 @@ impl From<ConfigV1> for Config {
             rbf_num_limit,
             max_btc_tx_pending_sec,
             unhealthy_utxo_amount,
+            refund_timelock_sec: 14 * 24 * 3600, // 2 weeks
             #[cfg(feature = "zcash")]
             expiry_height_gap,
-            refund_timelock_sec: 14 * 24 * 3600, // 2 weeks
         }
     }
 }
