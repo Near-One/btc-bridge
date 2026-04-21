@@ -2,6 +2,8 @@ use crate::{
     env, near, u128_dec_format, AccessControllable, Account, AccountId, BTCPendingInfo, Config,
     Contract, ContractExt, HashMap, HashSet, NearToken, Pausable, Role, U128, UTXO,
 };
+#[cfg(not(feature = "zcash"))]
+use crate::RefundRequest;
 
 const REQUIRED_BALANCE_FOR_DEPOSIT: NearToken =
     NearToken::from_yoctonear(1_200_000_000_000_000_000_000);
@@ -292,6 +294,25 @@ impl Contract {
 
     pub fn required_balance_for_safe_deposit(&self) -> NearToken {
         REQUIRED_BALANCE_FOR_DEPOSIT
+    }
+
+    #[cfg(not(feature = "zcash"))]
+    pub fn get_refund_requests_paged(
+        &self,
+        from_index: Option<usize>,
+        limit: Option<usize>,
+    ) -> HashMap<String, RefundRequest> {
+        let len = usize::try_from(self.data().refund_requests.len())
+            .unwrap_or_else(|_| env::panic_str("Too many refund_requests"));
+        let skip_n = from_index.unwrap_or(0);
+        let take_n = limit.unwrap_or(len - skip_n);
+        self.data()
+            .refund_requests
+            .iter()
+            .skip(skip_n)
+            .take(take_n)
+            .map(|(k, v)| (k.clone(), v.into()))
+            .collect()
     }
 
     #[cfg(not(feature = "zcash"))]
