@@ -325,7 +325,7 @@ async fn test_refund_duplicate_request() {
             0,
             None,
         )],
-        vec![(deposit_address.as_str(), 50_000)],
+        vec![(deposit_address.as_str(), 100_000)],
     );
 
     // First request — should succeed
