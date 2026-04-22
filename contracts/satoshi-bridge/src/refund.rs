@@ -374,6 +374,10 @@ impl Contract {
         );
 
         let resolved_gas_fee = gas_fee.unwrap_or(config.max_btc_gas_fee);
+        require!(
+            resolved_gas_fee < amount,
+            "Gas fee must be less than deposit amount"
+        );
 
         Event::RefundRequested {
             deposit_msg: deposit_msg.clone(),

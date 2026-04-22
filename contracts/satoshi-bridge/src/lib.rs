@@ -14,7 +14,7 @@ use near_sdk::{
 use omni_utils::macros::trusted_relayer;
 use std::collections::{HashMap, HashSet};
 
-use bitcoin::{absolute::LockTime, Amount, OutPoint, PublicKey as BtcPublicKey, ScriptBuf, TxOut};
+use bitcoin::{Amount, OutPoint, PublicKey as BtcPublicKey, ScriptBuf, TxOut};
 
 pub mod account;
 pub mod api;
