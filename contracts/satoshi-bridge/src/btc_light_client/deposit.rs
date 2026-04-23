@@ -259,12 +259,9 @@ impl Contract {
     }
 }
 
-/// Refund only on a confirmed `Ok(U128(0))` from `safe_mint` — the single
-/// unambiguous signal that the recipient retained nothing. Anything else
-/// (non-zero amount, unparseable payload, or `Err` from panic/oversize) is
-/// conservatively treated as "UTXO spent, no refund": taking the refund
-/// path under unknown state risks double-processing the UTXO or
-/// underflowing the bridge on the detached `burn`.
+/// Refund only if `safe_mint` returned 0. Any other outcome (non-zero
+/// amount, unparseable payload, panic) is treated as "UTXO spent, no
+/// refund" — for safety, to avoid a potential double spend.
 fn is_refund_required() -> bool {
     match env::promise_result_checked(0, MAX_FT_TRANSFER_CALL_RESULT) {
         Ok(value) => {
