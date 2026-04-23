@@ -2909,15 +2909,15 @@ async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
     assert_eq!(context.get_utxos_paged().await.unwrap().len(), 2);
 }
 
-// verify_deposit with a post_action that immediately initiates a BTC withdraw
-// (ft_transfer_call to the bridge with TokenReceiverMessage::Withdraw). This
-// exercises the deposit-then-withdraw "init transfer" flow in a single relayer
-// call: the Withdraw PSBT spends a pre-existing seed UTXO, not the just-
-// minted one, because mint_callback and the detached post_action run as
-// sibling receipts and the new UTXO isn't guaranteed to be visible yet.
+// Regression test: a post_action in verify_deposit must NOT be able to target
+// the bridge itself. Previously, if the bridge account was added to the
+// post_action_receiver_id_white_list, a relayer-paid deposit could drive the
+// bridge's own ft_on_transfer (e.g. TokenReceiverMessage::Withdraw) within the
+// same receipt chain. check_deposit_msg now rejects such post_actions up front
+// and the deposit proceeds without running any of them.
 #[tokio::test]
 #[cfg(not(feature = "zcash"))]
-async fn test_verify_deposit_post_action_init_withdraw() {
+async fn test_verify_deposit_post_action_to_bridge_is_rejected() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
     let config = context.get_bridge_config().await.unwrap();
@@ -3056,30 +3056,93 @@ async fn test_verify_deposit_post_action_init_withdraw() {
         )
     );
 
-    // alice keeps only the unused portion (100_000 - 80_000).
+    // The post_action was rejected by check_deposit_msg, so the deposit
+    // completes normally: alice gets the full mint, no transfer to bridge.
     assert_eq!(
         context.ft_balance_of("alice").await.unwrap().0,
-        ALICE_DEPOSIT_AMOUNT - post_action_amount,
+        ALICE_DEPOSIT_AMOUNT,
     );
-    // bridge holds the 80_000 that alice transferred via the post_action,
-    // waiting to be burned when verify_withdraw confirms the BTC tx.
-    assert_eq!(
-        context.ft_balance_of("bridge").await.unwrap().0,
-        post_action_amount,
-    );
+    assert_eq!(context.ft_balance_of("bridge").await.unwrap().0, 0);
 
-    // The seed UTXO was consumed by the withdraw PSBT (now a vutxo in the
-    // pending BTC tx). alice's new UTXO (from the deposit itself) is in the
-    // available set.
+    // The seed UTXO is still available (nothing was withdrawn), and alice's
+    // new UTXO was added alongside it.
     let utxos = context.get_utxos_paged().await.unwrap();
-    assert_eq!(utxos.len(), 1, "only alice's new UTXO remains available");
+    assert_eq!(utxos.len(), 2);
     assert!(
-        !utxos.contains_key(&seed_utxo_keys[0]),
-        "seed UTXO must have been moved into the pending withdraw tx"
+        utxos.contains_key(&seed_utxo_keys[0]),
+        "seed UTXO must remain available — no withdraw was initiated"
     );
 
-    // Exactly one pending BTC withdraw was created by the post_action.
-    let pending = context.get_btc_pending_infos_paged().await.unwrap();
-    assert_eq!(pending.len(), 1);
-    pending.values().next().unwrap().assert_pending_sign();
+    // No pending BTC withdraw was created.
+    assert!(context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+// safe_mint (in nbtc) must reject account_id == bridge_id. Otherwise the
+// bridge-to-bridge ft_transfer* inside safe_mint would panic with
+// "sender == receiver" from the NEP-141 standard, leaving the bridge with
+// no minted tokens while the outer callback mistakenly records success.
+#[tokio::test]
+async fn test_safe_verify_deposit_to_bridge_recipient_is_rejected() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("bridge").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
+        refund_address: None,
+    };
+
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e",
+            0,
+            None,
+        )],
+        vec![
+            (deposit_address.as_str(), 100_000),
+            (TARGET_ADDRESS, 90_000),
+        ],
+    );
+
+    let outcome = context
+        .safe_verify_deposit(
+            "relayer",
+            deposit_msg,
+            tx_bytes,
+            0,
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![],
+        )
+        .await
+        .unwrap();
+
+    // safe_mint's require! must surface as a receipt failure.
+    let failures = outcome.receipt_failures();
+    assert!(
+        !failures.is_empty(),
+        "safe_mint must reject bridge as recipient"
+    );
+    let failure_text = format!("{:?}", failures);
+    assert!(
+        failure_text.contains("safe_mint: account_id must not be the bridge"),
+        "expected safe_mint guard in failures, got: {failure_text}"
+    );
+
+    // No tokens were minted anywhere.
+    assert_eq!(context.ft_balance_of("bridge").await.unwrap().0, 0);
+    assert_eq!(context.ft_total_supply().await.unwrap().0, 0);
 }
