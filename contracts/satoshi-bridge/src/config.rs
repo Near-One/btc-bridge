@@ -5,6 +5,8 @@ use crate::{
 
 pub const MAX_RATIO: u32 = 10000;
 
+pub const DEFAULT_REFUND_TIMELOCK_SEC: u64 = 2 * 24 * 3600;
+
 #[near(serializers = [borsh, json])]
 #[derive(Clone)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]

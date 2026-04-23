@@ -1,6 +1,6 @@
 mod setup;
 use near_sdk::serde_json::json;
-use satoshi_bridge::{Account, Config};
+use satoshi_bridge::{Account, Config, DEFAULT_REFUND_TIMELOCK_SEC};
 use setup::*;
 
 #[tokio::test]
@@ -53,7 +53,7 @@ async fn test_zcash_bridge_upgrade_from_v0_6_0() {
         .json()
         .unwrap();
 
-    assert_eq!(config.refund_timelock_sec, 2 * 24 * 3600);
+    assert_eq!(config.refund_timelock_sec, DEFAULT_REFUND_TIMELOCK_SEC);
 }
 
 #[tokio::test]
@@ -145,7 +145,7 @@ async fn test_btc_bridge_upgrade_from_v0_7_5_account_migration() {
         .json()
         .unwrap();
 
-    assert_eq!(config.refund_timelock_sec, 2 * 24 * 3600);
+    assert_eq!(config.refund_timelock_sec, DEFAULT_REFUND_TIMELOCK_SEC);
 }
 
 #[tokio::test]
