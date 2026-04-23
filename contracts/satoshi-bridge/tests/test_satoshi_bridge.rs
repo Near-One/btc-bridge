@@ -2871,8 +2871,6 @@ async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
         outcome.receipt_failures(),
     );
 
-    println!("{:?}", outcome);
-
     // No tokens minted anywhere: the bridge-side mint and burn cancel out.
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
     // Pre-seeded bridge balance is untouched — only the just-minted amount
