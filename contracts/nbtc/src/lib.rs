@@ -101,7 +101,7 @@ impl Contract {
     ) -> PromiseOrValue<U128> {
         self.assert_bridge();
         self.token.internal_deposit(&self.bridge_id, amount.into());
-        
+
         if self.token.accounts.get(&account_id).is_none() {
             return PromiseOrValue::Value(U128(0));
         }
