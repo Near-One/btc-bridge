@@ -145,7 +145,7 @@ async fn test_btc_bridge_upgrade_from_v0_7_5_account_migration() {
         .json()
         .unwrap();
 
-    assert_eq!(config.refund_timelock_sec, 14 * 24 * 3600);
+    assert_eq!(config.refund_timelock_sec, 2 * 24 * 3600);
 }
 
 #[tokio::test]
