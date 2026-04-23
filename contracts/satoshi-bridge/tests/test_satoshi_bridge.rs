@@ -2908,3 +2908,178 @@ async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
     );
     assert_eq!(context.get_utxos_paged().await.unwrap().len(), 2);
 }
+
+// verify_deposit with a post_action that immediately initiates a BTC withdraw
+// (ft_transfer_call to the bridge with TokenReceiverMessage::Withdraw). This
+// exercises the deposit-then-withdraw "init transfer" flow in a single relayer
+// call: the Withdraw PSBT spends a pre-existing seed UTXO, not the just-
+// minted one, because mint_callback and the detached post_action run as
+// sibling receipts and the new UTXO isn't guaranteed to be visible yet.
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_verify_deposit_post_action_init_withdraw() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let config = context.get_bridge_config().await.unwrap();
+    let withdraw_change_address = context.get_change_address().await.unwrap();
+
+    // Seed the bridge with a single 200_000 UTXO via bob's regular deposit.
+    let bob_deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("bob").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: None,
+    };
+    let bob_addr = context
+        .get_user_deposit_address(bob_deposit_msg.clone())
+        .await
+        .unwrap();
+    const SEED_UTXO_AMOUNT: u128 = 200_000;
+    check!(context.verify_deposit(
+        "relayer",
+        bob_deposit_msg,
+        generate_transaction_bytes(
+            vec![(
+                "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+                0,
+                None,
+            )],
+            vec![
+                (bob_addr.as_str(), SEED_UTXO_AMOUNT as u64),
+                (TARGET_ADDRESS, 90_000),
+            ],
+        ),
+        0,
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+        1,
+        vec![]
+    ));
+
+    let seed_utxo_keys = context
+        .get_utxos_paged()
+        .await
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<String>>();
+    assert_eq!(seed_utxo_keys.len(), 1);
+    let seed_utxo = seed_utxo_keys[0].split('@').collect::<Vec<_>>();
+
+    // Whitelist the bridge as a post_action receiver.
+    check!(
+        context.extend_post_action_receiver_id_white_list(vec![context
+            .get_account_by_name("bridge")
+            .sdk_id()])
+    );
+
+    // Build the Withdraw PSBT for the post_action. Numbers:
+    //   post_action amount       = 80_000  (>= min_withdraw_amount 70_000)
+    //   withdraw_fee             = 50_000  (fee_min)
+    //   btc_gas_fee              = 10_000  (== min_btc_gas_fee)
+    //   user output (to target)  = amount - withdraw_fee - gas_fee = 20_000
+    //   change (back to bridge)  = seed - (amount - withdraw_fee)  = 170_000
+    let post_action_amount: u128 = 80_000;
+    let withdraw_fee = config.withdraw_bridge_fee.get_fee(post_action_amount);
+    assert_eq!(withdraw_fee, 50_000);
+    let btc_gas_fee: u64 = 10_000;
+    let user_output_value = post_action_amount as u64 - withdraw_fee as u64 - btc_gas_fee;
+    let change_value = SEED_UTXO_AMOUNT as u64 - (post_action_amount as u64 - withdraw_fee as u64);
+
+    let withdraw_msg = TokenReceiverMessage::Withdraw {
+        target_btc_address: TARGET_ADDRESS.to_string(),
+        input: vec![OutPoint {
+            txid: seed_utxo[0].parse().unwrap(),
+            vout: seed_utxo[1].parse().unwrap(),
+        }],
+        output: vec![
+            TxOut {
+                value: Amount::from_sat(user_output_value),
+                script_pubkey: Address::parse(TARGET_ADDRESS, get_chain())
+                    .expect("Invalid btc address")
+                    .script_pubkey()
+                    .expect("Failed to get script pubkey"),
+            },
+            TxOut {
+                value: Amount::from_sat(change_value),
+                script_pubkey: Address::parse(withdraw_change_address.as_str(), get_chain())
+                    .expect("Invalid btc address")
+                    .script_pubkey()
+                    .expect("Failed to get script pubkey"),
+            },
+        ],
+        max_gas_fee: None,
+        chain_specific_data: None,
+    };
+
+    // alice's deposit with a post_action that transfers to the bridge with
+    // the Withdraw message — this is the "init transfer" step.
+    const ALICE_DEPOSIT_AMOUNT: u128 = 100_000;
+    let alice_deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: Some(vec![PostAction {
+            receiver_id: context.get_account_by_name("bridge").sdk_id(),
+            amount: post_action_amount.into(),
+            memo: None,
+            msg: near_sdk::serde_json::to_string(&withdraw_msg).unwrap(),
+            gas: Some(Gas::from_tgas(100)),
+        }]),
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: None,
+    };
+
+    let alice_addr = context
+        .get_user_deposit_address(alice_deposit_msg.clone())
+        .await
+        .unwrap();
+    check!(
+        printr "verify_deposit with init-withdraw post_action"
+        context.verify_deposit(
+            "relayer",
+            alice_deposit_msg,
+            generate_transaction_bytes(
+                vec![(
+                    "1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f",
+                    0,
+                    None,
+                )],
+                vec![
+                    (alice_addr.as_str(), ALICE_DEPOSIT_AMOUNT as u64),
+                    (TARGET_ADDRESS, 90_000),
+                ],
+            ),
+            0,
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![]
+        )
+    );
+
+    // alice keeps only the unused portion (100_000 - 80_000).
+    assert_eq!(
+        context.ft_balance_of("alice").await.unwrap().0,
+        ALICE_DEPOSIT_AMOUNT - post_action_amount,
+    );
+    // bridge holds the 80_000 that alice transferred via the post_action,
+    // waiting to be burned when verify_withdraw confirms the BTC tx.
+    assert_eq!(
+        context.ft_balance_of("bridge").await.unwrap().0,
+        post_action_amount,
+    );
+
+    // The seed UTXO was consumed by the withdraw PSBT (now a vutxo in the
+    // pending BTC tx). alice's new UTXO (from the deposit itself) is in the
+    // available set.
+    let utxos = context.get_utxos_paged().await.unwrap();
+    assert_eq!(utxos.len(), 1, "only alice's new UTXO remains available");
+    assert!(
+        !utxos.contains_key(&seed_utxo_keys[0]),
+        "seed UTXO must have been moved into the pending withdraw tx"
+    );
+
+    // Exactly one pending BTC withdraw was created by the post_action.
+    let pending = context.get_btc_pending_infos_paged().await.unwrap();
+    assert_eq!(pending.len(), 1);
+    pending.values().next().unwrap().assert_pending_sign();
+}
