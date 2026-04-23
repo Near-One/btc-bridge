@@ -2764,3 +2764,149 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
         "verify_active_utxo_management should reject an account without trusted-relayer role"
     );
 }
+
+// Regression test for the safe_mint fix.
+// When safe_verify_deposit is called with an unregistered recipient, safe_mint
+// must deposit the amount to the bridge before returning U128(0) so that
+// safe_mint_callback's burn (from bridge balance) succeeds. Before the fix,
+// nothing was deposited and the detached burn would panic because
+// internal_withdraw on the bridge's zero balance failed. The pre-seeded bridge
+// balance also guards against a regression that would burn more than
+// mint_amount and eat into the bridge's existing tokens.
+#[tokio::test]
+async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    // Seed the bridge with some nBTC: bob does a regular verify_deposit
+    // (which auto-registers him and mints to him) and then transfers part of
+    // his balance to the bridge account.
+    let bob_deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("bob").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: None,
+    };
+    let bob_deposit_address = context
+        .get_user_deposit_address(bob_deposit_msg.clone())
+        .await
+        .unwrap();
+    check!(context.verify_deposit(
+        "relayer",
+        bob_deposit_msg,
+        generate_transaction_bytes(
+            vec![(
+                "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+                0,
+                None,
+            )],
+            vec![
+                (bob_deposit_address.as_str(), 200_000),
+                (TARGET_ADDRESS, 90_000),
+            ],
+        ),
+        0,
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+        1,
+        vec![]
+    ));
+    const BRIDGE_SEED: u128 = 150_000;
+    check!(context.ft_transfer("bob", "bridge", BRIDGE_SEED));
+
+    let bridge_balance_before = context.ft_balance_of("bridge").await.unwrap().0;
+    let total_supply_before = context.ft_total_supply().await.unwrap().0;
+    assert_eq!(bridge_balance_before, BRIDGE_SEED);
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
+        refund_address: None,
+    };
+
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f",
+            0,
+            None,
+        )],
+        vec![
+            (deposit_address.as_str(), 100_000),
+            (TARGET_ADDRESS, 90_000),
+        ],
+    );
+    let vout: u32 = 0;
+    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+
+    // Sanity: alice is NOT registered on nBTC yet.
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+
+    // safe_verify_deposit succeeds at the transaction level but safe_mint
+    // returns U128(0) because alice is not registered; safe_mint_callback
+    // then burns the mint_amount from the bridge.
+    let outcome = context
+        .safe_verify_deposit(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            blockhash.clone(),
+            1,
+            vec![],
+        )
+        .await
+        .unwrap();
+    assert!(
+        outcome.receipt_failures().is_empty(),
+        "safe_mint_callback burn must not panic on unregistered recipient, got: {:?}",
+        outcome.receipt_failures(),
+    );
+
+    println!("{:?}", outcome);
+
+    // No tokens minted anywhere: the bridge-side mint and burn cancel out.
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+    // Pre-seeded bridge balance is untouched — only the just-minted amount
+    // was burned, not any of the bridge's existing tokens.
+    assert_eq!(
+        context.ft_balance_of("bridge").await.unwrap().0,
+        bridge_balance_before,
+    );
+    assert_eq!(
+        context.ft_total_supply().await.unwrap().0,
+        total_supply_before,
+    );
+    // UTXO was not added to the bridge's available set.
+    assert_eq!(context.get_utxos_paged().await.unwrap().len(), 1); // bob's utxo only
+
+    // The UTXO key was released from verified_deposit_utxo, so the same
+    // deposit can be retried once alice registers.
+    check!(context.storage_deposit("nbtc", "alice"));
+    check!(
+        print "retry safe_verify_deposit"
+        context.safe_verify_deposit(
+            "relayer",
+            deposit_msg,
+            tx_bytes,
+            vout,
+            blockhash,
+            1,
+            vec![],
+        )
+    );
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
+    assert_eq!(
+        context.ft_balance_of("bridge").await.unwrap().0,
+        bridge_balance_before,
+    );
+    assert_eq!(context.get_utxos_paged().await.unwrap().len(), 2);
+}
