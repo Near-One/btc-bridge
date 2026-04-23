@@ -277,6 +277,7 @@ fn is_refund_required() -> bool {
                 false
             }
         }
+        // Unexpected case: don't refund
         Err(_) => false,
     }
 }
