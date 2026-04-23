@@ -259,6 +259,9 @@ impl Contract {
     }
 }
 
+/// Refund only if `safe_mint` returned 0. Any other outcome (non-zero
+/// amount, unparseable payload, panic) is treated as "UTXO spent, no
+/// refund" — for safety, to avoid a potential double spend.
 fn is_refund_required() -> bool {
     match env::promise_result_checked(0, MAX_FT_TRANSFER_CALL_RESULT) {
         Ok(value) => {

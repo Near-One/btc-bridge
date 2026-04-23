@@ -2764,3 +2764,385 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
         "verify_active_utxo_management should reject an account without trusted-relayer role"
     );
 }
+
+// Regression test for the safe_mint fix.
+// When safe_verify_deposit is called with an unregistered recipient, safe_mint
+// must deposit the amount to the bridge before returning U128(0) so that
+// safe_mint_callback's burn (from bridge balance) succeeds. Before the fix,
+// nothing was deposited and the detached burn would panic because
+// internal_withdraw on the bridge's zero balance failed. The pre-seeded bridge
+// balance also guards against a regression that would burn more than
+// mint_amount and eat into the bridge's existing tokens.
+#[tokio::test]
+async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    // Seed the bridge with some nBTC: bob does a regular verify_deposit
+    // (which auto-registers him and mints to him) and then transfers part of
+    // his balance to the bridge account.
+    let bob_deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("bob").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: None,
+    };
+    let bob_deposit_address = context
+        .get_user_deposit_address(bob_deposit_msg.clone())
+        .await
+        .unwrap();
+    check!(context.verify_deposit(
+        "relayer",
+        bob_deposit_msg,
+        generate_transaction_bytes(
+            vec![(
+                "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+                0,
+                None,
+            )],
+            vec![
+                (bob_deposit_address.as_str(), 200_000),
+                (TARGET_ADDRESS, 90_000),
+            ],
+        ),
+        0,
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+        1,
+        vec![]
+    ));
+    const BRIDGE_SEED: u128 = 150_000;
+    check!(context.ft_transfer("bob", "bridge", BRIDGE_SEED));
+
+    let bridge_balance_before = context.ft_balance_of("bridge").await.unwrap().0;
+    let total_supply_before = context.ft_total_supply().await.unwrap().0;
+    assert_eq!(bridge_balance_before, BRIDGE_SEED);
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
+        refund_address: None,
+    };
+
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f",
+            0,
+            None,
+        )],
+        vec![
+            (deposit_address.as_str(), 100_000),
+            (TARGET_ADDRESS, 90_000),
+        ],
+    );
+    let vout: u32 = 0;
+    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+
+    // Sanity: alice is NOT registered on nBTC yet.
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+
+    // safe_verify_deposit succeeds at the transaction level but safe_mint
+    // returns U128(0) because alice is not registered; safe_mint_callback
+    // then burns the mint_amount from the bridge.
+    let outcome = context
+        .safe_verify_deposit(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            blockhash.clone(),
+            1,
+            vec![],
+        )
+        .await
+        .unwrap();
+    assert!(
+        outcome.receipt_failures().is_empty(),
+        "safe_mint_callback burn must not panic on unregistered recipient, got: {:?}",
+        outcome.receipt_failures(),
+    );
+
+    // No tokens minted anywhere: the bridge-side mint and burn cancel out.
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+    // Pre-seeded bridge balance is untouched — only the just-minted amount
+    // was burned, not any of the bridge's existing tokens.
+    assert_eq!(
+        context.ft_balance_of("bridge").await.unwrap().0,
+        bridge_balance_before,
+    );
+    assert_eq!(
+        context.ft_total_supply().await.unwrap().0,
+        total_supply_before,
+    );
+    // UTXO was not added to the bridge's available set.
+    assert_eq!(context.get_utxos_paged().await.unwrap().len(), 1); // bob's utxo only
+
+    // The UTXO key was released from verified_deposit_utxo, so the same
+    // deposit can be retried once alice registers.
+    check!(context.storage_deposit("nbtc", "alice"));
+    check!(
+        print "retry safe_verify_deposit"
+        context.safe_verify_deposit(
+            "relayer",
+            deposit_msg,
+            tx_bytes,
+            vout,
+            blockhash,
+            1,
+            vec![],
+        )
+    );
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
+    assert_eq!(
+        context.ft_balance_of("bridge").await.unwrap().0,
+        bridge_balance_before,
+    );
+    assert_eq!(context.get_utxos_paged().await.unwrap().len(), 2);
+}
+
+// Regression test: a post_action in verify_deposit must NOT be able to target
+// the bridge itself. Previously, if the bridge account was added to the
+// post_action_receiver_id_white_list, a relayer-paid deposit could drive the
+// bridge's own ft_on_transfer (e.g. TokenReceiverMessage::Withdraw) within the
+// same receipt chain. check_deposit_msg now rejects such post_actions up front
+// and the deposit proceeds without running any of them.
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_verify_deposit_post_action_to_bridge_is_rejected() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let config = context.get_bridge_config().await.unwrap();
+    let withdraw_change_address = context.get_change_address().await.unwrap();
+
+    // Seed the bridge with a single 200_000 UTXO via bob's regular deposit.
+    let bob_deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("bob").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: None,
+    };
+    let bob_addr = context
+        .get_user_deposit_address(bob_deposit_msg.clone())
+        .await
+        .unwrap();
+    const SEED_UTXO_AMOUNT: u128 = 200_000;
+    check!(context.verify_deposit(
+        "relayer",
+        bob_deposit_msg,
+        generate_transaction_bytes(
+            vec![(
+                "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+                0,
+                None,
+            )],
+            vec![
+                (bob_addr.as_str(), SEED_UTXO_AMOUNT as u64),
+                (TARGET_ADDRESS, 90_000),
+            ],
+        ),
+        0,
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+        1,
+        vec![]
+    ));
+
+    let seed_utxo_keys = context
+        .get_utxos_paged()
+        .await
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<String>>();
+    assert_eq!(seed_utxo_keys.len(), 1);
+    let seed_utxo = seed_utxo_keys[0].split('@').collect::<Vec<_>>();
+
+    // Whitelist the bridge as a post_action receiver.
+    check!(
+        context.extend_post_action_receiver_id_white_list(vec![context
+            .get_account_by_name("bridge")
+            .sdk_id()])
+    );
+
+    // Build the Withdraw PSBT for the post_action. Numbers:
+    //   post_action amount       = 80_000  (>= min_withdraw_amount 70_000)
+    //   withdraw_fee             = 50_000  (fee_min)
+    //   btc_gas_fee              = 10_000  (== min_btc_gas_fee)
+    //   user output (to target)  = amount - withdraw_fee - gas_fee = 20_000
+    //   change (back to bridge)  = seed - (amount - withdraw_fee)  = 170_000
+    let post_action_amount: u128 = 80_000;
+    let withdraw_fee = config.withdraw_bridge_fee.get_fee(post_action_amount);
+    assert_eq!(withdraw_fee, 50_000);
+    let btc_gas_fee: u64 = 10_000;
+    let user_output_value = post_action_amount as u64 - withdraw_fee as u64 - btc_gas_fee;
+    let change_value = SEED_UTXO_AMOUNT as u64 - (post_action_amount as u64 - withdraw_fee as u64);
+
+    let withdraw_msg = TokenReceiverMessage::Withdraw {
+        target_btc_address: TARGET_ADDRESS.to_string(),
+        input: vec![OutPoint {
+            txid: seed_utxo[0].parse().unwrap(),
+            vout: seed_utxo[1].parse().unwrap(),
+        }],
+        output: vec![
+            TxOut {
+                value: Amount::from_sat(user_output_value),
+                script_pubkey: Address::parse(TARGET_ADDRESS, get_chain())
+                    .expect("Invalid btc address")
+                    .script_pubkey()
+                    .expect("Failed to get script pubkey"),
+            },
+            TxOut {
+                value: Amount::from_sat(change_value),
+                script_pubkey: Address::parse(withdraw_change_address.as_str(), get_chain())
+                    .expect("Invalid btc address")
+                    .script_pubkey()
+                    .expect("Failed to get script pubkey"),
+            },
+        ],
+        max_gas_fee: None,
+        chain_specific_data: None,
+    };
+
+    // alice's deposit with a post_action that transfers to the bridge with
+    // the Withdraw message — this is the "init transfer" step.
+    const ALICE_DEPOSIT_AMOUNT: u128 = 100_000;
+    let alice_deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: Some(vec![PostAction {
+            receiver_id: context.get_account_by_name("bridge").sdk_id(),
+            amount: post_action_amount.into(),
+            memo: None,
+            msg: near_sdk::serde_json::to_string(&withdraw_msg).unwrap(),
+            gas: Some(Gas::from_tgas(100)),
+        }]),
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: None,
+    };
+
+    let alice_addr = context
+        .get_user_deposit_address(alice_deposit_msg.clone())
+        .await
+        .unwrap();
+    check!(
+        printr "verify_deposit with init-withdraw post_action"
+        context.verify_deposit(
+            "relayer",
+            alice_deposit_msg,
+            generate_transaction_bytes(
+                vec![(
+                    "1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f1f",
+                    0,
+                    None,
+                )],
+                vec![
+                    (alice_addr.as_str(), ALICE_DEPOSIT_AMOUNT as u64),
+                    (TARGET_ADDRESS, 90_000),
+                ],
+            ),
+            0,
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![]
+        )
+    );
+
+    // The post_action was rejected by check_deposit_msg, so the deposit
+    // completes normally: alice gets the full mint, no transfer to bridge.
+    assert_eq!(
+        context.ft_balance_of("alice").await.unwrap().0,
+        ALICE_DEPOSIT_AMOUNT,
+    );
+    assert_eq!(context.ft_balance_of("bridge").await.unwrap().0, 0);
+
+    // The seed UTXO is still available (nothing was withdrawn), and alice's
+    // new UTXO was added alongside it.
+    let utxos = context.get_utxos_paged().await.unwrap();
+    assert_eq!(utxos.len(), 2);
+    assert!(
+        utxos.contains_key(&seed_utxo_keys[0]),
+        "seed UTXO must remain available — no withdraw was initiated"
+    );
+
+    // No pending BTC withdraw was created.
+    assert!(context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+// safe_mint (in nbtc) must reject account_id == bridge_id. Otherwise the
+// bridge-to-bridge ft_transfer* inside safe_mint would panic with
+// "sender == receiver" from the NEP-141 standard, leaving the bridge with
+// no minted tokens while the outer callback mistakenly records success.
+#[tokio::test]
+async fn test_safe_verify_deposit_to_bridge_recipient_is_rejected() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("bridge").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
+        refund_address: None,
+    };
+
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e",
+            0,
+            None,
+        )],
+        vec![
+            (deposit_address.as_str(), 100_000),
+            (TARGET_ADDRESS, 90_000),
+        ],
+    );
+
+    let outcome = context
+        .safe_verify_deposit(
+            "relayer",
+            deposit_msg,
+            tx_bytes,
+            0,
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![],
+        )
+        .await
+        .unwrap();
+
+    // safe_mint's require! must surface as a receipt failure.
+    let failures = outcome.receipt_failures();
+    assert!(
+        !failures.is_empty(),
+        "safe_mint must reject bridge as recipient"
+    );
+    let failure_text = format!("{:?}", failures);
+    assert!(
+        failure_text.contains("safe_mint: account_id must not be the bridge"),
+        "expected safe_mint guard in failures, got: {failure_text}"
+    );
+
+    // No tokens were minted anywhere.
+    assert_eq!(context.ft_balance_of("bridge").await.unwrap().0, 0);
+    assert_eq!(context.ft_total_supply().await.unwrap().0, 0);
+}
