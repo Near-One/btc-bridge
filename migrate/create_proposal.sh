@@ -1,4 +1,4 @@
-EXPECTED_NBTC_BS58_HASH=3dXNLxNT1cSso4SeDzffnpq1SynCBb95WF9gBLVYvYSE
+EXPECTED_NBTC_BS58_HASH=4ELM6EPYWg9NXHGkYHPqeGFBrGCs4vQMZf7pMFQAnP4H
 NBTC_ACCOUNT_ID=nbtc.bridge.near
 DAO_ACCOUNT_ID=rainbowbridge.sputnik-dao.near
 SIGNER_ACCOUNT_ID=bridge-ops.near
@@ -20,7 +20,7 @@ if [[ "$ACTUAL_NBTC_BS58_HASH" != "$EXPECTED_NBTC_BS58_HASH" ]]; then
   exit 1
 fi
 
-WASM_B64=$(base64 -w 0 $NBTC_WASM_PATH 2>/dev/null || base64 $NBTC_WASM_PATH | tr -d '\n')
+WASM_B64=$(base64 < $NBTC_WASM_PATH | tr -d '\n')
 
 {
   echo '{
