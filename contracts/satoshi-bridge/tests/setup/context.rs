@@ -8,7 +8,7 @@ use bitcoin::{OutPoint, TxOut};
 use near_contract_standards::fungible_token::metadata::FungibleTokenMetadata;
 use near_sdk::{
     base64::{self, Engine},
-    json_types::U128,
+    json_types::{Base64VecU8, U128},
     serde_json::{json, Value},
     AccountId, Gas, NearToken,
 };
@@ -920,7 +920,7 @@ impl Context {
             .call(self.bridge_contract.id(), "verify_deposit_v2")
             .args_json(json!({
                 "deposit_msg": deposit_msg,
-                "tx_bytes": tx_bytes,
+                "tx_bytes": Base64VecU8(tx_bytes),
                 "vout": vout,
                 "proof": proof,
             }))
@@ -958,7 +958,7 @@ impl Context {
             .call(self.bridge_contract.id(), "safe_verify_deposit_v2")
             .args_json(json!({
                 "deposit_msg": deposit_msg,
-                "tx_bytes": tx_bytes,
+                "tx_bytes": Base64VecU8(tx_bytes),
                 "vout": vout,
                 "proof": proof,
             }))
@@ -1378,7 +1378,7 @@ impl Context {
             .args_json(json!({
                 "deposit_msg": deposit_msg,
                 "refund_address": refund_address,
-                "tx_bytes": tx_bytes,
+                "tx_bytes": Base64VecU8(tx_bytes),
                 "vout": vout,
                 "proof": {
                     "tx_block_blockhash": tx_block_blockhash,

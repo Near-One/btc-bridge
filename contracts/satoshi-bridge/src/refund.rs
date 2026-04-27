@@ -1,4 +1,5 @@
 use bitcoin::{Amount, OutPoint, TxOut};
+use near_sdk::json_types::Base64VecU8;
 
 use crate::{
     env, near, require, serde_json, BTCPendingInfo, Contract, ContractExt, DepositMsg, Event, Gas,
@@ -20,7 +21,7 @@ pub const GAS_FOR_VERIFY_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
 pub struct RefundRequest {
     pub deposit_msg_json: String,
     pub utxo_storage_key: String,
-    pub tx_bytes: Vec<u8>,
+    pub tx_bytes: Base64VecU8,
     pub vout: usize,
     pub amount: u128,
     pub refund_address: String,
@@ -71,7 +72,7 @@ impl Contract {
         &self,
         deposit_msg: DepositMsg,
         refund_address: String,
-        tx_bytes: Vec<u8>,
+        tx_bytes: Base64VecU8,
         vout: usize,
         proof: TxInclusionProof,
         gas_fee: Option<u128>,
@@ -84,7 +85,7 @@ impl Contract {
         }
 
         let transaction =
-            crate::WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
+            crate::WrappedTransaction::decode(&tx_bytes.0, &self.internal_config().chain)
                 .expect("Deserialization tx_bytes failed");
         let tx_id = transaction.compute_txid().to_string();
 
@@ -154,7 +155,7 @@ impl Contract {
 
         // Parse the original deposit transaction to get OutPoint
         let transaction =
-            crate::WrappedTransaction::decode(&refund_request.tx_bytes, &config.chain)
+            crate::WrappedTransaction::decode(&refund_request.tx_bytes.0, &config.chain)
                 .expect("Deserialization tx_bytes failed");
         let txid = transaction.compute_txid();
         let outpoint = OutPoint {
@@ -199,7 +200,7 @@ impl Contract {
         let path = get_deposit_path(&deposit_msg);
         let vutxo = VUTXO::Current(UTXO {
             path,
-            tx_bytes: refund_request.tx_bytes.clone(),
+            tx_bytes: refund_request.tx_bytes.0.clone(),
             vout: refund_request.vout,
             balance: u64::try_from(refund_request.amount)
                 .unwrap_or_else(|_| env::panic_str("Amount overflow")),
@@ -324,7 +325,7 @@ impl Contract {
         &mut self,
         deposit_msg: DepositMsg,
         refund_address: String,
-        tx_bytes: Vec<u8>,
+        tx_bytes: Base64VecU8,
         vout: usize,
         gas_fee: Option<u128>,
     ) -> bool {
@@ -335,7 +336,7 @@ impl Contract {
         require!(is_valid, "verify_transaction_inclusion return false");
 
         let config = self.internal_config();
-        let transaction = crate::WrappedTransaction::decode(&tx_bytes, &config.chain)
+        let transaction = crate::WrappedTransaction::decode(&tx_bytes.0, &config.chain)
             .expect("Deserialization tx_bytes failed");
         let output = &transaction.output()[vout];
 

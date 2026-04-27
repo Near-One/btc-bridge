@@ -63,13 +63,13 @@ impl Contract {
     pub fn verify_deposit_v2(
         &mut self,
         deposit_msg: DepositMsg,
-        tx_bytes: Vec<u8>,
+        tx_bytes: Base64VecU8,
         vout: usize,
         proof: TxInclusionProof,
     ) -> Promise {
         self.internal_verify_deposit_entry(
             deposit_msg,
-            tx_bytes,
+            tx_bytes.0,
             vout,
             proof.tx_block_blockhash,
             proof.tx_index,
@@ -139,13 +139,13 @@ impl Contract {
     pub fn safe_verify_deposit_v2(
         &mut self,
         deposit_msg: DepositMsg,
-        tx_bytes: Vec<u8>,
+        tx_bytes: Base64VecU8,
         vout: usize,
         proof: TxInclusionProof,
     ) -> Promise {
         self.internal_safe_verify_deposit_entry(
             deposit_msg,
-            tx_bytes,
+            tx_bytes.0,
             vout,
             proof.tx_block_blockhash,
             proof.tx_index,
@@ -460,7 +460,7 @@ impl Contract {
         &mut self,
         deposit_msg: DepositMsg,
         refund_address: String,
-        tx_bytes: Vec<u8>,
+        tx_bytes: Base64VecU8,
         vout: usize,
         proof: TxInclusionProof,
         gas_fee: Option<U128>,

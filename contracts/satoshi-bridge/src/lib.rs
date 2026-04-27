@@ -3,7 +3,7 @@ use near_sdk::{
     assert_one_yocto,
     borsh::{BorshDeserialize, BorshSerialize},
     env, ext_contract, is_promise_success,
-    json_types::U128,
+    json_types::{Base64VecU8, U128},
     log, near, require,
     serde::{Deserialize, Serialize},
     serde_json::{self, json, Value},
