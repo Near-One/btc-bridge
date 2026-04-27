@@ -77,11 +77,11 @@ impl Contract {
         max_gas_fee: Option<U128>,
     ) {
         let (utxo_storage_keys, vutxos) = self.generate_vutxos(&mut psbt);
+        let max_pending = self.get_max_pending_sign_txs(&sender_id);
+        let account = self.internal_unwrap_or_create_mut_account(&sender_id);
         require!(
-            self.internal_unwrap_or_create_mut_account(&sender_id)
-                .btc_pending_sign_id
-                .is_none(),
-            "Previous btc tx has not been signed"
+            account.pending_sign_count() < max_pending,
+            "Too many pending sign transactions"
         );
 
         let withdraw_change_address_script_pubkey =
@@ -129,7 +129,8 @@ impl Contract {
             "pending info already exist"
         );
         self.internal_unwrap_mut_account(&sender_id)
-            .btc_pending_sign_id = Some(btc_pending_id.clone());
+            .btc_pending_sign_ids
+            .insert(btc_pending_id.clone());
         Event::UtxoRemoved { utxo_storage_keys }.emit();
         Event::GenerateBtcPendingInfo {
             account_id: &sender_id,

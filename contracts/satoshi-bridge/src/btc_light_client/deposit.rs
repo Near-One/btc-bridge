@@ -5,9 +5,9 @@ use crate::{
     deposit_msg::get_deposit_path,
     env, ext_nbtc, generate_utxo_storage_key,
     mint::{GAS_FOR_MINT_CALL, GAS_FOR_MINT_CALL_BACK},
-    near, require, serde_json, AccountId, Contract, ContractExt, DepositMsg, Event, Gas, LockTime,
-    NearToken, PendingUTXOInfo, PostAction, Promise, PromiseOrValue, SafeDepositMsg,
-    WrappedTransaction, MAX_BOOL_RESULT, MAX_FT_TRANSFER_CALL_RESULT, U128, UTXO,
+    near, require, serde_json, AccountId, Contract, ContractExt, DepositMsg, Event, Gas, NearToken,
+    PendingUTXOInfo, PostAction, Promise, PromiseOrValue, SafeDepositMsg, WrappedTransaction,
+    MAX_BOOL_RESULT, MAX_FT_TRANSFER_CALL_RESULT, U128, UTXO,
 };
 
 pub const GAS_FOR_VERIFY_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(190);
@@ -132,10 +132,6 @@ impl Contract {
             .expect("Deserialization tx_bytes failed");
         let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
         require!(deposit_amount > 0, "Invalid deposit_amount");
-        require!(
-            transaction.lock_time() == LockTime::ZERO,
-            "Tx with a non-zero lock_time are not supported."
-        );
         let deposit_address = self.generate_utxo_chain_address(&path);
         let deposit_address_script_pubkey = deposit_address
             .script_pubkey()
@@ -195,10 +191,6 @@ impl Contract {
             .expect("Deserialization tx_bytes failed");
         let deposit_amount = transaction.output()[vout].value.to_sat().into();
         require!(deposit_amount > 0, "Invalid deposit_amount");
-        require!(
-            transaction.lock_time() == LockTime::ZERO,
-            "Tx with a non-zero lock_time are not supported."
-        );
         let deposit_address = self.generate_utxo_chain_address(&path);
         let deposit_address_script_pubkey = deposit_address
             .script_pubkey()
@@ -383,6 +375,9 @@ impl Contract {
     }
 }
 
+/// Refund only if `safe_mint` returned 0. Any other outcome (non-zero
+/// amount, unparseable payload, panic) is treated as "UTXO spent, no
+/// refund" — for safety, to avoid a potential double spend.
 fn is_refund_required() -> bool {
     match env::promise_result_checked(0, MAX_FT_TRANSFER_CALL_RESULT) {
         Ok(value) => {

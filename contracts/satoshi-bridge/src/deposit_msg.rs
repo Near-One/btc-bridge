@@ -22,6 +22,9 @@ pub struct DepositMsg {
     // If this field is present, the legacy post_actions field must be None
     #[serde(skip_serializing_if = "Option::is_none")]
     pub safe_deposit: Option<SafeDepositMsg>,
+    // BTC address for refund if deposit is never finalized.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refund_address: Option<String>,
 }
 
 #[near(serializers = [json])]
@@ -80,6 +83,21 @@ impl Contract {
         let mut total_amount = 0;
         for (index, post_action) in post_actions.iter().enumerate() {
             total_amount += post_action.amount.0;
+            // The receiver_id cannot be the bridge itself — that would let a
+            // deposit immediately drive the bridge's own ft_on_transfer flow
+            // (e.g. TokenReceiverMessage::Withdraw) inside the relayer-paid
+            // receipt, which is outside the intended deposit semantics.
+            if post_action.receiver_id == env::current_account_id() {
+                Event::InvalidPostAction {
+                    index: Some(index),
+                    err_msg: format!(
+                        "The receiver_id({}) of the post_action cannot be the bridge itself.",
+                        post_action.receiver_id
+                    ),
+                }
+                .emit();
+                return None;
+            }
             // The receiver_id must be on the whitelist.
             if !self
                 .data()

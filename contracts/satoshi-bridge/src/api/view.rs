@@ -1,3 +1,5 @@
+#[cfg(not(feature = "zcash"))]
+use crate::RefundRequest;
 use crate::{
     env, near, u128_dec_format, AccessControllable, Account, AccountId, BTCPendingInfo, Config,
     Contract, ContractExt, HashMap, HashSet, NearToken, Pausable, Role, U128, UTXO,
@@ -17,6 +19,7 @@ pub struct Metadata {
     pub relayer_white_list: Vec<AccountId>,
     pub extra_msg_relayer_white_list: Vec<AccountId>,
     pub post_action_receiver_id_white_list: Vec<AccountId>,
+    pub pending_tx_limits: HashMap<AccountId, u32>,
     #[serde(with = "u128_dec_format")]
     pub acc_collected_protocol_fee: u128,
     #[serde(with = "u128_dec_format")]
@@ -57,6 +60,11 @@ impl Contract {
                 .iter()
                 .cloned()
                 .collect(),
+            pending_tx_limits: root_state
+                .pending_tx_limits
+                .iter()
+                .map(|(k, v)| (k.clone(), *v))
+                .collect(),
             acc_collected_protocol_fee: root_state.acc_collected_protocol_fee,
             cur_available_protocol_fee: root_state.cur_available_protocol_fee,
             acc_claimed_protocol_fee: root_state.acc_claimed_protocol_fee,
@@ -72,8 +80,8 @@ impl Contract {
         self.internal_config().clone()
     }
 
-    pub fn get_account(&self, account_id: AccountId) -> Option<Account> {
-        self.internal_get_account(&account_id).cloned()
+    pub fn get_account(&self, account_id: &AccountId) -> Option<Account> {
+        self.data().accounts.get(account_id).map(Account::from)
     }
 
     pub fn list_accounts(
@@ -82,7 +90,10 @@ impl Contract {
     ) -> HashMap<AccountId, Option<Account>> {
         account_ids
             .into_iter()
-            .map(|key| (key.clone(), self.internal_get_account(&key).cloned()))
+            .map(|key| {
+                let account = self.get_account(&key);
+                (key, account)
+            })
             .collect()
     }
 
@@ -283,5 +294,31 @@ impl Contract {
 
     pub fn required_balance_for_safe_deposit(&self) -> NearToken {
         REQUIRED_BALANCE_FOR_DEPOSIT
+    }
+
+    #[cfg(not(feature = "zcash"))]
+    pub fn get_refund_requests_paged(
+        &self,
+        from_index: Option<usize>,
+        limit: Option<usize>,
+    ) -> HashMap<String, RefundRequest> {
+        let len = usize::try_from(self.data().refund_requests.len())
+            .unwrap_or_else(|_| env::panic_str("Too many refund_requests"));
+        let skip_n = from_index.unwrap_or(0);
+        let take_n = limit.unwrap_or(len - skip_n);
+        self.data()
+            .refund_requests
+            .iter()
+            .skip(skip_n)
+            .take(take_n)
+            .map(|(k, v)| (k.clone(), v.into()))
+            .collect()
+    }
+
+    #[cfg(not(feature = "zcash"))]
+    pub fn required_balance_for_execute_refund(&self) -> NearToken {
+        // execute_refund uses ~700 bytes of storage (BTCPendingInfo + Account + verified_deposit_utxo)
+        // At 0.00001 NEAR/byte, that's ~0.007 NEAR. We use 0.01 NEAR as a safe margin.
+        NearToken::from_millinear(10)
     }
 }

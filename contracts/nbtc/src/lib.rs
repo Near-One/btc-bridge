@@ -100,17 +100,20 @@ impl Contract {
         msg: Option<String>,
     ) -> PromiseOrValue<U128> {
         self.assert_bridge();
+        require!(
+            account_id != self.bridge_id,
+            "safe_mint: account_id must not be the bridge"
+        );
+        self.token.internal_deposit(&self.bridge_id, amount.into());
 
         if self.token.accounts.get(&account_id).is_none() {
             return PromiseOrValue::Value(U128(0));
         }
 
         if let Some(msg) = msg {
-            self.token.internal_deposit(&self.bridge_id, amount.into());
-
             self.ft_transfer_call(account_id, amount, None, msg)
         } else {
-            self.token.internal_deposit(&account_id, amount.into());
+            self.ft_transfer(account_id, amount, None);
             PromiseOrValue::Value(amount)
         }
     }
@@ -397,6 +400,10 @@ impl Contract {
         require!(
             env::prepaid_gas() > GAS_FOR_FT_TRANSFER_CALL,
             "More gas is required"
+        );
+        require!(
+            receiver_id != self.bridge_id,
+            "handle_post_action: receiver_id must not be the bridge"
         );
         let amount = amount.into();
         self.token

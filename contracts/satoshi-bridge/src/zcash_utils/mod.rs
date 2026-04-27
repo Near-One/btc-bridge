@@ -1,3 +1,4 @@
+#[allow(clippy::too_many_arguments)]
 pub mod contract_methods;
 pub mod orchard_policy;
 pub mod psbt_wrapper;

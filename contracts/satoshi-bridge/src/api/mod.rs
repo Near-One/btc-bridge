@@ -1,3 +1,4 @@
+#[allow(clippy::too_many_arguments)]
 mod bridge;
 mod chain_signatures;
 mod management;

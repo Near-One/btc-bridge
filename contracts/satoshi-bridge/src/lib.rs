@@ -3,7 +3,7 @@ use near_sdk::{
     assert_one_yocto,
     borsh::{BorshDeserialize, BorshSerialize},
     env, ext_contract, is_promise_success,
-    json_types::{U128, U64},
+    json_types::U128,
     log, near, require,
     serde::{Deserialize, Serialize},
     serde_json::{self, json, Value},
@@ -14,7 +14,7 @@ use near_sdk::{
 use omni_utils::macros::trusted_relayer;
 use std::collections::{HashMap, HashSet};
 
-use bitcoin::{absolute::LockTime, Amount, OutPoint, PublicKey as BtcPublicKey, ScriptBuf, TxOut};
+use bitcoin::{Amount, OutPoint, PublicKey as BtcPublicKey, ScriptBuf, TxOut};
 
 pub mod account;
 pub mod api;
@@ -36,6 +36,8 @@ pub mod nbtc;
 pub mod network;
 pub mod psbt;
 pub mod rbf;
+#[cfg(not(feature = "zcash"))]
+pub mod refund;
 pub mod token_transfer;
 #[cfg(test)]
 mod unit;
@@ -54,6 +56,8 @@ pub use crate::json_utils::*;
 pub use crate::legacy::*;
 pub use crate::nbtc::*;
 pub use crate::rbf::*;
+#[cfg(not(feature = "zcash"))]
+pub use crate::refund::*;
 pub use crate::token_transfer::*;
 pub use crate::utils::*;
 pub use crate::utxo::*;
@@ -92,6 +96,9 @@ enum StorageKey {
     LostFound,
     PostActionMsgTemplates,
     ExtraMsgRelayerWhiteList,
+    PendingTxLimits,
+    #[cfg(not(feature = "zcash"))]
+    RefundRequests,
 }
 
 #[derive(AccessControlRole, Deserialize, Serialize, Copy, Clone)]
@@ -104,6 +111,7 @@ pub enum Role {
     UpgradableCodeDeployer,
     UnrestrictedRelayer,
     RelayerManager,
+    RefundOperator,
 }
 
 /// Transaction inclusion proof with coinbase verification (v2).
@@ -129,12 +137,15 @@ pub struct ContractData {
     pub extra_msg_relayer_white_list: IterableSet<AccountId>,
     pub post_action_receiver_id_white_list: IterableSet<AccountId>,
     pub post_action_msg_templates: IterableMap<AccountId, HashSet<String>>,
+    pub pending_tx_limits: IterableMap<AccountId, u32>,
     pub lost_found: IterableMap<AccountId, u128>,
     pub acc_collected_protocol_fee: u128,
     pub cur_available_protocol_fee: u128,
     pub acc_claimed_protocol_fee: u128,
     pub cur_reserved_protocol_fee: u128,
     pub acc_protocol_fee_for_gas: u128,
+    #[cfg(not(feature = "zcash"))]
+    pub refund_requests: IterableMap<String, VRefundRequest>,
 }
 
 #[near(serializers = [borsh])]
@@ -142,6 +153,7 @@ pub enum VersionedContractData {
     V0(ContractDataV0),
     V1(ContractDataV1),
     V2(ContractDataV2),
+    V3(ContractDataV3),
     Current(ContractData),
 }
 
@@ -195,7 +207,10 @@ impl Contract {
                     StorageKey::PostActionReceiverIdWhiteListWhiteList,
                 ),
                 post_action_msg_templates: IterableMap::new(StorageKey::PostActionMsgTemplates),
+                pending_tx_limits: IterableMap::new(StorageKey::PendingTxLimits),
                 lost_found: IterableMap::new(StorageKey::LostFound),
+                #[cfg(not(feature = "zcash"))]
+                refund_requests: IterableMap::new(StorageKey::RefundRequests),
                 acc_collected_protocol_fee: 0,
                 cur_available_protocol_fee: 0,
                 acc_claimed_protocol_fee: 0,

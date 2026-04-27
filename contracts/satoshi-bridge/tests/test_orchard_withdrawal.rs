@@ -32,6 +32,7 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         })
         .await
         .unwrap();
@@ -64,6 +65,7 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         zcash_tx_bytes,
         1,
@@ -164,6 +166,7 @@ async fn test_orchard_withdrawal_amount_mismatch() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         })
         .await
         .unwrap();
@@ -188,6 +191,7 @@ async fn test_orchard_withdrawal_amount_mismatch() {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         },
         zcash_tx_bytes,
         1,

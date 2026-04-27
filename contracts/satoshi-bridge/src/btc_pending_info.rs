@@ -73,6 +73,7 @@ pub enum PendingInfoState {
     ActiveUtxoManagementOriginal(OriginalState),
     ActiveUtxoManagementRbf(RbfState),
     ActiveUtxoManagementCancelRbf(RbfState),
+    Refund(OriginalState),
 }
 
 impl PendingInfoState {
@@ -84,6 +85,7 @@ impl PendingInfoState {
             PendingInfoState::ActiveUtxoManagementOriginal(state) => state.assert_pending_sign(),
             PendingInfoState::ActiveUtxoManagementRbf(state) => state.assert_pending_sign(),
             PendingInfoState::ActiveUtxoManagementCancelRbf(state) => state.assert_pending_sign(),
+            PendingInfoState::Refund(state) => state.assert_pending_sign(),
         }
     }
     pub fn assert_pending_verify(&self) {
@@ -94,6 +96,7 @@ impl PendingInfoState {
             PendingInfoState::ActiveUtxoManagementOriginal(state) => state.assert_pending_verify(),
             PendingInfoState::ActiveUtxoManagementRbf(state) => state.assert_pending_verify(),
             PendingInfoState::ActiveUtxoManagementCancelRbf(state) => state.assert_pending_verify(),
+            PendingInfoState::Refund(state) => state.assert_pending_verify(),
         }
     }
 }
@@ -154,6 +157,13 @@ impl BTCPendingInfo {
             PendingInfoState::WithdrawUserRbf(state) => state.assert_pending_verify(),
             PendingInfoState::WithdrawCancelRbf(state) => state.assert_pending_verify(),
             _ => env::panic_str("Not withdraw related tx"),
+        }
+    }
+
+    pub fn assert_refund_pending_verify_tx(&self) {
+        match self.state.borrow() {
+            PendingInfoState::Refund(state) => state.assert_pending_verify(),
+            _ => env::panic_str("Not refund related tx"),
         }
     }
 
@@ -222,6 +232,9 @@ impl BTCPendingInfo {
             PendingInfoState::ActiveUtxoManagementCancelRbf(state) => {
                 state.stage = PendingInfoStage::PendingVerify;
             }
+            PendingInfoState::Refund(state) => {
+                state.stage = PendingInfoStage::PendingVerify;
+            }
         }
     }
 
@@ -243,6 +256,7 @@ impl BTCPendingInfo {
             PendingInfoState::ActiveUtxoManagementCancelRbf(state) => {
                 state.stage = PendingInfoStage::PendingBurn;
             }
+            PendingInfoState::Refund(_state) => unreachable!(),
         }
     }
 
@@ -393,7 +407,7 @@ impl Contract {
 
 pub fn generate_btc_pending_sign_id(payload_preimages: &[Vec<u8>]) -> String {
     let hash_bytes = env::sha256_array(
-        &payload_preimages
+        payload_preimages
             .iter()
             .flatten()
             .copied()
@@ -457,6 +471,7 @@ mod tests {
             post_actions: None,
             extra_msg: None,
             safe_deposit: None,
+            refund_address: None,
         };
 
         let path = get_deposit_path(&deposit_msg);
