@@ -286,7 +286,7 @@ impl Contract {
             proof.tx_index,
             proof.merkle_proof,
             Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
-            confirmations
+            confirmations,
         )
         .then(
             Self::ext(env::current_account_id())
