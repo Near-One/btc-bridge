@@ -104,8 +104,9 @@ impl ProofArgsV2 {
             coinbase_merkle_proof: coinbase_merkle_proof
                 .into_iter()
                 .map(|v| {
-                    v.parse()
-                        .unwrap_or_else(|_| env::panic_str(&format!("Invalid coinbase_merkle_proof: {v:?}")))
+                    v.parse().unwrap_or_else(|_| {
+                        env::panic_str(&format!("Invalid coinbase_merkle_proof: {v:?}"))
+                    })
                 })
                 .collect(),
             confirmations,
