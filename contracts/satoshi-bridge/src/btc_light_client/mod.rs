@@ -58,7 +58,7 @@ impl ProofArgs {
                 .into_iter()
                 .map(|v| {
                     v.parse()
-                        .unwrap_or_else(|_| env::panic_str("Invalid merkle_proof: {v:?}"))
+                        .unwrap_or_else(|_| env::panic_str(&format!("Invalid merkle_proof: {v:?}")))
                 })
                 .collect(),
             confirmations,
@@ -97,7 +97,7 @@ impl ProofArgsV2 {
                 .into_iter()
                 .map(|v| {
                     v.parse()
-                        .unwrap_or_else(|_| env::panic_str("Invalid merkle_proof: {v:?}"))
+                        .unwrap_or_else(|_| env::panic_str(&format!("Invalid merkle_proof: {v:?}")))
                 })
                 .collect(),
             coinbase_tx_id: coinbase_tx_id.parse().expect("Invalid coinbase_tx_id"),
@@ -105,7 +105,7 @@ impl ProofArgsV2 {
                 .into_iter()
                 .map(|v| {
                     v.parse()
-                        .unwrap_or_else(|_| env::panic_str("Invalid coinbase_merkle_proof: {v:?}"))
+                        .unwrap_or_else(|_| env::panic_str(&format!("Invalid coinbase_merkle_proof: {v:?}")))
                 })
                 .collect(),
             confirmations,
