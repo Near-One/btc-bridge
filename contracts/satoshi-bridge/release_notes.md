@@ -1,5 +1,8 @@
 # Release Notes
 
+### Version 0.9.0
+1. use `verify_transaction_inclusion_v2` with coinbase merkle proof.
+
 ### Version 0.8.0
 1. support BTC refund flow.
 2. remove lock time verification.
