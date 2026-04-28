@@ -24,6 +24,7 @@ impl Contract {
     /// bool - Whether nBTC minting was successful.
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
+    #[deprecated(note = "use verify_deposit_v2")]
     pub fn verify_deposit(
         &mut self,
         deposit_msg: DepositMsg,
@@ -99,6 +100,7 @@ impl Contract {
     #[payable]
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
+    #[deprecated(note = "use safe_verify_deposit_v2")]
     pub fn safe_verify_deposit(
         &mut self,
         deposit_msg: DepositMsg,
@@ -171,6 +173,7 @@ impl Contract {
     /// bool - Whether nBTC burning was successful.
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
+    #[deprecated(note = "use verify_withdraw_v2")]
     pub fn verify_withdraw(
         &mut self,
         tx_id: String,
@@ -270,6 +273,7 @@ impl Contract {
     /// bool - Whether nBTC burning was successful.
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
+    #[deprecated(note = "use verify_active_utxo_management_v2")]
     pub fn verify_active_utxo_management(
         &mut self,
         tx_id: String,
