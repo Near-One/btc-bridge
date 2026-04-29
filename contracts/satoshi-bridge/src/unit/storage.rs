@@ -20,7 +20,7 @@ impl Contract {
             utxo_storage_key.clone(),
             VUTXO::Current(UTXO {
                 path,
-                tx_bytes,
+                tx_bytes: near_sdk::json_types::Base64VecU8(tx_bytes),
                 vout: vout.try_into().unwrap(),
                 balance: u64::MAX,
             }),

@@ -36,7 +36,7 @@ impl Contract {
     ) -> Promise {
         self.internal_verify_deposit_entry(
             deposit_msg,
-            tx_bytes,
+            Base64VecU8(tx_bytes),
             vout,
             tx_block_blockhash,
             tx_index,
@@ -70,7 +70,7 @@ impl Contract {
     ) -> Promise {
         self.internal_verify_deposit_entry(
             deposit_msg,
-            tx_bytes.0,
+            tx_bytes,
             vout,
             proof.tx_block_blockhash,
             proof.tx_index,
@@ -112,7 +112,7 @@ impl Contract {
     ) -> Promise {
         self.internal_safe_verify_deposit_entry(
             deposit_msg,
-            tx_bytes,
+            Base64VecU8(tx_bytes),
             vout,
             tx_block_blockhash,
             tx_index,
@@ -147,7 +147,7 @@ impl Contract {
     ) -> Promise {
         self.internal_safe_verify_deposit_entry(
             deposit_msg,
-            tx_bytes.0,
+            tx_bytes,
             vout,
             proof.tx_block_blockhash,
             proof.tx_index,

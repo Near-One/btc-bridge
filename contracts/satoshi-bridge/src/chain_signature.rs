@@ -191,7 +191,8 @@ impl Contract {
                 }
                 .emit();
 
-                btc_pending_info.tx_bytes_with_sign = Some(tx_bytes_with_sign);
+                btc_pending_info.tx_bytes_with_sign =
+                    Some(near_sdk::json_types::Base64VecU8(tx_bytes_with_sign));
                 btc_pending_info.to_pending_verify_stage();
 
                 let is_original_tx = btc_pending_info.get_original_tx_id().is_none();

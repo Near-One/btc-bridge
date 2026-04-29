@@ -2,8 +2,9 @@ use std::borrow::{Borrow, BorrowMut};
 
 use crate::{
     env, nano_to_sec, near, network, psbt_wrapper::PsbtWrapper, require, u128_dec_format,
-    AccountId, Contract, SignatureResponse, WrappedTransaction, U128, VUTXO,
+    AccountId, Contract, SignatureResponse, VUTXOView, WrappedTransaction, U128, VUTXO,
 };
+use near_sdk::json_types::Base64VecU8;
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone, PartialEq, Eq)]
@@ -120,10 +121,57 @@ pub struct BTCPendingInfo {
     pub psbt_hex: String,
     pub vutxos: Vec<VUTXO>,
     pub signatures: Vec<Option<SignatureResponse>>,
+    pub tx_bytes_with_sign: Option<Base64VecU8>,
+    pub create_time_sec: u32,
+    pub last_sign_time_sec: u32,
+    pub state: PendingInfoState,
+}
+
+/// View-only mirror of [`BTCPendingInfo`] that serializes byte fields as JSON byte
+/// arrays for backward compatibility with off-chain clients (relayer).
+#[near(serializers = [json])]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub struct BTCPendingInfoView {
+    pub account_id: AccountId,
+    pub btc_pending_id: String,
+    #[serde(with = "u128_dec_format")]
+    pub transfer_amount: u128,
+    #[serde(with = "u128_dec_format")]
+    pub actual_received_amount: u128,
+    #[serde(with = "u128_dec_format")]
+    pub withdraw_fee: u128,
+    #[serde(with = "u128_dec_format")]
+    pub gas_fee: u128,
+    #[serde(with = "u128_dec_format")]
+    pub burn_amount: u128,
+    pub psbt_hex: String,
+    pub vutxos: Vec<VUTXOView>,
+    pub signatures: Vec<Option<SignatureResponse>>,
     pub tx_bytes_with_sign: Option<Vec<u8>>,
     pub create_time_sec: u32,
     pub last_sign_time_sec: u32,
     pub state: PendingInfoState,
+}
+
+impl From<&BTCPendingInfo> for BTCPendingInfoView {
+    fn from(p: &BTCPendingInfo) -> Self {
+        BTCPendingInfoView {
+            account_id: p.account_id.clone(),
+            btc_pending_id: p.btc_pending_id.clone(),
+            transfer_amount: p.transfer_amount,
+            actual_received_amount: p.actual_received_amount,
+            withdraw_fee: p.withdraw_fee,
+            gas_fee: p.gas_fee,
+            burn_amount: p.burn_amount,
+            psbt_hex: p.psbt_hex.clone(),
+            vutxos: p.vutxos.iter().map(Into::into).collect(),
+            signatures: p.signatures.clone(),
+            tx_bytes_with_sign: p.tx_bytes_with_sign.as_ref().map(|b| b.0.clone()),
+            create_time_sec: p.create_time_sec,
+            last_sign_time_sec: p.last_sign_time_sec,
+            state: p.state.clone(),
+        }
+    }
 }
 
 impl BTCPendingInfo {
@@ -298,9 +346,11 @@ impl BTCPendingInfo {
 
     pub fn get_transaction(&self, chain: &network::Chain) -> WrappedTransaction {
         WrappedTransaction::decode(
-            self.tx_bytes_with_sign
+            &self
+                .tx_bytes_with_sign
                 .as_ref()
-                .expect("Missing tx_bytes_with_sign"),
+                .expect("Missing tx_bytes_with_sign")
+                .0,
             chain,
         )
         .expect("Deserialization tx_bytes failed")

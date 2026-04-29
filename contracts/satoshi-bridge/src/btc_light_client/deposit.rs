@@ -1,3 +1,4 @@
+use near_sdk::json_types::Base64VecU8;
 use near_sdk::serde_json::Value;
 
 use crate::{
@@ -116,7 +117,7 @@ impl Contract {
     pub(crate) fn internal_verify_deposit_entry(
         &mut self,
         deposit_msg: DepositMsg,
-        tx_bytes: Vec<u8>,
+        tx_bytes: Base64VecU8,
         vout: usize,
         tx_block_blockhash: String,
         tx_index: u64,
@@ -128,7 +129,7 @@ impl Contract {
             "safe_deposit not supported in verify_deposit"
         );
         let path = get_deposit_path(&deposit_msg);
-        let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
+        let transaction = WrappedTransaction::decode(&tx_bytes.0, &self.internal_config().chain)
             .expect("Deserialization tx_bytes failed");
         let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
         require!(deposit_amount > 0, "Invalid deposit_amount");
@@ -170,7 +171,7 @@ impl Contract {
     pub(crate) fn internal_safe_verify_deposit_entry(
         &mut self,
         deposit_msg: DepositMsg,
-        tx_bytes: Vec<u8>,
+        tx_bytes: Base64VecU8,
         vout: usize,
         tx_block_blockhash: String,
         tx_index: u64,
@@ -187,7 +188,7 @@ impl Contract {
             .safe_deposit
             .unwrap_or_else(|| env::panic_str("safe_deposit is required in safe_verify_deposit"));
 
-        let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
+        let transaction = WrappedTransaction::decode(&tx_bytes.0, &self.internal_config().chain)
             .expect("Deserialization tx_bytes failed");
         let deposit_amount = transaction.output()[vout].value.to_sat().into();
         require!(deposit_amount > 0, "Invalid deposit_amount");
