@@ -200,7 +200,7 @@ impl Contract {
         let path = get_deposit_path(&deposit_msg);
         let vutxo = VUTXO::Current(UTXO {
             path,
-            tx_bytes: refund_request.tx_bytes.0.clone(),
+            tx_bytes: refund_request.tx_bytes.clone(),
             vout: refund_request.vout,
             balance: u64::try_from(refund_request.amount)
                 .unwrap_or_else(|_| env::panic_str("Amount overflow")),

@@ -2,16 +2,63 @@ use crate::{
     generate_utxo_storage_key, near, psbt_wrapper::PsbtWrapper, u64_dec_format, Contract, OutPoint,
 };
 use near_sdk::env;
+use near_sdk::json_types::Base64VecU8;
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 pub struct UTXO {
     pub path: String,
+    pub tx_bytes: Base64VecU8,
+    pub vout: usize,
+    #[serde(with = "u64_dec_format")]
+    pub balance: u64,
+}
+
+/// View-only mirror of [`UTXO`] that serializes `tx_bytes` as a JSON byte array
+/// for backward compatibility with off-chain clients (relayer).
+#[near(serializers = [json])]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub struct UTXOView {
+    pub path: String,
     pub tx_bytes: Vec<u8>,
     pub vout: usize,
     #[serde(with = "u64_dec_format")]
     pub balance: u64,
+}
+
+impl From<&UTXO> for UTXOView {
+    fn from(u: &UTXO) -> Self {
+        UTXOView {
+            path: u.path.clone(),
+            tx_bytes: u.tx_bytes.0.clone(),
+            vout: u.vout,
+            balance: u.balance,
+        }
+    }
+}
+
+/// View-only mirror of [`VUTXO`] preserving the legacy JSON shape (`{"Current": {...}}`).
+#[near(serializers = [json])]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub enum VUTXOView {
+    Current(UTXOView),
+}
+
+impl From<&VUTXO> for VUTXOView {
+    fn from(v: &VUTXO) -> Self {
+        match v {
+            VUTXO::Current(c) => VUTXOView::Current(c.into()),
+        }
+    }
+}
+
+impl From<&VUTXO> for UTXOView {
+    fn from(v: &VUTXO) -> Self {
+        match v {
+            VUTXO::Current(c) => c.into(),
+        }
+    }
 }
 
 #[near(serializers = [borsh, json])]

@@ -1,8 +1,9 @@
 #[cfg(not(feature = "zcash"))]
 use crate::RefundRequest;
 use crate::{
-    env, near, u128_dec_format, AccessControllable, Account, AccountId, BTCPendingInfo, Config,
-    Contract, ContractExt, HashMap, HashSet, NearToken, Pausable, Role, U128, UTXO,
+    env, near, u128_dec_format, AccessControllable, Account, AccountId, BTCPendingInfo,
+    BTCPendingInfoView, Config, Contract, ContractExt, HashMap, HashSet, NearToken, Pausable, Role,
+    UTXOView, U128, UTXO,
 };
 
 const REQUIRED_BALANCE_FOR_DEPOSIT: NearToken =
@@ -149,6 +150,103 @@ impl Contract {
         &self,
         from_index: Option<usize>,
         limit: Option<usize>,
+    ) -> HashMap<String, UTXOView> {
+        let len = usize::try_from(self.data().utxos.len())
+            .unwrap_or_else(|_| env::panic_str("Too many utxos"));
+        let skip_n = from_index.unwrap_or(0);
+        let take_n = limit.unwrap_or(len - skip_n);
+        self.data()
+            .utxos
+            .iter()
+            .skip(skip_n)
+            .take(take_n)
+            .map(|(k, v)| (k.clone(), v.into()))
+            .collect()
+    }
+
+    pub fn list_utxos(&self, utxo_storage_keys: Vec<String>) -> HashMap<String, Option<UTXOView>> {
+        utxo_storage_keys
+            .into_iter()
+            .map(|key| (key.clone(), self.data().utxos.get(&key).map(Into::into)))
+            .collect()
+    }
+
+    pub fn get_unavailable_utxos_paged(
+        &self,
+        from_index: Option<usize>,
+        limit: Option<usize>,
+    ) -> HashMap<String, UTXOView> {
+        let len = usize::try_from(self.data().unavailable_utxos.len())
+            .unwrap_or_else(|_| env::panic_str("Too many unavailable_utxos"));
+        let skip_n = from_index.unwrap_or(0);
+        let take_n = limit.unwrap_or(len - skip_n);
+        self.data()
+            .unavailable_utxos
+            .iter()
+            .skip(skip_n)
+            .take(take_n)
+            .map(|(k, v)| (k.clone(), v.into()))
+            .collect()
+    }
+
+    pub fn list_unavailable_utxos(
+        &self,
+        utxo_storage_keys: Vec<String>,
+    ) -> HashMap<String, Option<UTXOView>> {
+        utxo_storage_keys
+            .into_iter()
+            .map(|key| {
+                (
+                    key.clone(),
+                    self.data().unavailable_utxos.get(&key).map(Into::into),
+                )
+            })
+            .collect()
+    }
+
+    pub fn get_btc_pending_infos_paged(
+        &self,
+        from_index: Option<usize>,
+        limit: Option<usize>,
+    ) -> HashMap<String, BTCPendingInfoView> {
+        let len = usize::try_from(self.data().btc_pending_infos.len())
+            .unwrap_or_else(|_| env::panic_str("Too many btc_pending_infos"));
+        let skip_n = from_index.unwrap_or(0);
+        let take_n = limit.unwrap_or(len - skip_n);
+        self.data()
+            .btc_pending_infos
+            .iter()
+            .skip(skip_n)
+            .take(take_n)
+            .map(|(k, v)| {
+                let info: crate::BTCPendingInfo = v.into();
+                (k.clone(), (&info).into())
+            })
+            .collect()
+    }
+
+    pub fn list_btc_pending_infos(
+        &self,
+        btc_pending_ids: Vec<String>,
+    ) -> HashMap<String, Option<BTCPendingInfoView>> {
+        btc_pending_ids
+            .into_iter()
+            .map(|key| {
+                (
+                    key.clone(),
+                    self.internal_view_btc_pending_info(&key)
+                        .as_ref()
+                        .map(Into::into),
+                )
+            })
+            .collect()
+    }
+
+    /// Same as [`Self::get_utxos_paged`] but serializes `tx_bytes` as a base64 string.
+    pub fn get_utxos_paged_v2(
+        &self,
+        from_index: Option<usize>,
+        limit: Option<usize>,
     ) -> HashMap<String, UTXO> {
         let len = usize::try_from(self.data().utxos.len())
             .unwrap_or_else(|_| env::panic_str("Too many utxos"));
@@ -163,14 +261,16 @@ impl Contract {
             .collect()
     }
 
-    pub fn list_utxos(&self, utxo_storage_keys: Vec<String>) -> HashMap<String, Option<UTXO>> {
+    /// Same as [`Self::list_utxos`] but serializes `tx_bytes` as a base64 string.
+    pub fn list_utxos_v2(&self, utxo_storage_keys: Vec<String>) -> HashMap<String, Option<UTXO>> {
         utxo_storage_keys
             .into_iter()
             .map(|key| (key.clone(), self.data().utxos.get(&key).map(Into::into)))
             .collect()
     }
 
-    pub fn get_unavailable_utxos_paged(
+    /// Same as [`Self::get_unavailable_utxos_paged`] but serializes `tx_bytes` as a base64 string.
+    pub fn get_unavailable_utxos_paged_v2(
         &self,
         from_index: Option<usize>,
         limit: Option<usize>,
@@ -188,7 +288,8 @@ impl Contract {
             .collect()
     }
 
-    pub fn list_unavailable_utxos(
+    /// Same as [`Self::list_unavailable_utxos`] but serializes `tx_bytes` as a base64 string.
+    pub fn list_unavailable_utxos_v2(
         &self,
         utxo_storage_keys: Vec<String>,
     ) -> HashMap<String, Option<UTXO>> {
@@ -203,7 +304,9 @@ impl Contract {
             .collect()
     }
 
-    pub fn get_btc_pending_infos_paged(
+    /// Same as [`Self::get_btc_pending_infos_paged`] but serializes `tx_bytes_with_sign`
+    /// (and nested `vutxos[*].tx_bytes`) as base64 strings.
+    pub fn get_btc_pending_infos_paged_v2(
         &self,
         from_index: Option<usize>,
         limit: Option<usize>,
@@ -221,7 +324,9 @@ impl Contract {
             .collect()
     }
 
-    pub fn list_btc_pending_infos(
+    /// Same as [`Self::list_btc_pending_infos`] but serializes `tx_bytes_with_sign`
+    /// (and nested `vutxos[*].tx_bytes`) as base64 strings.
+    pub fn list_btc_pending_infos_v2(
         &self,
         btc_pending_ids: Vec<String>,
     ) -> HashMap<String, Option<BTCPendingInfo>> {
