@@ -94,7 +94,7 @@ impl Contract {
                         tx_id.clone(),
                         u32::try_from(index).unwrap_or_else(|_| env::panic_str("Index overflow")),
                     );
-                    balances.push(U128::from(<u64 as Into<u128>>::into(utxo.balance)));
+                    balances.push(U128::from(u128::from(utxo.balance)));
                     self.internal_set_utxo(&utxo_storage_key, utxo);
                     utxo_storage_keys.push(utxo_storage_key);
                 }
