@@ -99,6 +99,7 @@ enum StorageKey {
     PendingTxLimits,
     #[cfg(not(feature = "zcash"))]
     RefundRequests,
+    BlockBridgeAmounts,
 }
 
 #[derive(AccessControlRole, Deserialize, Serialize, Copy, Clone)]
@@ -136,6 +137,12 @@ pub struct ContractData {
     pub acc_protocol_fee_for_gas: u128,
     #[cfg(not(feature = "zcash"))]
     pub refund_requests: IterableMap<String, VRefundRequest>,
+    // Cumulative bridge-related satoshi amount per BTC block (key = tx_block_blockhash).
+    // Used to compute required confirmations against the SUM of bridge txs in a block,
+    // so an attacker cannot bypass the high-amount confirmations tier by splitting one
+    // big deposit into many small ones inside the same block.
+    // TODO(prune): grows unboundedly — needs a pruning strategy (by block height/age).
+    pub block_bridge_amounts: IterableMap<String, u128>,
 }
 
 #[near(serializers = [borsh])]
@@ -201,6 +208,7 @@ impl Contract {
                 lost_found: IterableMap::new(StorageKey::LostFound),
                 #[cfg(not(feature = "zcash"))]
                 refund_requests: IterableMap::new(StorageKey::RefundRequests),
+                block_bridge_amounts: IterableMap::new(StorageKey::BlockBridgeAmounts),
                 acc_collected_protocol_fee: 0,
                 cur_available_protocol_fee: 0,
                 acc_claimed_protocol_fee: 0,

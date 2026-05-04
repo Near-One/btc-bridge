@@ -63,6 +63,7 @@ impl From<ContractDataV0> for ContractData {
             acc_protocol_fee_for_gas,
             #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
+            block_bridge_amounts: IterableMap::new(StorageKey::BlockBridgeAmounts),
         }
     }
 }
@@ -401,6 +402,7 @@ impl From<ContractDataV1> for ContractData {
             acc_protocol_fee_for_gas,
             #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
+            block_bridge_amounts: IterableMap::new(StorageKey::BlockBridgeAmounts),
         }
     }
 }
@@ -475,6 +477,7 @@ impl From<ContractDataV2> for ContractData {
             acc_protocol_fee_for_gas,
             #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
+            block_bridge_amounts: IterableMap::new(StorageKey::BlockBridgeAmounts),
         }
     }
 }
@@ -652,6 +655,7 @@ impl From<ContractDataV3> for ContractData {
             acc_protocol_fee_for_gas,
             #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
+            block_bridge_amounts: IterableMap::new(StorageKey::BlockBridgeAmounts),
         }
     }
 }

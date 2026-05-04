@@ -168,6 +168,8 @@ impl Contract {
         tx_index: u64,
         merkle_proof: Vec<String>,
     ) -> Promise {
+        let amount = self.internal_unwrap_btc_pending_info(&tx_id).actual_received_amount;
+        self.bump_block_amount(&tx_block_blockhash, amount);
         let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id);
         btc_pending_info.assert_withdraw_related_pending_verify_tx();
         if let Some(original_tx_id) = btc_pending_info.get_original_tx_id() {
@@ -259,6 +261,8 @@ impl Contract {
         tx_index: u64,
         merkle_proof: Vec<String>,
     ) -> Promise {
+        let amount = self.internal_unwrap_btc_pending_info(&tx_id).actual_received_amount;
+        self.bump_block_amount(&tx_block_blockhash, amount);
         let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id);
         btc_pending_info.assert_active_utxo_management_related_pending_verify_tx();
         if let Some(original_tx_id) = btc_pending_info.get_original_tx_id() {
@@ -523,6 +527,8 @@ impl Contract {
         tx_index: u64,
         merkle_proof: Vec<String>,
     ) -> Promise {
+        let amount = self.internal_unwrap_btc_pending_info(&tx_id).actual_received_amount;
+        self.bump_block_amount(&tx_block_blockhash, amount);
         let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id);
         btc_pending_info.assert_refund_pending_verify_tx();
         require!(

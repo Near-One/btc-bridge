@@ -67,7 +67,7 @@ impl Contract {
     /// If `deposit_msg.refund_address` is None, the provided `refund_address` is used.
     #[allow(clippy::too_many_arguments)]
     pub fn internal_request_refund(
-        &self,
+        &mut self,
         deposit_msg: DepositMsg,
         refund_address: String,
         tx_bytes: Vec<u8>,
@@ -89,9 +89,10 @@ impl Contract {
                 .expect("Deserialization tx_bytes failed");
         let tx_id = transaction.compute_txid().to_string();
 
-        let config = self.internal_config();
         let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
-        let confirmations = self.get_confirmations(config, deposit_amount);
+        self.bump_block_amount(&tx_block_blockhash, deposit_amount);
+        let confirmations = self.get_confirmations(&tx_block_blockhash);
+        let config = self.internal_config();
 
         self.verify_transaction_inclusion_promise(
             config.btc_light_client_account_id.clone(),
@@ -276,10 +277,10 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
-        btc_pending_info: &BTCPendingInfo,
+        _btc_pending_info: &BTCPendingInfo,
     ) -> Promise {
         let config = self.internal_config();
-        let confirmations = self.get_confirmations(config, btc_pending_info.actual_received_amount);
+        let confirmations = self.get_confirmations(&tx_block_blockhash);
         self.verify_transaction_inclusion_promise(
             config.btc_light_client_account_id.clone(),
             tx_id.clone(),

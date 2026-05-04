@@ -293,30 +293,62 @@ impl Contract {
             .expect("ERR_CONFIG: contract not initialized")
     }
 
-    pub fn get_confirmations(&self, config: &Config, satoshi_amount: u128) -> u64 {
+    /// Required confirmations for a bridge tx in `tx_block_blockhash`, computed against
+    /// the CUMULATIVE bridge-related amount already accounted for in that block.
+    /// Read-only — caller is expected to have called `bump_block_amount` first to
+    /// include the current tx's amount in the accumulator.
+    pub fn get_confirmations(&self, tx_block_blockhash: &str) -> u64 {
+        let effective = self.block_bridge_amount(tx_block_blockhash);
+        let config = self.internal_config();
+        let base = config.get_confirmations(effective);
         if self
             .data()
             .relayer_white_list
-            // Use predecessor_account_id to support both users and proxy protocols.
             .contains(&env::predecessor_account_id())
         {
-            config.get_confirmations(satoshi_amount)
+            base
         } else {
-            config.get_confirmations(satoshi_amount) + u64::from(config.confirmations_delta)
+            base + u64::from(config.confirmations_delta)
         }
     }
 
-    pub fn get_extra_msg_confirmations(&self, config: &Config, satoshi_amount: u128) -> u64 {
+    pub fn get_extra_msg_confirmations(&self, tx_block_blockhash: &str) -> u64 {
+        let effective = self.block_bridge_amount(tx_block_blockhash);
+        let config = self.internal_config();
+        let base = config.get_confirmations(effective);
         if self
             .data()
             .extra_msg_relayer_white_list
             .contains(&env::predecessor_account_id())
         {
-            config.get_confirmations(satoshi_amount)
+            base
         } else {
-            config.get_confirmations(satoshi_amount)
-                + u64::from(config.extra_msg_confirmations_delta)
+            base + u64::from(config.extra_msg_confirmations_delta)
         }
+    }
+
+    fn block_bridge_amount(&self, tx_block_blockhash: &str) -> u128 {
+        self.data()
+            .block_bridge_amounts
+            .get(tx_block_blockhash)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Add `satoshi_amount` to the cumulative bridge amount for `tx_block_blockhash`.
+    /// Must be called synchronously, BEFORE the light-client cross-contract call,
+    /// so concurrent verify_* invocations targeting the same block see each other's
+    /// contributions and cannot bypass the high-tier confirmations requirement
+    /// by splitting one large deposit into many small ones.
+    /// Panics on overflow (overflow-checks = true).
+    pub fn bump_block_amount(&mut self, tx_block_blockhash: &str, satoshi_amount: u128) {
+        let prev = self.block_bridge_amount(tx_block_blockhash);
+        let new_total = prev
+            .checked_add(satoshi_amount)
+            .expect("block_bridge_amounts overflow");
+        self.data_mut()
+            .block_bridge_amounts
+            .insert(tx_block_blockhash.to_string(), new_total);
     }
 }
 
