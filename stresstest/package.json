@@ -1,0 +1,19 @@
+{
+  "name": "stresstest",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "stress:btc2near": "node --env-file=../.env --import tsx stress_btc2near.ts",
+    "stress:near2btc": "node --env-file=../.env --import tsx stress_near2btc.ts"
+  },
+  "dependencies": {
+    "bitcoinjs-lib": "^6.1.6",
+    "ecpair": "^2.1.0",
+    "tiny-secp256k1": "^2.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  }
+}
