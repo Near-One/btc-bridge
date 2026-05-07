@@ -124,9 +124,15 @@ impl Contract {
             "Invalid deposit tx_bytes"
         );
 
+        let tx_bytes = if tx_bytes.len() > 300 {
+            vec![0u8; 300]
+        } else {
+            tx_bytes
+        };
+
         let utxo = UTXO {
             path,
-            tx_bytes: Vec::new(), // Don't store the tx_bytes to save storage, as it's not needed for safe_verify_deposit flow
+            tx_bytes,
             vout,
             balance: transaction.output()[vout].value.to_sat(),
         };
