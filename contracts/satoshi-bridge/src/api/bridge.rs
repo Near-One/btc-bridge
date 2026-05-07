@@ -126,7 +126,7 @@ impl Contract {
 
         let utxo = UTXO {
             path,
-            tx_bytes,
+            tx_bytes: Vec::new(), // Don't store the tx_bytes to save storage, as it's not needed for safe_verify_deposit flow
             vout,
             balance: transaction.output()[vout].value.to_sat(),
         };
