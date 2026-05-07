@@ -1,6 +1,7 @@
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 use near_plugins::{access_control_any, pause};
+use near_sdk::json_types::Base64VecU8;
 
 #[trusted_relayer]
 #[near]
@@ -144,6 +145,28 @@ impl Contract {
             },
             deposit_msg.recipient_id,
             safe_deposit_msg,
+        )
+    }
+
+    #[payable]
+    #[trusted_relayer]
+    #[pause(except(roles(Role::DAO)))]
+    pub fn safe_verify_deposit_compact(
+        &mut self,
+        deposit_msg: DepositMsg,
+        tx_bytes: Base64VecU8,
+        vout: usize,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Promise {
+        self.safe_verify_deposit(
+            deposit_msg,
+            tx_bytes.0,
+            vout,
+            tx_block_blockhash,
+            tx_index,
+            merkle_proof,
         )
     }
 
