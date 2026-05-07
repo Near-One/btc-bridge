@@ -1,6 +1,8 @@
 mod setup;
 use near_sdk::serde_json::json;
-use satoshi_bridge::{Account, Config, DEFAULT_REFUND_TIMELOCK_SEC};
+use satoshi_bridge::{
+    Account, Config, DEFAULT_REFUND_TIMELOCK_SEC, DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC,
+};
 use setup::*;
 
 #[tokio::test]
@@ -54,6 +56,10 @@ async fn test_zcash_bridge_upgrade_from_v0_6_0() {
         .unwrap();
 
     assert_eq!(config.refund_timelock_sec, DEFAULT_REFUND_TIMELOCK_SEC);
+    assert_eq!(
+        config.unsafe_refund_timelock_sec,
+        DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC
+    );
 }
 
 #[tokio::test]
@@ -134,8 +140,8 @@ async fn test_btc_bridge_upgrade_from_v0_7_5_account_migration() {
     assert_eq!(accounts.len(), 1);
 
     // get_config must deserialize into the new Config layout, proving the
-    // V3 config migration populated `refund_timelock_sec` with the default
-    // (v0.7.5 had no such field).
+    // V3 config migration populated `refund_timelock_sec` and
+    // `unsafe_refund_timelock_sec` with the defaults (v0.7.5 had no such fields).
     let config: Config = upgrade_context
         .previous_satoshi_bridge_contract
         .call("get_config")
@@ -146,6 +152,10 @@ async fn test_btc_bridge_upgrade_from_v0_7_5_account_migration() {
         .unwrap();
 
     assert_eq!(config.refund_timelock_sec, DEFAULT_REFUND_TIMELOCK_SEC);
+    assert_eq!(
+        config.unsafe_refund_timelock_sec,
+        DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC
+    );
 }
 
 #[tokio::test]

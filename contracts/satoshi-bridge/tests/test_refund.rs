@@ -1364,7 +1364,7 @@ async fn test_refund_operator_skips_timelock() {
     context
         .get_account_by_name("root")
         .call(context.bridge_contract.id(), "update_config")
-        .args_json(json!({"update": {"refund_timelock_sec": 999999}}))
+        .args_json(json!({"update": {"refund_timelock_sec": 999999, "unsafe_refund_timelock_sec": 999999}}))
         .deposit(near_sdk::NearToken::from_yoctonear(1))
         .max_gas()
         .transact()

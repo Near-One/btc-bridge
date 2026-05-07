@@ -192,6 +192,7 @@ impl From<ConfigV0> for Config {
             max_btc_tx_pending_sec,
             unhealthy_utxo_amount: 1000,
             refund_timelock_sec: crate::config::DEFAULT_REFUND_TIMELOCK_SEC,
+            unsafe_refund_timelock_sec: crate::config::DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC,
             #[cfg(feature = "zcash")]
             expiry_height_gap: 1000,
         }
@@ -333,6 +334,7 @@ impl From<ConfigV1> for Config {
             max_btc_tx_pending_sec,
             unhealthy_utxo_amount,
             refund_timelock_sec: crate::config::DEFAULT_REFUND_TIMELOCK_SEC,
+            unsafe_refund_timelock_sec: crate::config::DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC,
             #[cfg(feature = "zcash")]
             expiry_height_gap,
         }
@@ -579,6 +581,7 @@ impl From<ConfigV2> for Config {
             max_btc_tx_pending_sec,
             unhealthy_utxo_amount,
             refund_timelock_sec: crate::config::DEFAULT_REFUND_TIMELOCK_SEC,
+            unsafe_refund_timelock_sec: crate::config::DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC,
             #[cfg(feature = "zcash")]
             expiry_height_gap,
         }
