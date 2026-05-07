@@ -20,11 +20,11 @@ async fn test_btc_bridge_upgrade() {
 }
 
 #[tokio::test]
-async fn test_btc_bridge_upgrade_from_v0_7_5() {
+async fn test_btc_bridge_upgrade_from_v0_8_0() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let upgrade_context = UpgradeContext::new(
         &worker,
-        "tests/data/btc_bridge_v0-7-5.wasm",
+        "tests/data/btc_bridge_v0-8-0.wasm",
         "tests/data/nbtc_v0-5-1.wasm",
     )
     .await;
@@ -81,7 +81,7 @@ async fn test_nbtc_upgrade_from_v0_5_1() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let upgrade_context = UpgradeContext::new(
         &worker,
-        "tests/data/btc_bridge_v0-7-5.wasm",
+        "tests/data/btc_bridge_v0-8-0.wasm",
         "tests/data/nbtc_v0-5-1.wasm",
     )
     .await;
@@ -90,16 +90,16 @@ async fn test_nbtc_upgrade_from_v0_5_1() {
     check!(view upgrade_context.get_nbtc_version());
 }
 
-/// After upgrading from v0.7.5 (btc_pending_sign_id: Option<String>)
-/// to the current version (btc_pending_sign_ids: HashSet<String>),
-/// reading an account created by the old contract must still work.
+/// After upgrading from v0.8.0 to the current version, accounts and config
+/// stored by the old contract must still deserialize. The relevant new fields
+/// added since v0.8.0: `Config::unsafe_refund_timelock_sec`.
 #[tokio::test]
 #[cfg(not(feature = "zcash"))]
-async fn test_btc_bridge_upgrade_from_v0_7_5_account_migration() {
+async fn test_btc_bridge_upgrade_from_v0_8_0_state_migration() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let upgrade_context = UpgradeContext::new(
         &worker,
-        "tests/data/btc_bridge_v0-7-5.wasm",
+        "tests/data/btc_bridge_v0-8-0.wasm",
         "../../res/nbtc.wasm",
     )
     .await;
@@ -139,9 +139,10 @@ async fn test_btc_bridge_upgrade_from_v0_7_5_account_migration() {
 
     assert_eq!(accounts.len(), 1);
 
-    // get_config must deserialize into the new Config layout, proving the
-    // V3 config migration populated `refund_timelock_sec` and
-    // `unsafe_refund_timelock_sec` with the defaults (v0.7.5 had no such fields).
+    // get_config must deserialize into the new Config layout, proving that
+    // `unsafe_refund_timelock_sec` (added after v0.8.0) is populated with the
+    // default. v0.8.0 already had `refund_timelock_sec`, so it is preserved
+    // from on-chain state (init used DEFAULT_REFUND_TIMELOCK_SEC).
     let config: Config = upgrade_context
         .previous_satoshi_bridge_contract
         .call("get_config")
