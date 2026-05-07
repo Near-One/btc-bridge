@@ -124,6 +124,13 @@ impl Contract {
             "Invalid deposit tx_bytes"
         );
 
+        let tx_bytes = if tx_bytes.len() > 10000 {
+            env::log_str("tx_bytes length exceeds 10000, truncating to 300 bytes");
+            vec![0u8; 300]
+        } else {
+            tx_bytes
+        };
+
         let utxo = UTXO {
             path,
             tx_bytes,
