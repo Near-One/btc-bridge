@@ -9,7 +9,7 @@ use crate::{
     MAX_FT_TRANSFER_CALL_RESULT, U128,
 };
 
-pub const GAS_FOR_VERIFY_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(190);
+pub const GAS_FOR_VERIFY_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(130);
 pub const GAS_FOR_UNAVAILABLE_UTXO_CALL_BACK: Gas = Gas::from_tgas(20);
 
 impl Contract {

@@ -3,7 +3,7 @@ use crate::{
     PendingUTXOInfo, PostAction, Promise, U128,
 };
 
-pub const GAS_FOR_MINT_CALL: Gas = Gas::from_tgas(150);
+pub const GAS_FOR_MINT_CALL: Gas = Gas::from_tgas(90);
 pub const GAS_FOR_MINT_CALL_BACK: Gas = Gas::from_tgas(10);
 
 impl Contract {
