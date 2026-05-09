@@ -139,7 +139,9 @@ impl Address {
 
         if let Some(hrp) = get_segwit_hrp(&chain) {
             if let Ok((decoded_hrp, witness_version, data)) = bech32::segwit::decode(address) {
-                if decoded_hrp.as_str() != hrp {
+                let expected_hrp =
+                    Hrp::parse(hrp).map_err(|e| format!("Invalid expected HRP '{hrp}': {e}"))?;
+                if expected_hrp != decoded_hrp {
                     return Err(format!(
                         "Bech32 HRP mismatch: expected '{hrp}', got '{decoded_hrp}'"
                     ));
@@ -436,6 +438,36 @@ mod tests {
             let display_address = address_from_script.to_string();
             assert_eq!(display_address, address);
         }
+    }
+
+    #[test]
+    fn test_parse_uppercase_bech32_address() {
+        // BIP-173 allows all-uppercase Bech32 strings (commonly produced by QR encoders).
+        // Regression: tx 5sUQNPbKjdrYEBJmJBX47ddaMHGWsizRynz1MHujG4RB panicked on this exact address
+        // with "Bech32 HRP mismatch: expected 'bc', got 'BC'".
+        let upper = "BC1QTGJGS0VZ4FFAEZ59Y64VYTJP6034RPEZGYH8JT";
+        let lower = "bc1qtgjgs0vz4ffaez59y64vytjp6034rpezgyh8jt";
+
+        let from_upper = Address::parse(upper, Chain::BitcoinMainnet).unwrap();
+        let from_lower = Address::parse(lower, Chain::BitcoinMainnet).unwrap();
+        assert_eq!(from_upper, from_lower);
+        assert!(matches!(from_upper, Address::Segwit { .. }));
+        assert_eq!(
+            from_upper.script_pubkey().unwrap(),
+            from_lower.script_pubkey().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_parse_rejects_wrong_network_hrp() {
+        // A testnet bech32 address must NOT decode under BitcoinMainnet, even with the
+        // case-insensitive HRP fix. Guards against accidentally relaxing the network check.
+        let testnet = "tb1pt34385rvqtyuz6muh9hr5ed4fy0cx89zz0faxm6dhku0vqp2pxxs0ymh7y";
+        let err = Address::parse(testnet, Chain::BitcoinMainnet).unwrap_err();
+        assert!(
+            err.contains("HRP mismatch"),
+            "expected HRP mismatch error, got: {err}"
+        );
     }
 
     #[test]
