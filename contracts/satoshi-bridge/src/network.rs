@@ -139,7 +139,9 @@ impl Address {
 
         if let Some(hrp) = get_segwit_hrp(&chain) {
             if let Ok((decoded_hrp, witness_version, data)) = bech32::segwit::decode(address) {
-                if decoded_hrp != hrp {
+                let expected_hrp =
+                    Hrp::parse(hrp).map_err(|e| format!("Invalid expected HRP '{hrp}': {e}"))?;
+                if expected_hrp != decoded_hrp {
                     return Err(format!(
                         "Bech32 HRP mismatch: expected '{hrp}', got '{decoded_hrp}'"
                     ));
@@ -293,7 +295,8 @@ impl fmt::Display for Address {
                 base58::encode_check_to_fmt(fmt, &prefixed[..])
             }
             Segwit { program, chain } => {
-                let hrp = get_segwit_hrp(chain).ok_or(fmt::Error)?;
+                let hrp =
+                    Hrp::parse(get_segwit_hrp(chain).ok_or(fmt::Error)?).map_err(|_| fmt::Error)?;
                 let version = program.version().to_fe();
                 let program = program.program().as_ref();
 
@@ -317,15 +320,15 @@ impl fmt::Display for Address {
     }
 }
 
-pub fn get_segwit_hrp(chain: &Chain) -> Option<Hrp> {
+pub fn get_segwit_hrp(chain: &Chain) -> Option<&'static str> {
     match chain {
         // Bitcoin (Bech32 - BIP173)
-        Chain::BitcoinMainnet => Hrp::parse("bc").ok(),
-        Chain::BitcoinTestnet => Hrp::parse("tb").ok(),
+        Chain::BitcoinMainnet => Some("bc"),
+        Chain::BitcoinTestnet => Some("tb"),
 
         // Litecoin (Bech32)
-        Chain::LitecoinMainnet => Hrp::parse("ltc").ok(),
-        Chain::LitecoinTestnet => Hrp::parse("tltc").ok(),
+        Chain::LitecoinMainnet => Some("ltc"),
+        Chain::LitecoinTestnet => Some("tltc"),
 
         // Zcash (Bech32m) support unified addresses with hrp but not segwit
         Chain::ZcashMainnet | Chain::ZcashTestnet => None,
