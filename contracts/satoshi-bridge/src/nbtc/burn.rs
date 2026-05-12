@@ -81,6 +81,7 @@ impl Contract {
                 .expect("Deserialization tx_bytes failed");
             let withdraw_change_script_pubkey = config.get_change_script_pubkey();
             let mut utxo_storage_keys = vec![];
+            let mut balances = vec![];
             for (index, output) in transaction.output().into_iter().enumerate() {
                 if withdraw_change_script_pubkey == output.script_pubkey {
                     let utxo = UTXO {
@@ -93,6 +94,7 @@ impl Contract {
                         tx_id.clone(),
                         u32::try_from(index).unwrap_or_else(|_| env::panic_str("Index overflow")),
                     );
+                    balances.push(U128::from(u128::from(utxo.balance)));
                     self.internal_set_utxo(&utxo_storage_key, utxo);
                     utxo_storage_keys.push(utxo_storage_key);
                 }
@@ -139,7 +141,11 @@ impl Contract {
                     .detach();
             }
             self.internal_remove_btc_pending_info(&tx_id);
-            Event::UtxoAdded { utxo_storage_keys }.emit();
+            Event::UtxoAdded {
+                utxo_storage_keys,
+                balances: Some(balances),
+            }
+            .emit();
         } else {
             self.internal_unwrap_mut_btc_pending_info(&tx_id)
                 .to_pending_verify_stage();
@@ -164,6 +170,7 @@ impl Contract {
             let config = self.internal_config();
             let withdraw_change_script_pubkey = config.get_change_script_pubkey();
             let mut utxo_storage_keys = vec![];
+            let mut balances: Vec<U128> = vec![];
             for (index, output) in transaction.output().into_iter().enumerate() {
                 if withdraw_change_script_pubkey == output.script_pubkey {
                     let utxo = UTXO {
@@ -176,6 +183,8 @@ impl Contract {
                         tx_id.clone(),
                         u32::try_from(index).unwrap_or_else(|_| env::panic_str("Index overflow")),
                     );
+
+                    balances.push(U128::from(u128::from(utxo.balance)));
                     self.internal_set_utxo(&utxo_storage_key, utxo);
                     utxo_storage_keys.push(utxo_storage_key);
                 }
@@ -206,7 +215,11 @@ impl Contract {
                 self.data_mut().rbf_txs.remove(&tx_id);
             }
             self.internal_remove_btc_pending_info(&tx_id);
-            Event::UtxoAdded { utxo_storage_keys }.emit();
+            Event::UtxoAdded {
+                utxo_storage_keys,
+                balances: Some(balances),
+            }
+            .emit();
         } else {
             self.internal_unwrap_mut_btc_pending_info(&tx_id)
                 .to_pending_verify_stage();
