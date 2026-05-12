@@ -120,9 +120,9 @@ impl Contract {
         Event::RefundRejected { utxo_storage_key }.emit();
     }
 
-    /// Execute an approved refund request after timelock has passed.
-    /// `skip_timelock` — if true, the timelock check is bypassed.
-    pub fn internal_execute_refund(&mut self, utxo_storage_key: String, skip_timelock: bool) {
+    /// Execute an approved refund request. The caller is responsible for choosing
+    /// the appropriate `timelock_sec` (pass `0` to bypass the check).
+    pub fn internal_execute_refund(&mut self, utxo_storage_key: String, timelock_sec: u64) {
         let refund_request: RefundRequest = self
             .data()
             .refund_requests
@@ -132,14 +132,11 @@ impl Contract {
 
         let config = self.internal_config();
 
-        if !skip_timelock {
-            let now = nano_to_sec(env::block_timestamp());
-            require!(
-                u64::from(now)
-                    >= u64::from(refund_request.created_at_sec) + config.refund_timelock_sec,
-                "Refund timelock has not passed yet"
-            );
-        }
+        let now = nano_to_sec(env::block_timestamp());
+        require!(
+            u64::from(now) >= u64::from(refund_request.created_at_sec) + timelock_sec,
+            "Refund timelock has not passed yet"
+        );
 
         // Must still not be finalized
         require!(

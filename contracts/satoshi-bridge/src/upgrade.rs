@@ -13,6 +13,7 @@ impl Contract {
             VersionedContractData::V1(data) => VersionedContractData::Current(data.into()),
             VersionedContractData::V2(data) => VersionedContractData::Current(data.into()),
             VersionedContractData::V3(data) => VersionedContractData::Current(data.into()),
+            VersionedContractData::V4(data) => VersionedContractData::Current(data.into()),
             VersionedContractData::Current(data) => VersionedContractData::Current(data),
         };
         contract

@@ -6,6 +6,7 @@ use crate::{
 pub const MAX_RATIO: u32 = 10000;
 
 pub const DEFAULT_REFUND_TIMELOCK_SEC: u64 = 2 * 24 * 3600;
+pub const DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC: u64 = 14 * 24 * 3600;
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone)]
@@ -110,8 +111,11 @@ pub struct Config {
     pub max_btc_tx_pending_sec: u32,
     // UTXOs less than or equal to this amount are allowed to be merged through active management.
     pub unhealthy_utxo_amount: u64,
-    // Timelock in seconds before a refund request can be executed.
+    // Timelock for refunds where `deposit_msg.refund_address` is pre-authorized.
     pub refund_timelock_sec: u64,
+    // Timelock for refunds where the refund address comes from the request caller
+    // (`deposit_msg.refund_address` was None). Must be >= `refund_timelock_sec`.
+    pub unsafe_refund_timelock_sec: u64,
     #[cfg(feature = "zcash")]
     pub expiry_height_gap: u32,
 }
@@ -146,6 +150,10 @@ impl Config {
         require!(
             u128::from(self.unhealthy_utxo_amount) > self.min_change_amount,
             "unhealthy_utxo_amount must be greater than min_change_amount"
+        );
+        require!(
+            self.refund_timelock_sec <= self.unsafe_refund_timelock_sec,
+            "refund_timelock_sec must be <= unsafe_refund_timelock_sec"
         );
     }
 
@@ -236,6 +244,7 @@ pub struct ConfigUpdate {
     pub max_btc_tx_pending_sec: Option<u32>,
     pub unhealthy_utxo_amount: Option<u64>,
     pub refund_timelock_sec: Option<u64>,
+    pub unsafe_refund_timelock_sec: Option<u64>,
 }
 
 impl ConfigUpdate {
@@ -271,6 +280,7 @@ impl ConfigUpdate {
         set_if_some!(max_btc_tx_pending_sec);
         set_if_some!(unhealthy_utxo_amount);
         set_if_some!(refund_timelock_sec);
+        set_if_some!(unsafe_refund_timelock_sec);
 
         config.assert_valid();
     }
