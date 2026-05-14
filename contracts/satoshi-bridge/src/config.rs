@@ -8,12 +8,6 @@ pub const MAX_RATIO: u32 = 10000;
 pub const DEFAULT_REFUND_TIMELOCK_SEC: u64 = 2 * 24 * 3600;
 pub const DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC: u64 = 14 * 24 * 3600;
 
-/// Extra slack added to the block-amount ring capacity on top of the worst-case
-/// required-confirmations value, so a tx near the top tier still has room left
-/// to be tracked across in-flight verifies. Chosen heuristically; not tied to
-/// any protocol parameter.
-pub const BLOCK_AMOUNT_RING_CAPACITY_SLACK: usize = 5;
-
 #[near(serializers = [borsh, json])]
 #[derive(Clone)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
@@ -218,14 +212,7 @@ impl Config {
             .unwrap_or(0)
     }
 
-    pub fn block_amount_ring_capacity(&self) -> usize {
-        usize::from(self.max_tier_confirmations())
-            + usize::from(self.confirmations_delta)
-            + usize::from(self.extra_msg_confirmations_delta)
-            + BLOCK_AMOUNT_RING_CAPACITY_SLACK
-    }
-
-    pub fn max_required_confirmations(&self) -> u64 {
+pub fn max_required_confirmations(&self) -> u64 {
         u64::from(self.max_tier_confirmations())
             + u64::from(std::cmp::max(
                 self.confirmations_delta,

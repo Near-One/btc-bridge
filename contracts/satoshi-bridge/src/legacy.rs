@@ -45,11 +45,12 @@ impl From<ContractDataV0> for ContractData {
             acc_protocol_fee_for_gas,
         } = c;
 
-        let ring_capacity = config
-            .get()
-            .as_ref()
-            .expect("ContractDataV0: config missing")
-            .block_amount_ring_capacity();
+        let ring_capacity = BlockAmountRing::capacity_for(
+            config
+                .get()
+                .as_ref()
+                .expect("ContractDataV0: config missing"),
+        );
         Self {
             config,
             accounts,
@@ -392,7 +393,7 @@ impl From<ContractDataV1> for ContractData {
         } = c;
         let config_v0 = config.get().clone().unwrap();
         let new_config: Config = config_v0.into();
-        let ring_capacity = new_config.block_amount_ring_capacity();
+        let ring_capacity = BlockAmountRing::capacity_for(&new_config);
         Self {
             config: LazyOption::new(StorageKey::Config, Some(new_config)),
             accounts,
@@ -466,7 +467,7 @@ impl From<ContractDataV2> for ContractData {
         } = c;
 
         let new_config: Config = config.get().clone().unwrap().into();
-        let ring_capacity = new_config.block_amount_ring_capacity();
+        let ring_capacity = BlockAmountRing::capacity_for(&new_config);
         Self {
             config: LazyOption::new(StorageKey::Config, Some(new_config)),
             accounts,
@@ -644,7 +645,7 @@ impl From<ContractDataV3> for ContractData {
         } = c;
 
         let new_config: Config = config.get().clone().unwrap().into();
-        let ring_capacity = new_config.block_amount_ring_capacity();
+        let ring_capacity = BlockAmountRing::capacity_for(&new_config);
         Self {
             config: LazyOption::new(StorageKey::Config, Some(new_config)),
             accounts,
@@ -834,7 +835,7 @@ impl From<ContractDataV4> for ContractData {
         } = c;
 
         let new_config: Config = config.get().clone().unwrap().into();
-        let ring_capacity = new_config.block_amount_ring_capacity();
+        let ring_capacity = BlockAmountRing::capacity_for(&new_config);
         Self {
             config: LazyOption::new(StorageKey::Config, Some(new_config)),
             accounts,

@@ -142,7 +142,7 @@ pub struct ContractData {
     // block_height % capacity). Used so the confirmations tier is computed against the
     // SUM of bridge txs in a block, blocking an attacker from splitting one big deposit
     // into many small ones to bypass the high-tier confirmations requirement.
-    // Capacity is derived from config; see `Config::block_amount_ring_capacity`.
+    // Capacity is derived from config; see `BlockAmountRing::capacity_for`.
     pub block_bridge_amounts: BlockAmountRing,
 }
 
@@ -189,7 +189,7 @@ impl Contract {
             config.change_address.is_none(),
             "Init change_address must be None"
         );
-        let block_bridge_amounts = BlockAmountRing::new(config.block_amount_ring_capacity());
+        let block_bridge_amounts = BlockAmountRing::new(BlockAmountRing::capacity_for(&config));
         let mut contract = Self {
             data: VersionedContractData::Current(ContractData {
                 config: LazyOption::new(StorageKey::Config, Some(config)),

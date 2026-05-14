@@ -1,4 +1,10 @@
-use crate::{near, require, Contract};
+use crate::{near, require, Config, Contract};
+
+/// Extra slack added to the ring capacity on top of the worst-case
+/// required-confirmations value, so a tx near the top tier still has room left
+/// to be tracked across in-flight verifies. Chosen heuristically; not tied to
+/// any protocol parameter.
+pub const BLOCK_AMOUNT_RING_CAPACITY_SLACK: usize = 5;
 
 #[near(serializers = [borsh])]
 #[derive(Clone)]
@@ -21,6 +27,17 @@ pub struct BlockAmountRing {
 }
 
 impl BlockAmountRing {
+    /// Recommended ring capacity for `config`: large enough that ANY tx whose
+    /// block is still within the worst-case confirmations window
+    /// (`max_tier + max_delta`) can still be looked up. Blocks beyond this depth
+    /// trivially satisfy max-tier confirmations and don't need cumulative tracking.
+    pub fn capacity_for(config: &Config) -> usize {
+        usize::from(config.max_tier_confirmations())
+            + usize::from(config.confirmations_delta)
+            + usize::from(config.extra_msg_confirmations_delta)
+            + BLOCK_AMOUNT_RING_CAPACITY_SLACK
+    }
+
     pub fn new(capacity: usize) -> Self {
         require!(capacity > 0, "BlockAmountRing capacity must be > 0");
         Self {
@@ -141,7 +158,7 @@ impl Contract {
     /// Called after config updates that change `confirmations_delta`,
     /// `extra_msg_confirmations_delta`, or the tier table.
     pub fn resize_block_amount_ring(&mut self) {
-        let cap = self.internal_config().block_amount_ring_capacity();
+        let cap = BlockAmountRing::capacity_for(self.internal_config());
         self.data_mut().block_bridge_amounts.resize(cap);
     }
 }
