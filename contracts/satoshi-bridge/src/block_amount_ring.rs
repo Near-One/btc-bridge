@@ -21,15 +21,15 @@ pub struct BlockAmountRing {
 }
 
 impl BlockAmountRing {
-    pub fn new(capacity: u32) -> Self {
+    pub fn new(capacity: usize) -> Self {
         require!(capacity > 0, "BlockAmountRing capacity must be > 0");
         Self {
-            cells: vec![None; capacity as usize],
+            cells: vec![None; capacity],
         }
     }
 
-    pub fn capacity(&self) -> u32 {
-        u32::try_from(self.cells.len()).expect("BlockAmountRing capacity overflow")
+    pub fn capacity(&self) -> usize {
+        self.cells.len()
     }
 
     /// Add `amount` to the cumulative bridge sats for `block_height` and return
@@ -77,16 +77,16 @@ impl BlockAmountRing {
     /// Re-allocate to `new_capacity`, rehashing existing entries to `block_height % new_capacity`.
     /// On collisions, the entry with the larger `block_height` (newer block) wins; older entries
     /// are dropped. Capacity-preserving resize is a no-op.
-    pub fn resize(&mut self, new_capacity: u32) {
+    pub fn resize(&mut self, new_capacity: usize) {
         require!(new_capacity > 0, "BlockAmountRing capacity must be > 0");
-        if usize::try_from(new_capacity).expect("capacity fits usize") == self.cells.len() {
+        if new_capacity == self.cells.len() {
             return;
         }
-        let new_cap = u64::from(new_capacity);
-        let mut new_cells: Vec<Option<BlockAmountCell>> =
-            vec![None; new_capacity as usize];
+        let new_cap_u64 = u64::try_from(new_capacity).expect("capacity fits u64");
+        let mut new_cells: Vec<Option<BlockAmountCell>> = vec![None; new_capacity];
         for entry in self.cells.iter().flatten() {
-            let i = (entry.block_height % new_cap) as usize;
+            let i = usize::try_from(entry.block_height % new_cap_u64)
+                .expect("slot index fits usize");
             let replace = match &new_cells[i] {
                 Some(existing) => entry.block_height > existing.block_height,
                 None => true,
@@ -99,8 +99,8 @@ impl BlockAmountRing {
     }
 
     fn slot(&self, block_height: u64) -> usize {
-        let cap = u64::from(self.capacity());
-        (block_height % cap) as usize
+        let cap = u64::try_from(self.capacity()).expect("capacity fits u64");
+        usize::try_from(block_height % cap).expect("slot index fits usize")
     }
 }
 
@@ -280,8 +280,8 @@ mod tests {
         ring.bump(102, 3);
         ring.bump(103, 4);
         ring.resize(8);
-        for (h, expected) in [(100, 1), (101, 2), (102, 3), (103, 4)] {
-            assert_eq!(ring.get(h), Some(expected as u128));
+        for (h, expected) in [(100u64, 1u128), (101, 2), (102, 3), (103, 4)] {
+            assert_eq!(ring.get(h), Some(expected));
         }
     }
 

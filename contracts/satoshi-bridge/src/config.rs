@@ -12,7 +12,7 @@ pub const DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC: u64 = 14 * 24 * 3600;
 /// required-confirmations value, so a tx near the top tier still has room left
 /// to be tracked across in-flight verifies. Chosen heuristically; not tied to
 /// any protocol parameter.
-pub const BLOCK_AMOUNT_RING_CAPACITY_SLACK: u32 = 5;
+pub const BLOCK_AMOUNT_RING_CAPACITY_SLACK: usize = 5;
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone)]
@@ -218,10 +218,10 @@ impl Config {
             .unwrap_or(0)
     }
 
-    pub fn block_amount_ring_capacity(&self) -> u32 {
-        u32::from(self.max_tier_confirmations())
-            + u32::from(self.confirmations_delta)
-            + u32::from(self.extra_msg_confirmations_delta)
+    pub fn block_amount_ring_capacity(&self) -> usize {
+        usize::from(self.max_tier_confirmations())
+            + usize::from(self.confirmations_delta)
+            + usize::from(self.extra_msg_confirmations_delta)
             + BLOCK_AMOUNT_RING_CAPACITY_SLACK
     }
 
