@@ -108,9 +108,57 @@ impl Serialize for H256 {
     }
 }
 
+/// SPV-proof args for the heights-returning variant (no confirmations field).
+/// Mirrors `btc-types::contract_args::TxInclusionProof` from
+/// Near-One/btc-light-client-contract#140.
+#[near(serializers = [borsh])]
+pub struct TxInclusionProof {
+    pub tx_id: H256,
+    pub tx_block_blockhash: H256,
+    pub tx_index: u64,
+    pub merkle_proof: Vec<H256>,
+}
+
+impl TxInclusionProof {
+    pub fn new(
+        tx_id: String,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Self {
+        TxInclusionProof {
+            tx_id: tx_id.parse().expect("Invalid tx_id"),
+            tx_block_blockhash: tx_block_blockhash
+                .parse()
+                .expect("Invalid tx_block_blockhash"),
+            tx_index,
+            merkle_proof: merkle_proof
+                .into_iter()
+                .map(|v| {
+                    v.parse()
+                        .unwrap_or_else(|_| env::panic_str("Invalid merkle_proof: {v:?}"))
+                })
+                .collect(),
+        }
+    }
+}
+
+/// SPV inclusion result with heights. Mirrors `btc-types::contract_args::TxInclusionInfo`
+/// from Near-One/btc-light-client-contract#140.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug)]
+pub struct TxInclusionInfo {
+    pub tx_block_height: u64,
+    pub mainchain_tip_height: u64,
+}
+
 #[ext_contract(ext_btc_light_client)]
 pub trait BtcLightClient {
     fn verify_transaction_inclusion(&self, #[serializer(borsh)] args: ProofArgs) -> bool;
+    fn verify_transaction_inclusion_with_heights(
+        &self,
+        #[serializer(borsh)] args: TxInclusionProof,
+    ) -> Option<TxInclusionInfo>;
     fn get_last_block_height(&self) -> u32;
 }
 
@@ -132,6 +180,27 @@ impl Contract {
                 tx_index,
                 merkle_proof,
                 confirmations,
+            ))
+    }
+
+    /// Untrusted-path variant: requests SPV proof + heights in one call. The
+    /// callback receives `Option<TxInclusionInfo>` and applies the
+    /// (cumulative-aware) confirmations check on this side.
+    pub fn verify_transaction_inclusion_with_heights_promise(
+        &self,
+        btc_light_client_account_id: AccountId,
+        tx_id: String,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Promise {
+        ext_btc_light_client::ext(btc_light_client_account_id)
+            .with_static_gas(GAS_FOR_VERIFY_TRANSACTION_INCLUSION)
+            .verify_transaction_inclusion_with_heights(TxInclusionProof::new(
+                tx_id,
+                tx_block_blockhash,
+                tx_index,
+                merkle_proof,
             ))
     }
 

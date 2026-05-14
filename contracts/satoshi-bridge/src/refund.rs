@@ -1,8 +1,9 @@
 use bitcoin::{Amount, OutPoint, TxOut};
 
 use crate::{
-    env, near, require, serde_json, BTCPendingInfo, Contract, ContractExt, DepositMsg, Event, Gas,
-    OriginalState, PendingInfoStage, PendingInfoState, Promise, MAX_BOOL_RESULT, UTXO, VUTXO,
+    btc_light_client::TxInclusionInfo, env, near, require, serde_json, BTCPendingInfo, Contract,
+    ContractExt, DepositMsg, Event, Gas, OriginalState, PendingInfoStage, PendingInfoState,
+    Promise, MAX_BOOL_RESULT, MAX_INCLUSION_INFO_RESULT, UTXO, VUTXO,
 };
 
 use crate::deposit_msg::get_deposit_path;
@@ -89,18 +90,17 @@ impl Contract {
                 .expect("Deserialization tx_bytes failed");
         let tx_id = transaction.compute_txid().to_string();
 
-        let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
-        self.bump_block_amount(&tx_block_blockhash, deposit_amount);
-        let confirmations = self.get_confirmations(&tx_block_blockhash);
+        // Refund-request is rare and already gated by `refund_timelock_sec`, so we
+        // skip the cumulative-amount ring entirely and just demand max-tier depth
+        // (see `Config::max_required_confirmations`). The callback doesn't need to
+        // know about the deposit amount or whitelist deltas.
         let config = self.internal_config();
-
-        self.verify_transaction_inclusion_promise(
+        self.verify_transaction_inclusion_with_heights_promise(
             config.btc_light_client_account_id.clone(),
             tx_id,
             tx_block_blockhash,
             tx_index,
             merkle_proof,
-            confirmations,
         )
         .then(
             Self::ext(env::current_account_id())
@@ -274,10 +274,10 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
-        _btc_pending_info: &BTCPendingInfo,
+        btc_pending_info: &BTCPendingInfo,
     ) -> Promise {
         let config = self.internal_config();
-        let confirmations = self.get_confirmations(&tx_block_blockhash);
+        let confirmations = config.get_confirmations(btc_pending_info.actual_received_amount);
         self.verify_transaction_inclusion_promise(
             config.btc_light_client_account_id.clone(),
             tx_id.clone(),
@@ -327,13 +327,22 @@ impl Contract {
         vout: usize,
         gas_fee: Option<u128>,
     ) -> bool {
-        let result_bytes = env::promise_result_checked(0, MAX_BOOL_RESULT)
-            .expect("Call verify_transaction_inclusion failed");
-        let is_valid = serde_json::from_slice::<bool>(&result_bytes)
-            .expect("verify_transaction_inclusion return not bool");
-        require!(is_valid, "verify_transaction_inclusion return false");
+        let result_bytes = env::promise_result_checked(0, MAX_INCLUSION_INFO_RESULT)
+            .expect("Call verify_transaction_inclusion_with_heights failed");
+        let info: Option<TxInclusionInfo> = serde_json::from_slice(&result_bytes)
+            .expect("verify_transaction_inclusion_with_heights returned an unexpected payload");
+        let info = info.expect("Transaction not included in the BTC mainchain");
 
         let config = self.internal_config();
+        let required = config.max_required_confirmations();
+        let actual = info
+            .mainchain_tip_height
+            .saturating_sub(info.tx_block_height)
+            + 1;
+        require!(
+            actual >= required,
+            "Refund request: not enough confirmations (max-tier required)"
+        );
         let transaction = crate::WrappedTransaction::decode(&tx_bytes, &config.chain)
             .expect("Deserialization tx_bytes failed");
         let output = &transaction.output()[vout];

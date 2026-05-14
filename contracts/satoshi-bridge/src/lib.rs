@@ -23,6 +23,7 @@ pub mod bitcoin_utils;
 #[cfg(feature = "zcash")]
 pub mod zcash_utils;
 
+pub mod block_amount_ring;
 pub mod btc_light_client;
 pub mod btc_pending_info;
 pub mod chain_signature;
@@ -47,6 +48,7 @@ pub mod utxo;
 
 pub use crate::account::*;
 pub use crate::api::*;
+pub use crate::block_amount_ring::BlockAmountRing;
 pub use crate::btc_pending_info::*;
 pub use crate::chain_signature::*;
 pub use crate::config::*;
@@ -99,7 +101,6 @@ enum StorageKey {
     PendingTxLimits,
     #[cfg(not(feature = "zcash"))]
     RefundRequests,
-    BlockBridgeAmounts,
 }
 
 #[derive(AccessControlRole, Deserialize, Serialize, Copy, Clone)]
@@ -137,12 +138,12 @@ pub struct ContractData {
     pub acc_protocol_fee_for_gas: u128,
     #[cfg(not(feature = "zcash"))]
     pub refund_requests: IterableMap<String, VRefundRequest>,
-    // Cumulative bridge-related satoshi amount per BTC block (key = tx_block_blockhash).
-    // Used to compute required confirmations against the SUM of bridge txs in a block,
-    // so an attacker cannot bypass the high-amount confirmations tier by splitting one
-    // big deposit into many small ones inside the same block.
-    // TODO(prune): grows unboundedly — needs a pruning strategy (by block height/age).
-    pub block_bridge_amounts: IterableMap<String, u128>,
+    // Fixed-capacity ring of cumulative bridge-related sats per BTC block (indexed by
+    // block_height % capacity). Used so the confirmations tier is computed against the
+    // SUM of bridge txs in a block, blocking an attacker from splitting one big deposit
+    // into many small ones to bypass the high-tier confirmations requirement.
+    // Capacity is derived from config; see `Config::block_amount_ring_capacity`.
+    pub block_bridge_amounts: BlockAmountRing,
 }
 
 #[near(serializers = [borsh])]
@@ -188,6 +189,7 @@ impl Contract {
             config.change_address.is_none(),
             "Init change_address must be None"
         );
+        let block_bridge_amounts = BlockAmountRing::new(config.block_amount_ring_capacity());
         let mut contract = Self {
             data: VersionedContractData::Current(ContractData {
                 config: LazyOption::new(StorageKey::Config, Some(config)),
@@ -209,7 +211,7 @@ impl Contract {
                 lost_found: IterableMap::new(StorageKey::LostFound),
                 #[cfg(not(feature = "zcash"))]
                 refund_requests: IterableMap::new(StorageKey::RefundRequests),
-                block_bridge_amounts: IterableMap::new(StorageKey::BlockBridgeAmounts),
+                block_bridge_amounts,
                 acc_collected_protocol_fee: 0,
                 cur_available_protocol_fee: 0,
                 acc_claimed_protocol_fee: 0,

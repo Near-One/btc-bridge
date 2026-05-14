@@ -12,10 +12,11 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
-        _btc_pending_info: &BTCPendingInfo,
+        btc_pending_info: &BTCPendingInfo,
     ) -> Promise {
         let config = self.internal_config();
-        let confirmations = self.get_confirmations(&tx_block_blockhash);
+        let confirmations = config.get_confirmations(btc_pending_info.actual_received_amount)
+            + self.relayer_delta_for_predecessor();
         self.verify_transaction_inclusion_promise(
             config.btc_light_client_account_id.clone(),
             tx_id.clone(),

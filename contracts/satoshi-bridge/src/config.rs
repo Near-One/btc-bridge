@@ -8,6 +8,12 @@ pub const MAX_RATIO: u32 = 10000;
 pub const DEFAULT_REFUND_TIMELOCK_SEC: u64 = 2 * 24 * 3600;
 pub const DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC: u64 = 14 * 24 * 3600;
 
+/// Extra slack added to the block-amount ring capacity on top of the worst-case
+/// required-confirmations value, so a tx near the top tier still has room left
+/// to be tracked across in-flight verifies. Chosen heuristically; not tied to
+/// any protocol parameter.
+pub const BLOCK_AMOUNT_RING_CAPACITY_SLACK: u32 = 5;
+
 #[near(serializers = [borsh, json])]
 #[derive(Clone)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
@@ -203,6 +209,29 @@ impl Config {
                 .unwrap(),
         )
     }
+
+    pub fn max_tier_confirmations(&self) -> u8 {
+        self.confirmations_strategy
+            .values()
+            .copied()
+            .max()
+            .unwrap_or(0)
+    }
+
+    pub fn block_amount_ring_capacity(&self) -> u32 {
+        u32::from(self.max_tier_confirmations())
+            + u32::from(self.confirmations_delta)
+            + u32::from(self.extra_msg_confirmations_delta)
+            + BLOCK_AMOUNT_RING_CAPACITY_SLACK
+    }
+
+    pub fn max_required_confirmations(&self) -> u64 {
+        u64::from(self.max_tier_confirmations())
+            + u64::from(std::cmp::max(
+                self.confirmations_delta,
+                self.extra_msg_confirmations_delta,
+            ))
+    }
 }
 
 #[near(serializers = [json])]
@@ -303,63 +332,36 @@ impl Contract {
             .expect("ERR_CONFIG: contract not initialized")
     }
 
-    /// Required confirmations for a bridge tx in `tx_block_blockhash`, computed against
-    /// the CUMULATIVE bridge-related amount already accounted for in that block.
-    /// Read-only — caller is expected to have called `bump_block_amount` first to
-    /// include the current tx's amount in the accumulator.
-    pub fn get_confirmations(&self, tx_block_blockhash: &str) -> u64 {
-        let effective = self.block_bridge_amount(tx_block_blockhash);
-        let config = self.internal_config();
-        let base = config.get_confirmations(effective);
+    /// Whitelist-aware confirmations delta for the standard tier, based on the
+    /// CURRENT predecessor. Must be called at the synchronous entry point of a
+    /// verify_* function — in a callback, predecessor is the contract itself
+    /// (or the LC), not the original relayer.
+    pub fn relayer_delta_for_predecessor(&self) -> u64 {
         if self
             .data()
             .relayer_white_list
             .contains(&env::predecessor_account_id())
         {
-            base
+            0
         } else {
-            base + u64::from(config.confirmations_delta)
+            u64::from(self.internal_config().confirmations_delta)
         }
     }
 
-    pub fn get_extra_msg_confirmations(&self, tx_block_blockhash: &str) -> u64 {
-        let effective = self.block_bridge_amount(tx_block_blockhash);
-        let config = self.internal_config();
-        let base = config.get_confirmations(effective);
+    /// Whitelist-aware confirmations delta for the extra-msg tier. Same caller
+    /// constraint as [`Self::relayer_delta_for_predecessor`].
+    pub fn extra_msg_relayer_delta_for_predecessor(&self) -> u64 {
         if self
             .data()
             .extra_msg_relayer_white_list
             .contains(&env::predecessor_account_id())
         {
-            base
+            0
         } else {
-            base + u64::from(config.extra_msg_confirmations_delta)
+            u64::from(self.internal_config().extra_msg_confirmations_delta)
         }
     }
 
-    fn block_bridge_amount(&self, tx_block_blockhash: &str) -> u128 {
-        self.data()
-            .block_bridge_amounts
-            .get(tx_block_blockhash)
-            .copied()
-            .unwrap_or(0)
-    }
-
-    /// Add `satoshi_amount` to the cumulative bridge amount for `tx_block_blockhash`.
-    /// Must be called synchronously, BEFORE the light-client cross-contract call,
-    /// so concurrent verify_* invocations targeting the same block see each other's
-    /// contributions and cannot bypass the high-tier confirmations requirement
-    /// by splitting one large deposit into many small ones.
-    /// Panics on overflow (overflow-checks = true).
-    pub fn bump_block_amount(&mut self, tx_block_blockhash: &str, satoshi_amount: u128) {
-        let prev = self.block_bridge_amount(tx_block_blockhash);
-        let new_total = prev
-            .checked_add(satoshi_amount)
-            .expect("block_bridge_amounts overflow");
-        self.data_mut()
-            .block_bridge_amounts
-            .insert(tx_block_blockhash.to_string(), new_total);
-    }
 }
 
 #[cfg(test)]

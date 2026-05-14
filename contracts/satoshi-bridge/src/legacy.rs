@@ -1,8 +1,9 @@
 #[cfg(not(feature = "zcash"))]
 use crate::VRefundRequest;
 use crate::{
-    env, near, AccountId, BridgeFee, Config, ContractData, HashMap, HashSet, IterableMap,
-    IterableSet, LazyOption, LookupSet, PublicKey, StorageKey, VAccount, VBTCPendingInfo, VUTXO,
+    env, near, AccountId, BlockAmountRing, BridgeFee, Config, ContractData, HashMap, HashSet,
+    IterableMap, IterableSet, LazyOption, LookupSet, PublicKey, StorageKey, VAccount,
+    VBTCPendingInfo, VUTXO,
 };
 
 #[near(serializers = [borsh])]
@@ -44,6 +45,11 @@ impl From<ContractDataV0> for ContractData {
             acc_protocol_fee_for_gas,
         } = c;
 
+        let ring_capacity = config
+            .get()
+            .as_ref()
+            .expect("ContractDataV0: config missing")
+            .block_amount_ring_capacity();
         Self {
             config,
             accounts,
@@ -65,7 +71,7 @@ impl From<ContractDataV0> for ContractData {
             acc_protocol_fee_for_gas,
             #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
-            block_bridge_amounts: IterableMap::new(StorageKey::BlockBridgeAmounts),
+            block_bridge_amounts: BlockAmountRing::new(ring_capacity),
         }
     }
 }
@@ -385,8 +391,10 @@ impl From<ContractDataV1> for ContractData {
             acc_protocol_fee_for_gas,
         } = c;
         let config_v0 = config.get().clone().unwrap();
+        let new_config: Config = config_v0.into();
+        let ring_capacity = new_config.block_amount_ring_capacity();
         Self {
-            config: LazyOption::new(StorageKey::Config, Some(config_v0.into())),
+            config: LazyOption::new(StorageKey::Config, Some(new_config)),
             accounts,
             utxos,
             unavailable_utxos,
@@ -406,7 +414,7 @@ impl From<ContractDataV1> for ContractData {
             acc_protocol_fee_for_gas,
             #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
-            block_bridge_amounts: IterableMap::new(StorageKey::BlockBridgeAmounts),
+            block_bridge_amounts: BlockAmountRing::new(ring_capacity),
         }
     }
 }
@@ -457,11 +465,10 @@ impl From<ContractDataV2> for ContractData {
             acc_protocol_fee_for_gas,
         } = c;
 
+        let new_config: Config = config.get().clone().unwrap().into();
+        let ring_capacity = new_config.block_amount_ring_capacity();
         Self {
-            config: LazyOption::new(
-                StorageKey::Config,
-                Some(config.get().clone().unwrap().into()),
-            ),
+            config: LazyOption::new(StorageKey::Config, Some(new_config)),
             accounts,
             utxos,
             unavailable_utxos,
@@ -481,7 +488,7 @@ impl From<ContractDataV2> for ContractData {
             acc_protocol_fee_for_gas,
             #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
-            block_bridge_amounts: IterableMap::new(StorageKey::BlockBridgeAmounts),
+            block_bridge_amounts: BlockAmountRing::new(ring_capacity),
         }
     }
 }
@@ -636,11 +643,10 @@ impl From<ContractDataV3> for ContractData {
             acc_protocol_fee_for_gas,
         } = c;
 
+        let new_config: Config = config.get().clone().unwrap().into();
+        let ring_capacity = new_config.block_amount_ring_capacity();
         Self {
-            config: LazyOption::new(
-                StorageKey::Config,
-                Some(config.get().clone().unwrap().into()),
-            ),
+            config: LazyOption::new(StorageKey::Config, Some(new_config)),
             accounts,
             utxos,
             unavailable_utxos,
@@ -660,7 +666,7 @@ impl From<ContractDataV3> for ContractData {
             acc_protocol_fee_for_gas,
             #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
-            block_bridge_amounts: IterableMap::new(StorageKey::BlockBridgeAmounts),
+            block_bridge_amounts: BlockAmountRing::new(ring_capacity),
         }
     }
 }
@@ -827,11 +833,10 @@ impl From<ContractDataV4> for ContractData {
             refund_requests,
         } = c;
 
+        let new_config: Config = config.get().clone().unwrap().into();
+        let ring_capacity = new_config.block_amount_ring_capacity();
         Self {
-            config: LazyOption::new(
-                StorageKey::Config,
-                Some(config.get().clone().unwrap().into()),
-            ),
+            config: LazyOption::new(StorageKey::Config, Some(new_config)),
             accounts,
             utxos,
             unavailable_utxos,
@@ -851,6 +856,7 @@ impl From<ContractDataV4> for ContractData {
             acc_protocol_fee_for_gas,
             #[cfg(not(feature = "zcash"))]
             refund_requests,
+            block_bridge_amounts: BlockAmountRing::new(ring_capacity),
         }
     }
 }
