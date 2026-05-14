@@ -79,7 +79,8 @@ pub fn init_contract() -> Contract {
         chain_signatures_root_public_key: None,
         change_address: None,
         unhealthy_utxo_amount: 1000,
-        refund_timelock_sec: 3600,
+        refund_timelock_sec: crate::config::DEFAULT_REFUND_TIMELOCK_SEC,
+        unsafe_refund_timelock_sec: crate::config::DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC,
         #[cfg(feature = "zcash")]
         expiry_height_gap: 1000,
     })

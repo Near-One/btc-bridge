@@ -9,7 +9,7 @@ use crate::{
     MAX_FT_TRANSFER_CALL_RESULT, U128,
 };
 
-pub const GAS_FOR_VERIFY_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(190);
+pub const GAS_FOR_VERIFY_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(130);
 pub const GAS_FOR_UNAVAILABLE_UTXO_CALL_BACK: Gas = Gas::from_tgas(20);
 
 impl Contract {
@@ -225,6 +225,7 @@ impl Contract {
         if is_success {
             Event::UtxoAdded {
                 utxo_storage_keys: vec![pending_utxo_info.utxo_storage_key.clone()],
+                balances: Some(vec![U128(pending_utxo_info.utxo.balance.into())]),
             }
             .emit();
             self.internal_set_utxo(&pending_utxo_info.utxo_storage_key, pending_utxo_info.utxo);

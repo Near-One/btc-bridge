@@ -3,7 +3,7 @@ use crate::{
     PendingUTXOInfo, PostAction, Promise, U128,
 };
 
-pub const GAS_FOR_MINT_CALL: Gas = Gas::from_tgas(150);
+pub const GAS_FOR_MINT_CALL: Gas = Gas::from_tgas(90);
 pub const GAS_FOR_MINT_CALL_BACK: Gas = Gas::from_tgas(10);
 
 impl Contract {
@@ -62,6 +62,7 @@ impl Contract {
             }
             Event::UtxoAdded {
                 utxo_storage_keys: vec![pending_utxo_info.utxo_storage_key.clone()],
+                balances: Some(vec![U128::from(u128::from(pending_utxo_info.utxo.balance))]),
             }
             .emit();
             self.internal_set_utxo(&pending_utxo_info.utxo_storage_key, pending_utxo_info.utxo);
