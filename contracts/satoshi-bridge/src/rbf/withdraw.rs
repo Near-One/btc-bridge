@@ -55,7 +55,7 @@ impl Contract {
                 original_tx_id: original_btc_pending_verify_id.clone(),
             }),
         );
-        
+
         let full_subsidy_amount = self
             .internal_unwrap_btc_pending_info(&original_btc_pending_verify_id)
             .get_subsidize_amount();
@@ -66,12 +66,12 @@ impl Contract {
             &withdraw_rbf_psbt,
             full_subsidy_amount,
         );
- 
+
         btc_pending_info.gas_fee = gas_fee;
         btc_pending_info.actual_received_amount = actual_received_amount;
         btc_pending_info.burn_amount = actual_received_amount + gas_fee;
         Self::check_withdraw_chain_specific(original_tx_btc_pending_info, gas_fee);
-        
+
         self.internal_unwrap_mut_btc_pending_info(&original_btc_pending_verify_id)
             .update_max_gas_fee(gas_fee);
         self.set_rbf_pending_info(

@@ -476,7 +476,6 @@ impl From<ContractDataV2> for ContractData {
             acc_protocol_fee_for_gas,
         } = c;
 
-
         let keys: Vec<String> = btc_pending_infos.keys().map(|k| k.clone()).collect();
 
         for key in keys {
@@ -663,7 +662,6 @@ impl From<ContractDataV3> for ContractData {
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
         } = c;
-
 
         let keys: Vec<String> = btc_pending_infos.keys().map(|k| k.clone()).collect();
 

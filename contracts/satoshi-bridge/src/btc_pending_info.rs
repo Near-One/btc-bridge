@@ -213,7 +213,7 @@ impl BTCPendingInfo {
             _ => env::panic_str("Not original tx"),
         }
     }
-    
+
     pub fn get_subsidize_amount(&self) -> u128 {
         match self.state.borrow() {
             PendingInfoState::WithdrawOriginal(state) => state.subsidize_amount,
@@ -221,7 +221,7 @@ impl BTCPendingInfo {
             _ => env::panic_str("Not original tx"),
         }
     }
-    
+
     pub fn update_subsidize_amount(&mut self, subsidize_amount: u128) {
         match self.state.borrow_mut() {
             PendingInfoState::WithdrawOriginal(state) => {
