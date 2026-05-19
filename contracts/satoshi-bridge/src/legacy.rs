@@ -7,6 +7,18 @@ use crate::{
     VAccount, VBTCPendingInfo, U128, VUTXO,
 };
 
+fn migrate_btc_pending_infos_to_current(
+    btc_pending_infos: &mut IterableMap<String, VBTCPendingInfo>,
+) {
+    let keys: Vec<String> = btc_pending_infos.keys().cloned().collect();
+    for key in keys {
+        if let Some(value) = btc_pending_infos.get(&key) {
+            let current: BTCPendingInfo = value.into();
+            btc_pending_infos.insert(key, VBTCPendingInfo::Current(current));
+        }
+    }
+}
+
 #[near(serializers = [borsh])]
 pub struct ContractDataV0 {
     pub config: LazyOption<Config>,
@@ -46,14 +58,7 @@ impl From<ContractDataV0> for ContractData {
             acc_protocol_fee_for_gas,
         } = c;
 
-        let keys: Vec<String> = btc_pending_infos.keys().cloned().collect();
-
-        for key in keys {
-            if let Some(value) = btc_pending_infos.get(&key) {
-                let current: BTCPendingInfo = value.into();
-                btc_pending_infos.insert(key, VBTCPendingInfo::Current(current));
-            }
-        }
+        migrate_btc_pending_infos_to_current(&mut btc_pending_infos);
 
         Self {
             config,
@@ -395,14 +400,7 @@ impl From<ContractDataV1> for ContractData {
             acc_protocol_fee_for_gas,
         } = c;
 
-        let keys: Vec<String> = btc_pending_infos.keys().cloned().collect();
-
-        for key in keys {
-            if let Some(value) = btc_pending_infos.get(&key) {
-                let current: BTCPendingInfo = value.into();
-                btc_pending_infos.insert(key, VBTCPendingInfo::Current(current));
-            }
-        }
+        migrate_btc_pending_infos_to_current(&mut btc_pending_infos);
 
         let config_v0 = config.get().clone().unwrap();
         Self {
@@ -476,14 +474,7 @@ impl From<ContractDataV2> for ContractData {
             acc_protocol_fee_for_gas,
         } = c;
 
-        let keys: Vec<String> = btc_pending_infos.keys().cloned().collect();
-
-        for key in keys {
-            if let Some(value) = btc_pending_infos.get(&key) {
-                let current: BTCPendingInfo = value.into();
-                btc_pending_infos.insert(key, VBTCPendingInfo::Current(current));
-            }
-        }
+        migrate_btc_pending_infos_to_current(&mut btc_pending_infos);
 
         Self {
             config: LazyOption::new(
@@ -663,14 +654,7 @@ impl From<ContractDataV3> for ContractData {
             acc_protocol_fee_for_gas,
         } = c;
 
-        let keys: Vec<String> = btc_pending_infos.keys().cloned().collect();
-
-        for key in keys {
-            if let Some(value) = btc_pending_infos.get(&key) {
-                let current: BTCPendingInfo = value.into();
-                btc_pending_infos.insert(key, VBTCPendingInfo::Current(current));
-            }
-        }
+        migrate_btc_pending_infos_to_current(&mut btc_pending_infos);
 
         Self {
             config: LazyOption::new(
@@ -862,14 +846,7 @@ impl From<ContractDataV4> for ContractData {
             refund_requests,
         } = c;
 
-        let keys: Vec<String> = btc_pending_infos.keys().cloned().collect();
-
-        for key in keys {
-            if let Some(value) = btc_pending_infos.get(&key) {
-                let current: BTCPendingInfo = value.into();
-                btc_pending_infos.insert(key, VBTCPendingInfo::Current(current));
-            }
-        }
+        migrate_btc_pending_infos_to_current(&mut btc_pending_infos);
 
         Self {
             config: LazyOption::new(
