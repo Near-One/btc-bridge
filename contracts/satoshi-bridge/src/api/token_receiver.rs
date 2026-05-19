@@ -54,15 +54,22 @@ impl FungibleTokenReceiver for Contract {
                 output,
                 max_gas_fee,
                 chain_specific_data,
-            } => self.ft_on_transfer_withdraw_chain_specific(
-                sender_id,
-                amount,
-                target_btc_address,
-                input,
-                output,
-                max_gas_fee,
-                chain_specific_data,
-            ),
+            } => {
+                require!(
+                    amount >= self.internal_config().min_withdraw_amount,
+                    "Invalid amount"
+                );
+
+                self.ft_on_transfer_withdraw_chain_specific(
+                    sender_id,
+                    amount,
+                    target_btc_address,
+                    input,
+                    output,
+                    max_gas_fee,
+                    chain_specific_data,
+                )
+            }
             TokenReceiverMessage::Rbf {
                 pending_tx_id,
                 output,
