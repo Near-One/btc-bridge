@@ -46,7 +46,7 @@ impl From<ContractDataV0> for ContractData {
             acc_protocol_fee_for_gas,
         } = c;
 
-        let keys: Vec<String> = btc_pending_infos.keys().map(|k| k.clone()).collect();
+        let keys: Vec<String> = btc_pending_infos.keys().cloned().collect();
 
         for key in keys {
             if let Some(value) = btc_pending_infos.get(&key) {
@@ -395,7 +395,7 @@ impl From<ContractDataV1> for ContractData {
             acc_protocol_fee_for_gas,
         } = c;
 
-        let keys: Vec<String> = btc_pending_infos.keys().map(|k| k.clone()).collect();
+        let keys: Vec<String> = btc_pending_infos.keys().cloned().collect();
 
         for key in keys {
             if let Some(value) = btc_pending_infos.get(&key) {
@@ -476,7 +476,7 @@ impl From<ContractDataV2> for ContractData {
             acc_protocol_fee_for_gas,
         } = c;
 
-        let keys: Vec<String> = btc_pending_infos.keys().map(|k| k.clone()).collect();
+        let keys: Vec<String> = btc_pending_infos.keys().cloned().collect();
 
         for key in keys {
             if let Some(value) = btc_pending_infos.get(&key) {
@@ -663,7 +663,7 @@ impl From<ContractDataV3> for ContractData {
             acc_protocol_fee_for_gas,
         } = c;
 
-        let keys: Vec<String> = btc_pending_infos.keys().map(|k| k.clone()).collect();
+        let keys: Vec<String> = btc_pending_infos.keys().cloned().collect();
 
         for key in keys {
             if let Some(value) = btc_pending_infos.get(&key) {
@@ -862,7 +862,7 @@ impl From<ContractDataV4> for ContractData {
             refund_requests,
         } = c;
 
-        let keys: Vec<String> = btc_pending_infos.keys().map(|k| k.clone()).collect();
+        let keys: Vec<String> = btc_pending_infos.keys().cloned().collect();
 
         for key in keys {
             if let Some(value) = btc_pending_infos.get(&key) {
