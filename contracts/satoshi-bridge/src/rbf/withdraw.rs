@@ -1,5 +1,7 @@
-use crate::psbt_wrapper::PsbtWrapper;
-use crate::*;
+use crate::{
+    init_rbf_btc_pending_info, network::Address, psbt_wrapper::PsbtWrapper, require, AccountId,
+    BTCPendingInfo, Contract, PendingInfoStage, PendingInfoState, RbfState,
+};
 
 impl Contract {
     pub fn check_withdraw_rbf_psbt_valid(
@@ -12,20 +14,16 @@ impl Contract {
             self.internal_config().get_change_script_pubkey();
         let original_tx =
             original_tx_btc_pending_info.get_transaction(&self.internal_config().chain);
-        let target_address_script_pubkey = original_tx
-            .output()
-            .iter()
-            .find(|v| v.script_pubkey != withdraw_change_address_script_pubkey)
-            .cloned()
-            .expect("The original tx is not a user withdraw tx.")
-            .script_pubkey;
         require!(
             original_tx.output().len() == withdraw_rbf_psbt.get_output_num(),
             "Invalid output num"
         );
+
+        let target_address = self.extract_recipient_address(original_tx_btc_pending_info);
+
         let (_, _, actual_received_amount, gas_fee) = self.check_withdraw_psbt(
             withdraw_rbf_psbt,
-            &target_address_script_pubkey,
+            target_address,
             &withdraw_change_address_script_pubkey,
             &original_tx_btc_pending_info.vutxos,
             original_tx_btc_pending_info.transfer_amount + subsidy_amount,
@@ -39,6 +37,7 @@ impl Contract {
         account_id: &AccountId,
         original_btc_pending_verify_id: String,
         withdraw_rbf_psbt: PsbtWrapper,
+        _predecessor_account_id: AccountId,
     ) -> String {
         let original_tx_btc_pending_info =
             self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
@@ -81,5 +80,36 @@ impl Contract {
             withdraw_rbf_psbt,
             false,
         )
+    }
+}
+
+impl Contract {
+    fn extract_recipient_address(&self, original_tx_btc_pending_info: &BTCPendingInfo) -> String {
+        let psbt = original_tx_btc_pending_info.get_psbt();
+
+        if let Some(recipient) = psbt.get_recipient_address().clone() {
+            return recipient;
+        }
+
+        let withdraw_change_address_script_pubkey =
+            self.internal_config().get_change_script_pubkey();
+        let original_tx =
+            original_tx_btc_pending_info.get_transaction(&self.internal_config().chain);
+        let target_address_script_pubkey = original_tx
+            .output()
+            .iter()
+            .find(|v| v.script_pubkey != withdraw_change_address_script_pubkey)
+            .cloned()
+            .expect("The original tx is not a user withdraw tx.")
+            .script_pubkey;
+
+        let target_address = Address::from_script(
+            target_address_script_pubkey.as_script(),
+            self.internal_config().chain.clone(),
+        )
+        .expect("Error on extract recipient address from script pubkey")
+        .to_string();
+
+        target_address
     }
 }

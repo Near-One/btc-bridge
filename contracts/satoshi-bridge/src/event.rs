@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{json, log, AccountId, DepositMsg, SignatureResponse, U128};
 use near_sdk::serde::Serialize;
 
 const EVENT_STANDARD: &str = "bridge";
@@ -60,7 +60,10 @@ pub enum Event<'a> {
     SignedBtcTransaction {
         account_id: &'a AccountId,
         tx_id: String,
+        #[cfg(not(feature = "zcash"))]
         tx_bytes: &'a Vec<u8>,
+        #[cfg(feature = "zcash")]
+        tx_bytes_base64: String,
     },
     WithdrawBtcDetail {
         cost_nbtc: U128,
@@ -88,6 +91,7 @@ pub enum Event<'a> {
     },
     UtxoAdded {
         utxo_storage_keys: Vec<String>,
+        balances: Option<Vec<U128>>,
     },
     UtxoRemoved {
         utxo_storage_keys: Vec<String>,
@@ -95,6 +99,21 @@ pub enum Event<'a> {
     InvalidPostAction {
         index: Option<usize>,
         err_msg: String,
+    },
+    RefundRequested {
+        deposit_msg: DepositMsg,
+        utxo_storage_key: String,
+        amount: U128,
+        refund_address: String,
+        gas_fee: U128,
+    },
+    RefundRejected {
+        utxo_storage_key: String,
+    },
+    RefundExecuted {
+        utxo_storage_key: String,
+        amount: U128,
+        refund_address: String,
     },
 }
 

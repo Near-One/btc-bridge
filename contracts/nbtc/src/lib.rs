@@ -100,17 +100,20 @@ impl Contract {
         msg: Option<String>,
     ) -> PromiseOrValue<U128> {
         self.assert_bridge();
+        require!(
+            account_id != self.bridge_id,
+            "safe_mint: account_id must not be the bridge"
+        );
+        self.token.internal_deposit(&self.bridge_id, amount.into());
 
         if self.token.accounts.get(&account_id).is_none() {
             return PromiseOrValue::Value(U128(0));
         }
 
         if let Some(msg) = msg {
-            self.token.internal_deposit(&self.bridge_id, amount.into());
-
             self.ft_transfer_call(account_id, amount, None, msg)
         } else {
-            self.token.internal_deposit(&account_id, amount.into());
+            self.ft_transfer(account_id, amount, None);
             PromiseOrValue::Value(amount)
         }
     }
@@ -133,7 +136,9 @@ impl Contract {
             self.mint_inner(&relayer_account_id, relayer_fee);
         }
         if let Some(post_actions) = post_actions {
-            Self::ext(env::current_account_id()).handle_post_actions(mint_account_id, post_actions);
+            Self::ext(env::current_account_id())
+                .handle_post_actions(mint_account_id, post_actions)
+                .detach();
         }
     }
 
@@ -171,7 +176,7 @@ impl Contract {
 impl FungibleTokenCore for Contract {
     #[payable]
     fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>) {
-        self.token.ft_transfer(receiver_id, amount, memo)
+        self.token.ft_transfer(receiver_id, amount, memo);
     }
 
     #[payable]
@@ -374,15 +379,12 @@ impl Contract {
                 Self::ext(env::current_account_id())
                     .with_static_gas(gas)
                     .handle_post_action(sender_id.clone(), receiver_id, amount, memo, msg)
+                    .detach();
             } else {
-                Self::ext(env::current_account_id()).handle_post_action(
-                    sender_id.clone(),
-                    receiver_id,
-                    amount,
-                    memo,
-                    msg,
-                )
-            };
+                Self::ext(env::current_account_id())
+                    .handle_post_action(sender_id.clone(), receiver_id, amount, memo, msg)
+                    .detach();
+            }
         }
     }
 
@@ -399,6 +401,10 @@ impl Contract {
             env::prepaid_gas() > GAS_FOR_FT_TRANSFER_CALL,
             "More gas is required"
         );
+        require!(
+            receiver_id != self.bridge_id,
+            "handle_post_action: receiver_id must not be the bridge"
+        );
         let amount = amount.into();
         self.token
             .internal_transfer(&sender_id, &receiver_id, amount, memo);
@@ -413,6 +419,7 @@ impl Contract {
                 ext_ft_resolver::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
                     .ft_resolve_transfer(sender_id, receiver_id, amount.into()),
-            );
+            )
+            .detach();
     }
 }

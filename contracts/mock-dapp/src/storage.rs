@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{env, near, Account, AccountId, Contract, ContractExt, NearToken, Promise};
 
 use near_contract_standards::storage_management::{
     StorageBalance, StorageBalanceBounds, StorageManagement,
@@ -17,7 +17,9 @@ impl StorageManagement for Contract {
         let registration_only = registration_only.unwrap_or(false);
         if let Some(account) = self.accounts.get_mut(&account_id) {
             if registration_only && !amount.is_zero() {
-                Promise::new(env::predecessor_account_id()).transfer(amount);
+                Promise::new(env::predecessor_account_id())
+                    .transfer(amount)
+                    .detach();
             } else {
                 account.deposit += amount.as_yoctonear();
             }
@@ -31,7 +33,8 @@ impl StorageManagement for Contract {
                 let refund = amount.as_yoctonear() - min_balance.as_yoctonear();
                 if refund > 0 {
                     Promise::new(env::predecessor_account_id())
-                        .transfer(NearToken::from_yoctonear(refund));
+                        .transfer(NearToken::from_yoctonear(refund))
+                        .detach();
                 }
                 min_balance.as_yoctonear()
             } else {

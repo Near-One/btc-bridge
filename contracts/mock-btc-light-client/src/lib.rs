@@ -81,4 +81,9 @@ impl Contract {
     pub fn verify_transaction_inclusion(&self, #[serializer(borsh)] args: ProofArgs) -> bool {
         true
     }
+
+    pub fn get_last_block_height(&self) -> u32 {
+        // Return a reasonable mock block height for Zcash testnet
+        1000
+    }
 }

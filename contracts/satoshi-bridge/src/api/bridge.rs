@@ -1,7 +1,9 @@
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 use near_plugins::{access_control_any, pause};
+use near_sdk::json_types::Base64VecU8;
 
+#[trusted_relayer]
 #[near]
 impl Contract {
     /// Verify that the user has transferred BTC asset to the protocol's designated BTC deposit account, and mint NBTC to the user's NEAR account.
@@ -18,6 +20,7 @@ impl Contract {
     /// # Returns
     ///
     /// bool - Whether nBTC minting was successful.
+    #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_deposit(
         &mut self,
@@ -35,12 +38,8 @@ impl Contract {
         let path = get_deposit_path(&deposit_msg);
         let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
             .expect("Deserialization tx_bytes failed");
-        let deposit_amount = transaction.output()[vout].value.to_sat() as u128;
+        let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
         require!(deposit_amount > 0, "Invalid deposit_amount");
-        require!(
-            transaction.lock_time() == LockTime::ZERO,
-            "Tx with a non-zero lock_time are not supported."
-        );
         let deposit_address = self.generate_utxo_chain_address(&path);
         let deposit_address_script_pubkey = deposit_address
             .script_pubkey()
@@ -57,7 +56,10 @@ impl Contract {
             balance: transaction.output()[vout].value.to_sat(),
         };
         let tx_id = transaction.compute_txid().to_string();
-        let utxo_storage_key = generate_utxo_storage_key(tx_id.clone(), vout as u32);
+        let utxo_storage_key = generate_utxo_storage_key(
+            tx_id.clone(),
+            u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
+        );
         self.internal_verify_deposit(
             deposit_amount,
             tx_block_blockhash,
@@ -88,6 +90,7 @@ impl Contract {
     ///
     /// bool - Whether nBTC minting was successful.
     #[payable]
+    #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn safe_verify_deposit(
         &mut self,
@@ -112,10 +115,6 @@ impl Contract {
             .expect("Deserialization tx_bytes failed");
         let deposit_amount = transaction.output()[vout].value.to_sat().into();
         require!(deposit_amount > 0, "Invalid deposit_amount");
-        require!(
-            transaction.lock_time() == LockTime::ZERO,
-            "Tx with a non-zero lock_time are not supported."
-        );
         let deposit_address = self.generate_utxo_chain_address(&path);
         let deposit_address_script_pubkey = deposit_address
             .script_pubkey()
@@ -124,6 +123,13 @@ impl Contract {
             deposit_address_script_pubkey == transaction.output()[vout].script_pubkey,
             "Invalid deposit tx_bytes"
         );
+
+        let tx_bytes = if tx_bytes.len() > 10000 {
+            env::log_str("tx_bytes length exceeds 10000, truncating to 300 bytes");
+            vec![0u8; 300]
+        } else {
+            tx_bytes
+        };
 
         let utxo = UTXO {
             path,
@@ -149,6 +155,28 @@ impl Contract {
         )
     }
 
+    #[payable]
+    #[trusted_relayer]
+    #[pause(except(roles(Role::DAO)))]
+    pub fn safe_verify_deposit_compact(
+        &mut self,
+        deposit_msg: DepositMsg,
+        tx_bytes: Base64VecU8,
+        vout: usize,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Promise {
+        self.safe_verify_deposit(
+            deposit_msg,
+            tx_bytes.0,
+            vout,
+            tx_block_blockhash,
+            tx_index,
+            merkle_proof,
+        )
+    }
+
     /// Verify that the user’s withdrawal has been successful, and then burn the corresponding amount of tokens.
     ///
     /// # Arguments
@@ -161,6 +189,7 @@ impl Contract {
     /// # Returns
     ///
     /// bool - Whether nBTC burning was successful.
+    #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_withdraw(
         &mut self,
@@ -197,16 +226,21 @@ impl Contract {
     /// * `original_btc_pending_verify_id` - Pending verify ID of the original transaction.
     /// * `output` - Modified output.
     #[pause(except(roles(Role::DAO)))]
-    pub fn withdraw_rbf(&mut self, original_btc_pending_verify_id: String, output: Vec<TxOut>) {
+    pub fn withdraw_rbf(
+        &mut self,
+        original_btc_pending_verify_id: String,
+        output: Vec<TxOut>,
+        chain_specific_data: Option<ChainSpecificData>,
+    ) {
         let account_id = env::predecessor_account_id();
-        require!(
-            self.internal_unwrap_account(&account_id)
-                .btc_pending_sign_id
-                .is_none(),
-            "Previous btc tx has not been signed"
-        );
+        self.require_pending_sign_capacity(&account_id);
 
-        self.withdraw_rbf_chain_specific(account_id, original_btc_pending_verify_id, output);
+        self.withdraw_rbf_chain_specific(
+            account_id,
+            original_btc_pending_verify_id,
+            output,
+            chain_specific_data,
+        );
     }
 
     /// If the user's Withdraw is not verified within a certain time, the protocol can actively cancel the Withdraw through RBF, with the gas fee borne by the user.
@@ -224,17 +258,13 @@ impl Contract {
             .internal_unwrap_btc_pending_info(&original_btc_pending_verify_id)
             .account_id
             .clone();
-        require!(
-            self.internal_unwrap_account(&user_account_id)
-                .btc_pending_sign_id
-                .is_none(),
-            "Assisted user previous btc tx has not been signed"
-        );
+        self.require_pending_sign_capacity(&user_account_id);
 
         self.cancel_withdraw_chain_specific(
             user_account_id,
             original_btc_pending_verify_id,
             output,
+            None,
         );
     }
 
@@ -250,6 +280,7 @@ impl Contract {
     /// # Returns
     ///
     /// bool - Whether nBTC burning was successful.
+    #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_active_utxo_management(
         &mut self,
@@ -310,16 +341,12 @@ impl Contract {
     ) {
         assert_one_yocto();
         let account_id = env::predecessor_account_id();
-        require!(
-            self.internal_unwrap_account(&account_id)
-                .btc_pending_sign_id
-                .is_none(),
-            "Previous btc tx has not been signed"
-        );
+        self.require_pending_sign_capacity(&account_id);
         self.active_utxo_management_rbf_chain_specific(
             account_id,
             original_btc_pending_verify_id,
             output,
+            None,
         );
     }
 
@@ -342,16 +369,12 @@ impl Contract {
             .internal_unwrap_btc_pending_info(&original_btc_pending_verify_id)
             .account_id
             .clone();
-        require!(
-            self.internal_unwrap_account(&user_account_id)
-                .btc_pending_sign_id
-                .is_none(),
-            "Assisted user previous btc tx has not been signed"
-        );
+        self.require_pending_sign_capacity(&user_account_id);
         self.cancel_active_utxo_management_chain_specific(
             user_account_id,
             original_btc_pending_verify_id,
             output,
+            None,
         );
     }
 
@@ -405,21 +428,169 @@ impl Contract {
     }
 }
 
+#[cfg(not(feature = "zcash"))]
+#[trusted_relayer]
+#[near]
+impl Contract {
+    // ── Refund API (Bitcoin only) ──
+
+    /// Submit a refund request for a deposit that was never finalized via `verify_deposit` or `safe_verify_deposit`.
+    /// The BTC transaction is verified through the Light Client to prove the deposit exists.
+    /// After the timelock period, anyone can call `execute_refund` to initiate the return.
+    ///
+    /// # Arguments
+    ///
+    /// * `deposit_msg` - The original deposit message. If `deposit_msg.refund_address` is set,
+    ///   it must match the provided `refund_address`.
+    /// * `refund_address` - BTC address to send the refund to. If `deposit_msg.refund_address`
+    ///   is `None`, this value is used directly.
+    /// * `tx_bytes` - BTC transaction bytes proving the deposit.
+    /// * `vout` - Output index of the deposit in the transaction.
+    /// * `tx_block_blockhash` - Block hash containing the transaction.
+    /// * `tx_index` - Transaction index within the block.
+    /// * `merkle_proof` - Merkle proof for Light Client verification.
+    /// * `gas_fee` - Optional custom gas fee. Only DAO or Operator can set this.
+    ///   If `None`, the default `config.max_btc_gas_fee` is used during `execute_refund`.
+    #[allow(clippy::too_many_arguments)]
+    #[pause(except(roles(Role::DAO)))]
+    pub fn request_refund(
+        &mut self,
+        deposit_msg: DepositMsg,
+        refund_address: String,
+        tx_bytes: Vec<u8>,
+        vout: usize,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+        gas_fee: Option<U128>,
+    ) -> Promise {
+        if gas_fee.is_some() {
+            let caller = env::predecessor_account_id();
+            require!(
+                self.acl_has_role(Role::DAO.into(), caller.clone())
+                    || self.acl_has_role(Role::Operator.into(), caller),
+                "Only DAO or Operator can specify custom gas_fee"
+            );
+        }
+        self.internal_request_refund(
+            deposit_msg,
+            refund_address,
+            tx_bytes,
+            vout,
+            tx_block_blockhash,
+            tx_index,
+            merkle_proof,
+            gas_fee.map(|v| v.0),
+        )
+    }
+
+    /// Reject a pending refund request.
+    /// - DAO or Operator can reject any request.
+    /// - Anyone can reject a request if the UTXO has already been verified via `verify_deposit`.
+    ///
+    /// # Arguments
+    ///
+    /// * `utxo_storage_key` - The UTXO key identifying the refund request (`{tx_id}@{vout}`).
+    pub fn reject_refund(&mut self, utxo_storage_key: String) {
+        let caller = env::predecessor_account_id();
+        let is_privileged = self.acl_has_role(Role::DAO.into(), caller.clone())
+            || self.acl_has_role(Role::Operator.into(), caller);
+        let is_already_deposited = self
+            .data()
+            .verified_deposit_utxo
+            .contains(&utxo_storage_key);
+        require!(
+            is_privileged || is_already_deposited,
+            "Only DAO/Operator can reject, or UTXO must be already verified via deposit"
+        );
+        self.internal_reject_refund(utxo_storage_key);
+    }
+
+    /// Execute a refund after the timelock has passed. Builds a BTC transaction
+    /// that sends the deposit UTXO back to the `refund_address` specified in the original
+    /// `DepositMsg`. Creates a `BTCPendingInfo` entry for the MPC sign pipeline.
+    /// Marks the UTXO in `verified_deposit_utxo` to prevent future `verify_deposit`.
+    ///
+    /// # Arguments
+    ///
+    /// * `utxo_storage_key` - The UTXO key identifying the refund request (`{tx_id}@{vout}`).
+    #[payable]
+    #[pause(except(roles(Role::DAO)))]
+    pub fn execute_refund(&mut self, utxo_storage_key: String) {
+        require!(
+            env::attached_deposit() >= self.required_balance_for_execute_refund(),
+            "Insufficient deposit for storage"
+        );
+        let caller = env::predecessor_account_id();
+        let is_privileged =
+            self.acl_has_any_role(vec![Role::DAO.into(), Role::RefundOperator.into()], caller);
+        let refund_request: crate::RefundRequest = self
+            .data()
+            .refund_requests
+            .get(&utxo_storage_key)
+            .expect("Refund request not found")
+            .into();
+        let config = self.internal_config();
+        let timelock_sec = if refund_request.deposit_msg().refund_address.is_some() {
+            // Pre-authorized refund address: privileged users can fast-track.
+            if is_privileged {
+                0
+            } else {
+                config.refund_timelock_sec
+            }
+        } else {
+            // Refund address supplied by caller of `request_refund`: longer
+            // timelock to give DAO/Operator time to reject suspicious requests.
+            config.unsafe_refund_timelock_sec
+        };
+        self.internal_execute_refund(utxo_storage_key, timelock_sec);
+    }
+
+    /// Verify that the refund BTC transaction has been confirmed on the Bitcoin network.
+    /// Cleans up the `BTCPendingInfo` after successful verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `tx_id` - Transaction ID of the confirmed refund transaction.
+    /// * `tx_block_blockhash` - Block hash containing the transaction.
+    /// * `tx_index` - Transaction index within the block.
+    /// * `merkle_proof` - Merkle proof for Light Client verification.
+    #[trusted_relayer]
+    #[pause(except(roles(Role::DAO)))]
+    pub fn verify_refund_finalize(
+        &mut self,
+        tx_id: String,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Promise {
+        let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id);
+        btc_pending_info.assert_refund_pending_verify_tx();
+        require!(
+            btc_pending_info.tx_bytes_with_sign.is_some(),
+            "Missing tx_bytes_with_sign"
+        );
+        self.internal_verify_refund_finalize(
+            tx_id,
+            tx_block_blockhash,
+            tx_index,
+            merkle_proof,
+            btc_pending_info,
+        )
+    }
+}
+
 impl Contract {
     pub fn create_active_utxo_management_pending_info(
         &mut self,
         account_id: AccountId,
-        psbt: &mut PsbtWrapper,
+        mut psbt: PsbtWrapper,
     ) {
-        let account = self.internal_unwrap_account(&account_id);
-        require!(
-            account.btc_pending_sign_id.is_none(),
-            "Previous btc tx has not been signed"
-        );
+        self.require_pending_sign_capacity(&account_id);
 
-        let (utxo_storage_keys, vutxos) = self.generate_vutxos(psbt);
+        let (utxo_storage_keys, vutxos) = self.generate_vutxos(&mut psbt);
         let (actual_received_amount, gas_fee) =
-            self.check_active_management_psbt_valid(psbt, &vutxos);
+            self.check_active_management_psbt_valid(&psbt, &vutxos);
         require!(
             gas_fee <= self.data().cur_available_protocol_fee,
             "Insufficient protocol_fee"
@@ -460,7 +631,8 @@ impl Contract {
             "pending info already exist"
         );
         self.internal_unwrap_mut_account(&account_id)
-            .btc_pending_sign_id = Some(btc_pending_id.clone());
+            .btc_pending_sign_ids
+            .insert(btc_pending_id.clone());
         Event::UtxoRemoved { utxo_storage_keys }.emit();
         Event::GenerateBtcPendingInfo {
             account_id: &account_id,

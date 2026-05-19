@@ -1,4 +1,7 @@
-use crate::*;
+use crate::{
+    env, ext_nbtc, generate_utxo_storage_key, is_promise_success, near, Contract, ContractExt,
+    Event, Gas, Promise, WrappedTransaction, U128, UTXO,
+};
 
 pub const GAS_FOR_BURN_CALL: Gas = Gas::from_tgas(5);
 pub const GAS_FOR_WITHDRAW_BURN_CALL_BACK: Gas = Gas::from_tgas(20);
@@ -78,6 +81,7 @@ impl Contract {
                 .expect("Deserialization tx_bytes failed");
             let withdraw_change_script_pubkey = config.get_change_script_pubkey();
             let mut utxo_storage_keys = vec![];
+            let mut balances = vec![];
             for (index, output) in transaction.output().into_iter().enumerate() {
                 if withdraw_change_script_pubkey == output.script_pubkey {
                     let utxo = UTXO {
@@ -86,7 +90,11 @@ impl Contract {
                         vout: index,
                         balance: output.value.to_sat(),
                     };
-                    let utxo_storage_key = generate_utxo_storage_key(tx_id.clone(), index as u32);
+                    let utxo_storage_key = generate_utxo_storage_key(
+                        tx_id.clone(),
+                        u32::try_from(index).unwrap_or_else(|_| env::panic_str("Index overflow")),
+                    );
+                    balances.push(U128::from(u128::from(utxo.balance)));
                     self.internal_set_utxo(&utxo_storage_key, utxo);
                     utxo_storage_keys.push(utxo_storage_key);
                 }
@@ -129,10 +137,15 @@ impl Contract {
                 self.data_mut().cur_available_protocol_fee += protocol_fee.0;
             }
             if refund > 0 {
-                self.internal_transfer_nbtc(&btc_pending_info.account_id, refund);
+                self.internal_transfer_nbtc(&btc_pending_info.account_id, refund)
+                    .detach();
             }
             self.internal_remove_btc_pending_info(&tx_id);
-            Event::UtxoAdded { utxo_storage_keys }.emit();
+            Event::UtxoAdded {
+                utxo_storage_keys,
+                balances: Some(balances),
+            }
+            .emit();
         } else {
             self.internal_unwrap_mut_btc_pending_info(&tx_id)
                 .to_pending_verify_stage();
@@ -157,6 +170,7 @@ impl Contract {
             let config = self.internal_config();
             let withdraw_change_script_pubkey = config.get_change_script_pubkey();
             let mut utxo_storage_keys = vec![];
+            let mut balances: Vec<U128> = vec![];
             for (index, output) in transaction.output().into_iter().enumerate() {
                 if withdraw_change_script_pubkey == output.script_pubkey {
                     let utxo = UTXO {
@@ -165,7 +179,12 @@ impl Contract {
                         vout: index,
                         balance: output.value.to_sat(),
                     };
-                    let utxo_storage_key = generate_utxo_storage_key(tx_id.clone(), index as u32);
+                    let utxo_storage_key = generate_utxo_storage_key(
+                        tx_id.clone(),
+                        u32::try_from(index).unwrap_or_else(|_| env::panic_str("Index overflow")),
+                    );
+
+                    balances.push(U128::from(u128::from(utxo.balance)));
                     self.internal_set_utxo(&utxo_storage_key, utxo);
                     utxo_storage_keys.push(utxo_storage_key);
                 }
@@ -196,7 +215,11 @@ impl Contract {
                 self.data_mut().rbf_txs.remove(&tx_id);
             }
             self.internal_remove_btc_pending_info(&tx_id);
-            Event::UtxoAdded { utxo_storage_keys }.emit();
+            Event::UtxoAdded {
+                utxo_storage_keys,
+                balances: Some(balances),
+            }
+            .emit();
         } else {
             self.internal_unwrap_mut_btc_pending_info(&tx_id)
                 .to_pending_verify_stage();

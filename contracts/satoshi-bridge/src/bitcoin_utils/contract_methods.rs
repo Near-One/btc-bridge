@@ -1,3 +1,5 @@
+use crate::bitcoin_utils::types::ChainSpecificData;
+use crate::env;
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::{BTCPendingInfo, Contract, Event};
 use bitcoin::{OutPoint, TxOut};
@@ -11,7 +13,9 @@ macro_rules! define_rbf_method {
             account_id: AccountId,
             original_btc_pending_verify_id: String,
             output: Vec<TxOut>,
+            _chain_specific_data: Option<ChainSpecificData>,
         ) -> String {
+            let predecessor_account_id = env::predecessor_account_id();
             let original_tx_btc_pending_info =
                 self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
 
@@ -20,11 +24,16 @@ macro_rules! define_rbf_method {
                 output,
             );
 
-            let btc_pending_id =
-                self.$internal_fn(&account_id, original_btc_pending_verify_id, new_psbt);
+            let btc_pending_id = self.$internal_fn(
+                &account_id,
+                original_btc_pending_verify_id,
+                new_psbt,
+                predecessor_account_id,
+            );
 
             self.internal_unwrap_mut_account(&account_id)
-                .btc_pending_sign_id = Some(btc_pending_id.clone());
+                .btc_pending_sign_ids
+                .insert(btc_pending_id.clone());
 
             Event::GenerateBtcPendingInfo {
                 account_id: &account_id,
@@ -38,7 +47,13 @@ macro_rules! define_rbf_method {
 }
 
 impl Contract {
-    pub(crate) fn check_psbt_chain_specific(&self, _psbt: &PsbtWrapper, _gas_fee: u128) {}
+    pub(crate) fn check_psbt_chain_specific(
+        &self,
+        _psbt: &PsbtWrapper,
+        _gas_fee: u128,
+        _target_btc_address: String,
+    ) {
+    }
 
     pub(crate) fn check_withdraw_chain_specific(
         original_tx_btc_pending_info: &BTCPendingInfo,
@@ -53,6 +68,7 @@ impl Contract {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn ft_on_transfer_withdraw_chain_specific(
         &mut self,
         sender_id: AccountId,
@@ -61,13 +77,13 @@ impl Contract {
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
+        _chain_specific_data: Option<ChainSpecificData>,
     ) -> PromiseOrValue<U128> {
-        let mut psbt = PsbtWrapper::new(input, output);
         self.create_btc_pending_info(
             sender_id,
             amount,
             target_btc_address,
-            &mut psbt,
+            PsbtWrapper::new(input, output),
             max_gas_fee,
         );
         PromiseOrValue::Value(U128(0))
@@ -90,8 +106,10 @@ impl Contract {
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
     ) {
-        let mut psbt = PsbtWrapper::new(input, output);
-        self.create_active_utxo_management_pending_info(account_id, &mut psbt);
+        self.create_active_utxo_management_pending_info(
+            account_id,
+            PsbtWrapper::new(input, output),
+        );
     }
 
     pub(crate) fn generate_psbt_from_original_psbt_and_new_output(
@@ -112,12 +130,7 @@ impl Contract {
     ) -> PromiseOrValue<U128> {
         let origin_tx_btc_pending_info = self.internal_unwrap_btc_pending_info(&pending_tx_id);
         let user_account_id = origin_tx_btc_pending_info.account_id.clone();
-        require!(
-            self.internal_unwrap_account(&user_account_id)
-                .btc_pending_sign_id
-                .is_none(),
-            "Assisted user previous btc tx has not been signed"
-        );
+        self.require_pending_sign_capacity(&user_account_id);
         let full_subsidy_amount = self
             .internal_unwrap_btc_pending_info(&pending_tx_id)
             .get_subsidize_amount()
@@ -129,6 +142,7 @@ impl Contract {
             user_account_id.clone(),
             pending_tx_id.clone(),
             output,
+            None,
         );
 
         let origin_tx_btc_pending_info = self.internal_unwrap_btc_pending_info(&pending_tx_id);

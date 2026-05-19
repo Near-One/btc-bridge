@@ -1,5 +1,4 @@
-use crate::psbt_wrapper::PsbtWrapper;
-use crate::*;
+use crate::{psbt_wrapper::PsbtWrapper, *};
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_plugins::pause;
 
@@ -8,11 +7,13 @@ pub const GAS_FOR_FT_ON_TRANSFER_CALL_BACK: Gas = Gas::from_tgas(100);
 #[near(serializers = [json])]
 pub enum TokenReceiverMessage {
     DepositProtocolFee,
+    // Here is the withdraw message structure that will be sent from user or dApp to the btc/zcash connector
     Withdraw {
         target_btc_address: String,
         input: Vec<OutPoint>,
         output: Vec<TxOut>,
         max_gas_fee: Option<U128>,
+        chain_specific_data: Option<ChainSpecificData>,
     },
     Rbf {
         pending_tx_id: String,
@@ -52,20 +53,16 @@ impl FungibleTokenReceiver for Contract {
                 input,
                 output,
                 max_gas_fee,
-            } => {
-                require!(
-                    amount >= self.internal_config().min_withdraw_amount,
-                    "Invalid amount"
-                );
-                self.ft_on_transfer_withdraw_chain_specific(
-                    sender_id,
-                    amount,
-                    target_btc_address,
-                    input,
-                    output,
-                    max_gas_fee,
-                )
-            }
+                chain_specific_data,
+            } => self.ft_on_transfer_withdraw_chain_specific(
+                sender_id,
+                amount,
+                target_btc_address,
+                input,
+                output,
+                max_gas_fee,
+                chain_specific_data,
+            ),
             TokenReceiverMessage::Rbf {
                 pending_tx_id,
                 output,
@@ -80,27 +77,24 @@ impl Contract {
         sender_id: AccountId,
         amount: u128,
         target_btc_address: String,
-        psbt: &mut PsbtWrapper,
+        mut psbt: PsbtWrapper,
         max_gas_fee: Option<U128>,
     ) {
-        let (utxo_storage_keys, vutxos) = self.generate_vutxos(psbt);
+        let (utxo_storage_keys, vutxos) = self.generate_vutxos(&mut psbt);
+        let max_pending = self.get_max_pending_sign_txs(&sender_id);
+        let account = self.internal_unwrap_or_create_mut_account(&sender_id);
         require!(
-            self.internal_unwrap_or_create_mut_account(&sender_id)
-                .btc_pending_sign_id
-                .is_none(),
-            "Previous btc tx has not been signed"
+            account.pending_sign_count() < max_pending,
+            "Too many pending sign transactions"
         );
-        let target_address_script_pubkey = self
-            .internal_config()
-            .string_to_script_pubkey(&target_btc_address);
 
         let withdraw_change_address_script_pubkey =
             self.internal_config().get_change_script_pubkey();
         let withdraw_fee = self.internal_config().withdraw_bridge_fee.get_fee(amount);
         let (actual_received_amount, gas_fee) = self.check_withdraw_psbt_valid(
-            &target_address_script_pubkey,
+            target_btc_address.clone(),
             &withdraw_change_address_script_pubkey,
-            psbt,
+            &psbt,
             &vutxos,
             amount,
             withdraw_fee,
@@ -140,7 +134,8 @@ impl Contract {
             "pending info already exist"
         );
         self.internal_unwrap_mut_account(&sender_id)
-            .btc_pending_sign_id = Some(btc_pending_id.clone());
+            .btc_pending_sign_ids
+            .insert(btc_pending_id.clone());
         Event::UtxoRemoved { utxo_storage_keys }.emit();
         Event::GenerateBtcPendingInfo {
             account_id: &sender_id,

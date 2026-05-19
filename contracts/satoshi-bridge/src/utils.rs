@@ -1,8 +1,17 @@
 use bitcoin::hashes::Hash;
 
-use crate::*;
+use crate::{env, Timestamp};
 
 pub const UTXO_STORAGE_KEY_TAG: &str = "@";
+
+/// Maximum expected byte length of a JSON-serialized `bool` promise result (`true`/`false`).
+pub const MAX_BOOL_RESULT: usize = 10;
+/// Maximum expected byte length of a JSON-serialized `U128` promise result (e.g. from `ft_on_transfer`).
+pub const MAX_FT_TRANSFER_CALL_RESULT: usize = 50;
+/// Maximum expected byte length of a JSON-serialized `near_sdk::PublicKey` promise result.
+pub const MAX_PUBLIC_KEY_RESULT: usize = 200;
+/// Maximum expected byte length of a JSON-serialized `SignatureResponse` promise result.
+pub const MAX_SIGNATURE_RESULT: usize = 300;
 
 pub fn generate_utxo_storage_key(txid: String, vout: u32) -> String {
     format!(
@@ -18,7 +27,8 @@ pub fn to_nano(sec: u32) -> Timestamp {
 }
 
 pub fn nano_to_sec(nano: u64) -> u32 {
-    (nano / 10u64.pow(9)) as u32
+    u32::try_from(nano / 10u64.pow(9))
+        .unwrap_or_else(|_| env::panic_str("Timestamp overflow when converting nano to sec"))
 }
 
 pub mod u64_dec_format {
@@ -60,6 +70,32 @@ pub mod u128_dec_format {
         String::deserialize(deserializer)?
             .parse()
             .map_err(de::Error::custom)
+    }
+}
+
+pub mod u128_dec_format_option {
+    use near_sdk::serde::de;
+    use near_sdk::serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(value: &Option<u128>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match value {
+            Some(num) => serializer.serialize_some(&num.to_string()),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<u128>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s: Option<String> = Option::deserialize(deserializer)?;
+        match s {
+            Some(s) => s.parse().map(Some).map_err(de::Error::custom),
+            None => Ok(None),
+        }
     }
 }
 

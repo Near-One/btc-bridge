@@ -1,21 +1,48 @@
-.PHONY: zcash-bridge
+MAKEFILE_DIR :=  $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
+#INT_OPTIONS = -D warnings -D clippy::pedantic -A clippy::must_use_candidate -A clippy::used_underscore_binding -A clippy::needless_range_loop //TODO: enable it later
+BRIDGE_MANIFEST := $(MAKEFILE_DIR)/contracts/satoshi-bridge/Cargo.toml
 
 RFLAGS="-C link-arg=-s"
 
-build: lint satoshi-bridge zcash-bridge nbtc mock-chain-signatures mock-btc-light-client mock-dapp
+FEATURES = bitcoin zcash
 
-lint:
+release: $(addprefix build-,$(FEATURES))
+	$(call build_release_wasm,nbtc,nbtc)
+
+build-local: $(addprefix build-local-,$(FEATURES)) nbtc mock-chain-signatures mock-btc-light-client mock-dapp
+
+lint: $(addprefix clippy-,$(FEATURES)) $(addprefix fmt-,$(FEATURES))
 	@cargo fmt --all
-	@cargo clippy --fix --allow-dirty --allow-staged
+	@cargo clippy -- $(LINT_OPTIONS)
 
-satoshi-bridge: contracts/satoshi-bridge
-	$(call local_build_wasm,satoshi-bridge,satoshi_bridge)
+test: build-local $(addprefix test-,$(FEATURES))
 
-zcash-bridge: contracts/satoshi-bridge
-	$(call local_build_zcash_wasm)
+$(foreach feature,$(FEATURES), \
+	$(eval build-$(feature): ; \
+		cargo near build reproducible-wasm --variant "$(feature)" --manifest-path $(BRIDGE_MANIFEST) && \
+		mkdir -p res && mv ./target/near/satoshi_bridge/satoshi_bridge.wasm ./res/$(feature)_bridge_release.wasm \
+	) \
+)
 
-nbtc: contracts/nbtc
-	$(call local_build_wasm,nbtc,nbtc)
+$(foreach feature,$(FEATURES), \
+	$(eval build-local-$(feature): ; \
+		cargo near build non-reproducible-wasm --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST) --no-abi && \
+		mkdir -p res && mv ./target/near/satoshi_bridge/satoshi_bridge.wasm ./res/$(feature)_bridge.wasm \
+	) \
+)
+
+$(foreach feature,$(FEATURES), \
+	$(eval clippy-$(feature): ; cargo clippy --no-default-features --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST) -- $(LINT_OPTIONS)) \
+)
+
+$(foreach feature,$(FEATURES), \
+	$(eval fmt-$(feature): ; cargo fmt --all --check --manifest-path $(BRIDGE_MANIFEST)) \
+)
+
+$(foreach feature,$(FEATURES), \
+	$(eval test-$(feature): ; cargo test --no-default-features --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST)) \
+)
+
 
 mock-dapp: contracts/mock-dapp
 	$(call local_build_wasm,mock-dapp,mock_dapp)
@@ -26,19 +53,9 @@ mock-chain-signatures: contracts/mock-chain-signatures
 mock-btc-light-client: contracts/mock-btc-light-client
 	$(call local_build_wasm,mock-btc-light-client,mock_btc_light_client)
 
-count:
-	@tokei ./contracts/satoshi-bridge/src/ --files --exclude unit
-	@tokei ./contracts/nbtc/src/ --files
-
-release:
-	$(call build_release_wasm,satoshi-bridge,satoshi_bridge)
-	$(call build_release_wasm,nbtc,nbtc)
-	$(call build_release_zcash_wasm)
-
-clean:
-	cargo clean
-	rm -rf res/
-
+nbtc: contracts/nbtc
+	$(call local_build_wasm,nbtc,nbtc)
+	
 define local_build_wasm
 	$(eval PACKAGE_NAME := $(1))
 	$(eval WASM_NAME := $(2))

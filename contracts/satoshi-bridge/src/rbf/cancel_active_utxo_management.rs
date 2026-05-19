@@ -1,5 +1,7 @@
-use crate::psbt_wrapper::PsbtWrapper;
-use crate::*;
+use crate::{
+    env, init_rbf_btc_pending_info, nano_to_sec, psbt_wrapper::PsbtWrapper, require, AccountId,
+    BTCPendingInfo, Contract, PendingInfoStage, PendingInfoState, RbfState,
+};
 
 impl Contract {
     pub fn check_cancel_active_utxo_management_rbf_psbt_valid(
@@ -21,6 +23,7 @@ impl Contract {
         _account_id: &AccountId,
         original_btc_pending_verify_id: String,
         cancel_active_utxo_management_rbf_psbt: PsbtWrapper,
+        _predecessor_account_id: AccountId,
     ) -> String {
         let original_tx_btc_pending_info =
             self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);

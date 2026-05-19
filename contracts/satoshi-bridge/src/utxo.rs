@@ -1,5 +1,7 @@
-use crate::psbt_wrapper::PsbtWrapper;
-use crate::*;
+use crate::{
+    generate_utxo_storage_key, near, psbt_wrapper::PsbtWrapper, u64_dec_format, Contract, OutPoint,
+};
+use near_sdk::env;
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone)]
@@ -66,7 +68,9 @@ impl Contract {
                 self.data_mut()
                     .utxos
                     .remove(&utxo_storage_key)
-                    .unwrap_or_else(|| panic!("UTXO {} not exist", utxo_storage_key))
+                    .unwrap_or_else(|| {
+                        env::panic_str(&format!("UTXO {} not exist", utxo_storage_key))
+                    })
             })
             .collect::<Vec<_>>();
         (utxo_storage_keys, vutxos)

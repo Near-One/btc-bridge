@@ -1,4 +1,5 @@
-use crate::*;
+use crate::{near, require, u128_dec_format, AccountId, Contract};
+use near_sdk::env;
 use std::collections::HashSet;
 
 #[near(serializers = [borsh, json])]
@@ -15,18 +16,43 @@ pub struct OutstandingInfo {
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 pub struct Account {
     pub account_id: AccountId,
+    pub btc_pending_sign_ids: HashSet<String>,
+    pub btc_pending_verify_list: HashSet<String>,
+}
+
+/// Old Account format (v0.7.5 and earlier) with single pending sign id.
+#[near(serializers = [borsh])]
+#[derive(Clone)]
+pub struct AccountV0 {
+    pub account_id: AccountId,
     pub btc_pending_sign_id: Option<String>,
     pub btc_pending_verify_list: HashSet<String>,
 }
 
+impl From<AccountV0> for Account {
+    fn from(v: AccountV0) -> Self {
+        let mut btc_pending_sign_ids = HashSet::new();
+        if let Some(id) = v.btc_pending_sign_id {
+            btc_pending_sign_ids.insert(id);
+        }
+        Self {
+            account_id: v.account_id,
+            btc_pending_sign_ids,
+            btc_pending_verify_list: v.btc_pending_verify_list,
+        }
+    }
+}
+
 #[near(serializers = [borsh])]
 pub enum VAccount {
+    V0(AccountV0),
     Current(Account),
 }
 
 impl From<VAccount> for Account {
     fn from(v: VAccount) -> Self {
         match v {
+            VAccount::V0(c) => c.into(),
             VAccount::Current(c) => c,
         }
     }
@@ -35,6 +61,7 @@ impl From<VAccount> for Account {
 impl From<&VAccount> for Account {
     fn from(v: &VAccount) -> Self {
         match v {
+            VAccount::V0(c) => c.clone().into(),
             VAccount::Current(c) => c.clone(),
         }
     }
@@ -42,16 +69,14 @@ impl From<&VAccount> for Account {
 
 impl<'a> From<&'a mut VAccount> for &'a mut Account {
     fn from(v: &'a mut VAccount) -> Self {
-        match v {
-            VAccount::Current(c) => c,
+        // Lazy migrate V0 -> Current on first mutable access
+        if let VAccount::V0(old) = v {
+            let migrated: Account = old.clone().into();
+            *v = VAccount::Current(migrated);
         }
-    }
-}
-
-impl<'a> From<&'a VAccount> for &'a Account {
-    fn from(v: &'a VAccount) -> Self {
         match v {
             VAccount::Current(c) => c,
+            _ => unreachable!(),
         }
     }
 }
@@ -66,27 +91,39 @@ impl Account {
     pub fn new(account_id: &AccountId) -> Self {
         Self {
             account_id: account_id.clone(),
-            btc_pending_sign_id: None,
+            btc_pending_sign_ids: HashSet::new(),
             btc_pending_verify_list: HashSet::new(),
         }
+    }
+
+    pub fn pending_sign_count(&self) -> u32 {
+        u32::try_from(self.btc_pending_sign_ids.len()).unwrap_or(u32::MAX)
     }
 }
 
 impl Contract {
+    pub fn get_max_pending_sign_txs(&self, account_id: &AccountId) -> u32 {
+        self.data()
+            .pending_tx_limits
+            .get(account_id)
+            .copied()
+            .unwrap_or(1)
+    }
+
+    pub fn require_pending_sign_capacity(&self, account_id: &AccountId) {
+        require!(
+            self.get_account(account_id)
+                .unwrap_or_else(|| {
+                    env::panic_str(&format!("ERR_ACCOUNT_NOT_REGISTERED: {}", account_id))
+                })
+                .pending_sign_count()
+                < self.get_max_pending_sign_txs(account_id),
+            "Too many pending sign transactions"
+        );
+    }
+
     pub fn check_account_exists(&self, account_id: &AccountId) -> bool {
         self.data().accounts.contains_key(account_id)
-    }
-
-    pub fn internal_get_account(&self, account_id: &AccountId) -> Option<&Account> {
-        self.data().accounts.get(account_id).map(|o| o.into())
-    }
-
-    pub fn internal_unwrap_account(&self, account_id: &AccountId) -> &Account {
-        self.data()
-            .accounts
-            .get(account_id)
-            .map(|o| o.into())
-            .expect("ACCOUNT NOT REGISTERED")
     }
 
     pub fn internal_unwrap_mut_account(&mut self, account_id: &AccountId) -> &mut Account {
@@ -94,7 +131,9 @@ impl Contract {
             .accounts
             .get_mut(account_id)
             .map(|o| o.into())
-            .expect("ACCOUNT NOT REGISTERED")
+            .unwrap_or_else(|| {
+                env::panic_str(&format!("ERR_ACCOUNT_NOT_REGISTERED: {}", account_id))
+            })
     }
 
     pub fn internal_unwrap_or_create_mut_account(

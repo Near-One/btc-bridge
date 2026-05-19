@@ -1,5 +1,9 @@
-use crate::*;
+use crate::{
+    env, ext_contract, nano_to_sec, near, require, serde_json, AccountId, Contract, ContractExt,
+    Event, Gas, Promise, PublicKey, MAX_PUBLIC_KEY_RESULT, MAX_SIGNATURE_RESULT,
+};
 use bitcoin::ecdsa::Signature;
+
 pub const GAS_FOR_SIGN_CALL: Gas = Gas::from_tgas(50);
 pub const GAS_FOR_SIGN_BTC_TRANSACTION_CALL_BACK: Gas = Gas::from_tgas(30);
 
@@ -75,12 +79,13 @@ impl Contract {
         sign_index: usize,
         key_version: u32,
     ) -> Promise {
-        let public_key = self.generate_btc_public_key(
-            &self
-                .internal_unwrap_btc_pending_info(&btc_pending_sign_id)
-                .vutxos[sign_index]
-                .get_path(),
-        );
+        let pending_info = self.internal_unwrap_btc_pending_info(&btc_pending_sign_id);
+
+        let public_keys: Vec<_> = pending_info
+            .vutxos
+            .iter()
+            .map(|vutxo| self.generate_btc_public_key(&vutxo.get_path()))
+            .collect();
 
         let btc_pending_info = self.internal_unwrap_btc_pending_info(&btc_pending_sign_id);
         require!(
@@ -89,7 +94,7 @@ impl Contract {
         );
         let payload = btc_pending_info
             .get_psbt()
-            .get_hash_to_sign(sign_index, &public_key);
+            .get_hash_to_sign(sign_index, &public_keys);
         let path = btc_pending_info.vutxos[sign_index].get_path();
         self.sign_promise(SignRequest {
             payload,
@@ -112,7 +117,7 @@ impl Contract {
 impl Contract {
     #[private]
     pub fn sync_root_public_key_callback(&mut self) -> bool {
-        if let Some(result_bytes) = promise_result_as_success() {
+        if let Ok(result_bytes) = env::promise_result_checked(0, MAX_PUBLIC_KEY_RESULT) {
             let root_public_key =
                 serde_json::from_slice::<PublicKey>(&result_bytes).expect("Invalid PublicKey");
             self.internal_mut_config().chain_signatures_root_public_key = Some(root_public_key);
@@ -133,9 +138,10 @@ impl Contract {
         btc_pending_sign_id: String,
         sign_index: usize,
     ) -> bool {
-        if let Some(result_bytes) = promise_result_as_success() {
+        if let Ok(result_bytes) = env::promise_result_checked(0, MAX_SIGNATURE_RESULT) {
             let signature = serde_json::from_slice::<SignatureResponse>(&result_bytes)
                 .expect("Invalid signature");
+
             let public_key = self
                 .generate_btc_public_key(
                     &self
@@ -164,20 +170,36 @@ impl Contract {
             btc_pending_info.psbt_hex = psbt.serialize();
             if btc_pending_info.is_all_signed() {
                 let tx_bytes_with_sign = psbt.extract_tx_bytes_with_sign();
+
+                // For ZCash chains, use base64 encoding to save space (1.33x vs 2x overhead for hex)
+                // ZCash transactions with Orchard bundles are larger and benefit from compact encoding
+                // For Bitcoin chains, keep hex encoding for backward compatibility
+
+                #[cfg(feature = "zcash")]
+                let tx_bytes_base64 = {
+                    use near_sdk::base64::{engine::general_purpose::STANDARD, Engine};
+                    STANDARD.encode(&tx_bytes_with_sign)
+                };
+
                 Event::SignedBtcTransaction {
                     account_id: &account_id,
                     tx_id: btc_pending_sign_id.clone(),
+                    #[cfg(not(feature = "zcash"))]
                     tx_bytes: &tx_bytes_with_sign,
+                    #[cfg(feature = "zcash")]
+                    tx_bytes_base64,
                 }
                 .emit();
+
                 btc_pending_info.tx_bytes_with_sign = Some(tx_bytes_with_sign);
                 btc_pending_info.to_pending_verify_stage();
 
                 let is_original_tx = btc_pending_info.get_original_tx_id().is_none();
                 let account = self.internal_unwrap_mut_account(&account_id);
-                let clear_account_btc_pending_sign_id =
-                    account.btc_pending_sign_id.take() == Some(btc_pending_sign_id.clone());
-                require!(clear_account_btc_pending_sign_id, "Internal error");
+                require!(
+                    account.btc_pending_sign_ids.remove(&btc_pending_sign_id),
+                    "Internal error"
+                );
                 if is_original_tx {
                     account
                         .btc_pending_verify_list

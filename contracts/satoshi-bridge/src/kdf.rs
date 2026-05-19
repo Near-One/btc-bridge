@@ -1,7 +1,17 @@
-use crate::*;
+use crate::{env, BtcPublicKey, Contract};
 
 use crate::network::Address;
 use k256::elliptic_curve::sec1::ToEncodedPoint;
+
+impl Contract {
+    pub fn get_public_key_by_path(&self, path: String) -> String {
+        let public_key_bytes = self.generate_public_key(&path);
+        let uncompressed_btc_public_key =
+            BtcPublicKey::from_slice(&public_key_bytes).expect("Invalid public key bytes");
+
+        uncompressed_btc_public_key.inner.to_string()
+    }
+}
 
 impl Contract {
     pub fn generate_public_key(&self, path: &str) -> Vec<u8> {
@@ -11,7 +21,12 @@ impl Contract {
                 .clone()
                 .expect("Missing chain_signatures_root_public_key"),
         );
-        let epsilon = crypto_shared::derive_epsilon(&env::current_account_id(), path);
+        let epsilon = crypto_shared::derive_epsilon(
+            // NOTE: conversion to string with parsing later on is needed to convert to the proper
+            // version of `AccountId`
+            &env::current_account_id().as_str().parse().unwrap(),
+            path,
+        );
         let user_pk = crypto_shared::derive_key(mpc_pk, epsilon);
         let user_pk_encoded_point = user_pk.to_encoded_point(false);
         user_pk_encoded_point.as_bytes().to_vec()

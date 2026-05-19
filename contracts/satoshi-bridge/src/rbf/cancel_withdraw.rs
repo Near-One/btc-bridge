@@ -1,5 +1,8 @@
-use crate::psbt_wrapper::PsbtWrapper;
-use crate::*;
+use crate::{
+    env, init_rbf_btc_pending_info, nano_to_sec, psbt_wrapper::PsbtWrapper, require,
+    AccessControllable, AccountId, BTCPendingInfo, Contract, PendingInfoStage, PendingInfoState,
+    RbfState, Role,
+};
 
 impl Contract {
     pub fn check_cancel_withdraw_rbf_psbt_valid(
@@ -21,6 +24,7 @@ impl Contract {
         _account_id: &AccountId,
         original_btc_pending_verify_id: String,
         cancel_withdraw_rbf_psbt: PsbtWrapper,
+        predecessor_account_id: AccountId,
     ) -> String {
         let original_tx_btc_pending_info =
             self.internal_unwrap_btc_pending_info(&original_btc_pending_verify_id);
@@ -52,7 +56,7 @@ impl Contract {
             .saturating_sub(btc_pending_info.transfer_amount - btc_pending_info.withdraw_fee);
         if excess_gas_fee > 0 {
             require!(
-                self.acl_has_role(Role::DAO.into(), env::predecessor_account_id()),
+                self.acl_has_role(Role::DAO.into(), predecessor_account_id),
                 "gas fee exceeds the user's balance, only the owner is allowed to cancel"
             );
             require!(

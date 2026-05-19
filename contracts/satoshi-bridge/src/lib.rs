@@ -3,17 +3,18 @@ use near_sdk::{
     assert_one_yocto,
     borsh::{BorshDeserialize, BorshSerialize},
     env, ext_contract, is_promise_success,
-    json_types::{U128, U64},
-    log, near, promise_result_as_success, require,
+    json_types::U128,
+    log, near, require,
     serde::{Deserialize, Serialize},
     serde_json::{self, json, Value},
     store::{IterableMap, IterableSet, LazyOption, LookupSet},
     AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, Promise, PromiseOrValue, PublicKey,
     Timestamp,
 };
+use omni_utils::macros::trusted_relayer;
 use std::collections::{HashMap, HashSet};
 
-use bitcoin::{absolute::LockTime, Amount, OutPoint, PublicKey as BtcPublicKey, ScriptBuf, TxOut};
+use bitcoin::{Amount, OutPoint, PublicKey as BtcPublicKey, ScriptBuf, TxOut};
 
 pub mod account;
 pub mod api;
@@ -32,9 +33,11 @@ pub mod json_utils;
 pub mod kdf;
 pub mod legacy;
 pub mod nbtc;
-mod network;
+pub mod network;
 pub mod psbt;
 pub mod rbf;
+#[cfg(not(feature = "zcash"))]
+pub mod refund;
 pub mod token_transfer;
 #[cfg(test)]
 mod unit;
@@ -53,6 +56,8 @@ pub use crate::json_utils::*;
 pub use crate::legacy::*;
 pub use crate::nbtc::*;
 pub use crate::rbf::*;
+#[cfg(not(feature = "zcash"))]
+pub use crate::refund::*;
 pub use crate::token_transfer::*;
 pub use crate::utils::*;
 pub use crate::utxo::*;
@@ -61,6 +66,8 @@ pub use crate::utxo::*;
 pub use crate::bitcoin_utils::psbt_wrapper;
 #[cfg(not(feature = "zcash"))]
 pub use crate::bitcoin_utils::transaction::Transaction as WrappedTransaction;
+#[cfg(not(feature = "zcash"))]
+use crate::bitcoin_utils::types::ChainSpecificData;
 
 #[cfg(feature = "zcash")]
 pub use crate::zcash_utils::contract_methods::*;
@@ -68,6 +75,8 @@ pub use crate::zcash_utils::contract_methods::*;
 pub use crate::zcash_utils::psbt_wrapper;
 #[cfg(feature = "zcash")]
 pub use crate::zcash_utils::transaction::Transaction as WrappedTransaction;
+#[cfg(feature = "zcash")]
+use crate::zcash_utils::types::ChainSpecificData;
 
 #[cfg(test)]
 pub use unit::*;
@@ -87,6 +96,9 @@ enum StorageKey {
     LostFound,
     PostActionMsgTemplates,
     ExtraMsgRelayerWhiteList,
+    PendingTxLimits,
+    #[cfg(not(feature = "zcash"))]
+    RefundRequests,
 }
 
 #[derive(AccessControlRole, Deserialize, Serialize, Copy, Clone)]
@@ -97,6 +109,9 @@ pub enum Role {
     PauseManager,
     UpgradableCodeStager,
     UpgradableCodeDeployer,
+    UnrestrictedRelayer,
+    RelayerManager,
+    RefundOperator,
 }
 
 #[near(serializers = [borsh])]
@@ -112,12 +127,15 @@ pub struct ContractData {
     pub extra_msg_relayer_white_list: IterableSet<AccountId>,
     pub post_action_receiver_id_white_list: IterableSet<AccountId>,
     pub post_action_msg_templates: IterableMap<AccountId, HashSet<String>>,
+    pub pending_tx_limits: IterableMap<AccountId, u32>,
     pub lost_found: IterableMap<AccountId, u128>,
     pub acc_collected_protocol_fee: u128,
     pub cur_available_protocol_fee: u128,
     pub acc_claimed_protocol_fee: u128,
     pub cur_reserved_protocol_fee: u128,
     pub acc_protocol_fee_for_gas: u128,
+    #[cfg(not(feature = "zcash"))]
+    pub refund_requests: IterableMap<String, VRefundRequest>,
 }
 
 #[near(serializers = [borsh])]
@@ -126,6 +144,7 @@ pub enum VersionedContractData {
     V1(ContractDataV1),
     V2(ContractDataV2),
     V3(ContractDataV3),
+    V4(ContractDataV4),
     Current(ContractData),
 }
 
@@ -144,6 +163,11 @@ pub struct Contract {
     data: VersionedContractData,
 }
 
+#[trusted_relayer(
+    bypass_roles(Role::DAO, Role::UnrestrictedRelayer),
+    manager_roles(Role::DAO, Role::RelayerManager),
+    config_roles(Role::DAO)
+)]
 #[near]
 impl Contract {
     #[init]
@@ -174,7 +198,10 @@ impl Contract {
                     StorageKey::PostActionReceiverIdWhiteListWhiteList,
                 ),
                 post_action_msg_templates: IterableMap::new(StorageKey::PostActionMsgTemplates),
+                pending_tx_limits: IterableMap::new(StorageKey::PendingTxLimits),
                 lost_found: IterableMap::new(StorageKey::LostFound),
+                #[cfg(not(feature = "zcash"))]
+                refund_requests: IterableMap::new(StorageKey::RefundRequests),
                 acc_collected_protocol_fee: 0,
                 cur_available_protocol_fee: 0,
                 acc_claimed_protocol_fee: 0,

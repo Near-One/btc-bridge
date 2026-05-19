@@ -16,12 +16,18 @@ use near_workspaces::{
     network::Sandbox, result::ExecutionFinalResult, Account, Contract, Result, Worker,
 };
 use satoshi_bridge::{
-    btc_light_client::deposit, BTCPendingInfo, DepositMsg, Metadata, TokenReceiverMessage, UTXO,
+    btc_light_client::deposit, BTCPendingInfo, DepositMsg, Metadata, TokenReceiverMessage,
+    DEFAULT_REFUND_TIMELOCK_SEC, DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC, UTXO,
 };
 
 use crate::{PRICE_ORICE_NEAR_PRICE_ID, PYTH_ORICE_NEAR_PRICE_ID};
 
 const DATA_IMAGE_SVG_NEAR_ICON: &str = "data:image/svg+xml,%3Csvg%20width%3D%2232%22%20height%3D%2232%22%20viewBox%3D%220%200%2032%2032%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cg%20clip-path%3D%22url(%23clip0_2351_779)%22%3E%3Cpath%20d%3D%22M16%2032C24.8366%2032%2032%2024.8366%2032%2016C32%207.16344%2024.8366%200%2016%200C7.16344%200%200%207.16344%200%2016C0%2024.8366%207.16344%2032%2016%2032Z%22%20fill%3D%22%2300E99F%22%2F%3E%3Cpath%20d%3D%22M16.0006%2028.2858C22.7858%2028.2858%2028.2863%2022.7853%2028.2863%2016.0001C28.2863%209.21486%2022.7858%203.71436%2016.0006%203.71436C9.21535%203.71436%203.71484%209.21486%203.71484%2016.0001C3.71484%2022.7853%209.21535%2028.2858%2016.0006%2028.2858Z%22%20stroke%3D%22black%22%2F%3E%3Cpath%20d%3D%22M27.1412%2016C27.1412%2022.1541%2022.1524%2027.1429%2015.9983%2027.1429C9.84427%2027.1429%204.85547%2022.1541%204.85547%2016C4.85547%209.84598%209.84427%204.85718%2015.9983%204.85718C22.1524%204.85718%2027.1412%209.84598%2027.1412%2016Z%22%20stroke%3D%22black%22%20stroke-width%3D%220.5%22%2F%3E%3Cpath%20fill-rule%3D%22evenodd%22%20clip-rule%3D%22evenodd%22%20d%3D%22M16.2167%2011.1743C15.9198%2011.1643%2015.6095%2011.1622%2015.2868%2011.1668V9.32056H13.8907V11.2217C13.1583%2011.2659%2012.3792%2011.3332%2011.5625%2011.4149V12.811H12.9586V18.8607H11.7952V20.4895H13.8893V22.5836H15.2854V20.4895H16.2161V22.5836H17.3795V20.4895C18.4654%2020.4119%2020.6836%2019.7915%2020.8698%2017.93C21.0559%2016.0686%2019.7064%2015.6032%2019.0083%2015.6032C19.5512%2015.3705%2020.544%2014.5328%2020.1717%2013.0436C19.9215%2012.043%2019.0072%2011.5204%2017.6128%2011.2984V9.32164H16.2167V11.1743ZM18.0737%2013.9723C18.0737%2012.8554%2016.2122%2012.7313%2015.2815%2012.8088V15.1356C16.2122%2015.2132%2018.0737%2015.0891%2018.0737%2013.9723ZM15.2826%2016.5322V18.8591C16.2133%2018.9366%2018.3075%2018.859%2018.3075%2017.6956C18.3075%2016.2994%2016.2133%2016.4547%2015.2826%2016.5322Z%22%20fill%3D%22black%22%2F%3E%3C%2Fg%3E%3Cdefs%3E%3CclipPath%20id%3D%22clip0_2351_779%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20fill%3D%22white%22%2F%3E%3C%2FclipPath%3E%3C%2Fdefs%3E%3C%2Fsvg%3E";
+
+#[cfg(feature = "zcash")]
+const BRIDGE_WASM_PATH: &str = "../../res/zcash_bridge.wasm";
+#[cfg(not(feature = "zcash"))]
+const BRIDGE_WASM_PATH: &str = "../../res/bitcoin_bridge.wasm";
 
 pub struct Context {
     pub root: Account,
@@ -38,7 +44,7 @@ pub struct Context {
 }
 
 impl Context {
-    pub async fn new(worker: &Worker<Sandbox>) -> Self {
+    pub async fn new(worker: &Worker<Sandbox>, chain: Option<String>) -> Self {
         let root = worker.root_account().unwrap();
         let (
             bridge_contract,
@@ -56,7 +62,7 @@ impl Context {
                     .unwrap()
                     .unwrap();
                 bridge
-                    .deploy(&std::fs::read("../../res/satoshi_bridge.wasm").unwrap())
+                    .deploy(&std::fs::read(BRIDGE_WASM_PATH).unwrap())
                     .await
                     .unwrap()
                     .unwrap()
@@ -142,9 +148,10 @@ impl Context {
             .args_json(json!({
                 "controller": root.id(),
                 "bridge_id": bridge_contract.id(),
-                "name": "Near WTC".to_string(),
+                "name": "Near BTC".to_string(),
                 "symbol": "NBTC".to_string(),
                 "icon": Some(DATA_IMAGE_SVG_NEAR_ICON.to_string()),
+                "decimals": 8,
             }))
             .transact()
             .await
@@ -161,10 +168,14 @@ impl Context {
             .unwrap()
             .unwrap();
 
+        let chain = chain.unwrap_or(
+            std::env::var("TEST_CHAIN").unwrap_or_else(|_| "BitcoinMainnet".to_string()),
+        );
+
         root.call(bridge_contract.id(), "new")
             .args_json(json!({
                 "config": {
-                    "chain": "BitcoinMainnet",
+                    "chain": chain,
                     "chain_signatures_account_id": chain_signatures_contract.id(),
                     "nbtc_account_id": nbtc_contract.id(),
                     "btc_light_client_account_id": btc_light_client_contract.id(),
@@ -200,6 +211,10 @@ impl Context {
                     "rbf_num_limit": 99,
                     "max_btc_tx_pending_sec": 3600 * 24,
                     "unhealthy_utxo_amount": 1000,
+                    "max_pending_sign_txs": 1,
+                    "refund_timelock_sec": DEFAULT_REFUND_TIMELOCK_SEC,
+                    "unsafe_refund_timelock_sec": DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC,
+                    "expiry_height_gap": 5000,
                 }
             }))
             .transact()
@@ -225,6 +240,20 @@ impl Context {
             .await
             .unwrap()
             .unwrap();
+
+        // Grant UnrestrictedRelayer role to test accounts so they can call
+        // methods guarded by #[trusted_relayer]
+        for account in [&relayer, &alice, &bob, &charlie, &tx_listener] {
+            root.call(bridge_contract.id(), "acl_grant_role")
+                .args_json(json!({
+                    "role": "UnrestrictedRelayer",
+                    "account_id": account.id()
+                }))
+                .transact()
+                .await
+                .unwrap()
+                .unwrap();
+        }
 
         Self {
             root,
@@ -266,7 +295,8 @@ impl Context {
         worker: &Worker<Sandbox>,
         account_id: &AccountId,
     ) -> u128 {
-        match worker.view_account(account_id).await {
+        let ws_account_id: near_workspaces::AccountId = account_id.as_str().parse().unwrap();
+        match worker.view_account(&ws_account_id).await {
             Ok(a) => a.balance.as_yoctonear(),
             Err(_) => 0,
         }
@@ -584,12 +614,14 @@ impl Context {
         protocol_fee_rate: u32,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_withdraw_bridge_fee")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "withdraw_bridge_fee": {
-                    "fee_min": fee_min.to_string(),
-                    "fee_rate": fee_rate,
-                    "protocol_fee_rate": protocol_fee_rate,
+                "update": {
+                    "withdraw_bridge_fee": {
+                        "fee_min": fee_min.to_string(),
+                        "fee_rate": fee_rate,
+                        "protocol_fee_rate": protocol_fee_rate,
+                    },
                 },
             }))
             .max_gas()
@@ -605,12 +637,14 @@ impl Context {
         protocol_fee_rate: u32,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_deposit_bridge_fee")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "deposit_bridge_fee": {
-                    "fee_min": fee_min.to_string(),
-                    "fee_rate": fee_rate,
-                    "protocol_fee_rate": protocol_fee_rate,
+                "update": {
+                    "deposit_bridge_fee": {
+                        "fee_min": fee_min.to_string(),
+                        "fee_rate": fee_rate,
+                        "protocol_fee_rate": protocol_fee_rate,
+                    },
                 },
             }))
             .max_gas()
@@ -640,10 +674,12 @@ impl Context {
         active_management_upper_limit: u32,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_active_management_limit")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "active_management_lower_limit": active_management_lower_limit,
-                "active_management_upper_limit": active_management_upper_limit,
+                "update": {
+                    "active_management_lower_limit": active_management_lower_limit,
+                    "active_management_upper_limit": active_management_upper_limit,
+                },
             }))
             .max_gas()
             .deposit(NearToken::from_yoctonear(1))
@@ -657,10 +693,12 @@ impl Context {
         passive_management_upper_limit: u32,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_passive_management_limit")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "passive_management_lower_limit": passive_management_lower_limit,
-                "passive_management_upper_limit": passive_management_upper_limit,
+                "update": {
+                    "passive_management_lower_limit": passive_management_lower_limit,
+                    "passive_management_upper_limit": passive_management_upper_limit,
+                },
             }))
             .max_gas()
             .deposit(NearToken::from_yoctonear(1))
@@ -674,10 +712,12 @@ impl Context {
         max_btc_gas_fee: u128,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_btc_gas_fee_valid_range")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "min_btc_gas_fee": min_btc_gas_fee.to_string(),
-                "max_btc_gas_fee": max_btc_gas_fee.to_string(),
+                "update": {
+                    "min_btc_gas_fee": min_btc_gas_fee.to_string(),
+                    "max_btc_gas_fee": max_btc_gas_fee.to_string(),
+                },
             }))
             .max_gas()
             .deposit(NearToken::from_yoctonear(1))
@@ -690,9 +730,11 @@ impl Context {
         max_btc_tx_pending_sec: u32,
     ) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_max_btc_tx_pending_sec")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "max_btc_tx_pending_sec": max_btc_tx_pending_sec,
+                "update": {
+                    "max_btc_tx_pending_sec": max_btc_tx_pending_sec,
+                },
             }))
             .max_gas()
             .deposit(NearToken::from_yoctonear(1))
@@ -702,9 +744,11 @@ impl Context {
 
     pub async fn set_nbtc_account_id(&self) -> Result<ExecutionFinalResult> {
         self.root
-            .call(self.bridge_contract.id(), "set_nbtc_account_id")
+            .call(self.bridge_contract.id(), "update_config")
             .args_json(json!({
-                "nbtc_account_id": self.get_account_by_name("nbtc").id(),
+                "update": {
+                    "nbtc_account_id": self.get_account_by_name("nbtc").id(),
+                },
             }))
             .max_gas()
             .deposit(NearToken::from_yoctonear(1))
@@ -1128,7 +1172,9 @@ impl UpgradeContext {
                     "rbf_num_limit": 99,
                     "max_btc_tx_pending_sec": 3600 * 24,
                     "unhealthy_utxo_amount": 1000,
-                    "expiry_height_gap": 100,
+                    "refund_timelock_sec": DEFAULT_REFUND_TIMELOCK_SEC,
+                    "unsafe_refund_timelock_sec": DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC,
+                    "expiry_height_gap": 1000,
                 }
             }))
             .transact()
@@ -1150,10 +1196,10 @@ impl UpgradeContext {
             .args_json(json!({
                 "controller": root.id(),
                 "bridge_id": previous_satoshi_bridge_contract.id(),
-                    "name": "Near WTC".to_string(),
-                    "symbol": "NBTC".to_string(),
-                    "decimals": 8,
-                    "icon": Some(DATA_IMAGE_SVG_NEAR_ICON.to_string()),
+                "name": "nBTC",
+                "symbol": "nBTC",
+                "icon": Option::<String>::None,
+                "decimals": 8,
             }))
             .transact()
             .await
@@ -1232,5 +1278,126 @@ impl UpgradeContext {
             .await
             .unwrap()
             .json::<String>()
+    }
+}
+
+impl Context {
+    // ── Refund helpers ──
+
+    pub async fn request_refund(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        refund_address: &str,
+        tx_bytes: Vec<u8>,
+        vout: u32,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+        gas_fee: Option<U128>,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "request_refund")
+            .args_json(json!({
+                "deposit_msg": deposit_msg,
+                "refund_address": refund_address,
+                "tx_bytes": tx_bytes,
+                "vout": vout,
+                "tx_block_blockhash": tx_block_blockhash,
+                "tx_index": tx_index,
+                "merkle_proof": merkle_proof,
+                "gas_fee": gas_fee,
+            }))
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn required_balance_for_execute_refund(&self) -> Result<NearToken> {
+        self.bridge_contract
+            .call("required_balance_for_execute_refund")
+            .args_json(json!({}))
+            .view()
+            .await
+            .unwrap()
+            .json::<NearToken>()
+    }
+
+    pub async fn execute_refund(
+        &self,
+        user: &str,
+        utxo_storage_key: &str,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "execute_refund")
+            .args_json(json!({
+                "utxo_storage_key": utxo_storage_key,
+            }))
+            .deposit(NearToken::from_millinear(100))
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn reject_refund(
+        &self,
+        user: &str,
+        utxo_storage_key: &str,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "reject_refund")
+            .args_json(json!({
+                "utxo_storage_key": utxo_storage_key,
+            }))
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn verify_refund_finalize(
+        &self,
+        user: &str,
+        tx_id: &str,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "verify_refund_finalize")
+            .args_json(json!({
+                "tx_id": tx_id,
+                "tx_block_blockhash": tx_block_blockhash,
+                "tx_index": tx_index,
+                "merkle_proof": merkle_proof,
+            }))
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn safe_verify_deposit(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        tx_bytes: Vec<u8>,
+        vout: u32,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "safe_verify_deposit")
+            .args_json(json!({
+                "deposit_msg": deposit_msg,
+                "tx_bytes": tx_bytes,
+                "vout": vout,
+                "tx_block_blockhash": tx_block_blockhash,
+                "tx_index": tx_index,
+                "merkle_proof": merkle_proof,
+            }))
+            .deposit(NearToken::from_millinear(2))
+            .max_gas()
+            .transact()
+            .await
     }
 }

@@ -8,6 +8,12 @@ use zcash_address::{ConversionError, ToAddress, ZcashAddress};
 #[cfg(feature = "zcash")]
 use zcash_protocol::consensus::BranchId;
 
+/// Size of Orchard raw address bytes (diversifier + pk_d).
+pub const ORCHARD_RAW_ADDRESS_SIZE: usize = 43;
+
+/// Type alias for Orchard raw address bytes to avoid magic numbers.
+pub type OrchardRawAddress = [u8; ORCHARD_RAW_ADDRESS_SIZE];
+
 #[near(serializers = [borsh, json])]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Chain {
@@ -22,16 +28,18 @@ pub enum Chain {
 }
 #[cfg(feature = "zcash")]
 pub struct BranchIdUpdateBlockHeight {
-    pub bu6_1_update: u32,
+    pub nu6_1_update: u32,
 }
 
 #[cfg(feature = "zcash")]
 impl BranchIdUpdateBlockHeight {
     pub fn new(chain: &Chain) -> Self {
         match chain {
-            Chain::ZcashMainnet => Self { bu6_1_update: 0 },
+            Chain::ZcashMainnet => Self {
+                nu6_1_update: 3146400,
+            },
             Chain::ZcashTestnet => Self {
-                bu6_1_update: 3536500,
+                nu6_1_update: 3536500,
             },
             _ => unreachable!(),
         }
@@ -41,7 +49,7 @@ impl Chain {
     #[cfg(feature = "zcash")]
     pub fn get_branch_id(&self, block_height: u32) -> BranchId {
         let block_height_update = BranchIdUpdateBlockHeight::new(self);
-        if block_height_update.bu6_1_update != 0 && block_height >= block_height_update.bu6_1_update
+        if block_height_update.nu6_1_update != 0 && block_height >= block_height_update.nu6_1_update
         {
             return BranchId::Nu6_1;
         }
@@ -112,7 +120,7 @@ impl zcash_address::TryFromAddress for Address {
 }
 
 impl Address {
-    /// Parse an address string + chain into AddressInner
+    /// Parse an address string + chain into `AddressInner`
     pub fn parse(address: &str, chain: Chain) -> Result<Self, String> {
         if chain == Chain::ZcashMainnet || chain == Chain::ZcashTestnet {
             let addr = ZcashAddress::try_from_encoded(address)
@@ -131,7 +139,9 @@ impl Address {
 
         if let Some(hrp) = get_segwit_hrp(&chain) {
             if let Ok((decoded_hrp, witness_version, data)) = bech32::segwit::decode(address) {
-                if decoded_hrp.as_str() != hrp {
+                let expected_hrp =
+                    Hrp::parse(hrp).map_err(|e| format!("Invalid expected HRP '{hrp}': {e}"))?;
+                if expected_hrp != decoded_hrp {
                     return Err(format!(
                         "Bech32 HRP mismatch: expected '{hrp}', got '{decoded_hrp}'"
                     ));
@@ -191,12 +201,30 @@ impl Address {
                                 })?,
                             ))
                         }
-                        _ => continue,
-                    };
+                        _ => {}
+                    }
                 }
 
                 Err("No receiver found in address".to_string())
             }
+        }
+    }
+
+    /// Extract the Orchard receiver raw bytes from a Unified Address string for the given chain.
+    pub fn extract_orchard_receiver(&self) -> Result<OrchardRawAddress, String> {
+        match self {
+            Address::Unified { address, .. } => {
+                let receiver_list = address.items_as_parsed();
+                for receiver in receiver_list {
+                    match receiver {
+                        Receiver::Orchard(bytes) => return Ok(*bytes),
+                        _ => continue,
+                    }
+                }
+
+                Err("Unified address missing Orchard receiver".to_string())
+            }
+            _ => Err("No Orchard address found".to_string()),
         }
     }
 
@@ -250,7 +278,7 @@ impl Address {
 /// Formats bech32 as upper case if alternate formatting is chosen (`{:#}`).
 impl fmt::Display for Address {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        use Address::*;
+        use Address::{P2pkh, P2sh, Segwit, Unified};
         match self {
             P2pkh { hash, chain } => {
                 let prefix = get_pubkey_address_prefix(chain);
@@ -286,7 +314,7 @@ impl fmt::Display for Address {
                 };
 
                 let str_address = ZcashAddress::from_unified(network, address.clone()).encode();
-                write!(fmt, "{}", str_address)
+                write!(fmt, "{str_address}")
             }
         }
     }
@@ -410,6 +438,36 @@ mod tests {
             let display_address = address_from_script.to_string();
             assert_eq!(display_address, address);
         }
+    }
+
+    #[test]
+    fn test_parse_uppercase_bech32_address() {
+        // BIP-173 allows all-uppercase Bech32 strings (commonly produced by QR encoders).
+        // Regression: tx 5sUQNPbKjdrYEBJmJBX47ddaMHGWsizRynz1MHujG4RB panicked on this exact address
+        // with "Bech32 HRP mismatch: expected 'bc', got 'BC'".
+        let upper = "BC1QTGJGS0VZ4FFAEZ59Y64VYTJP6034RPEZGYH8JT";
+        let lower = "bc1qtgjgs0vz4ffaez59y64vytjp6034rpezgyh8jt";
+
+        let from_upper = Address::parse(upper, Chain::BitcoinMainnet).unwrap();
+        let from_lower = Address::parse(lower, Chain::BitcoinMainnet).unwrap();
+        assert_eq!(from_upper, from_lower);
+        assert!(matches!(from_upper, Address::Segwit { .. }));
+        assert_eq!(
+            from_upper.script_pubkey().unwrap(),
+            from_lower.script_pubkey().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_parse_rejects_wrong_network_hrp() {
+        // A testnet bech32 address must NOT decode under BitcoinMainnet, even with the
+        // case-insensitive HRP fix. Guards against accidentally relaxing the network check.
+        let testnet = "tb1pt34385rvqtyuz6muh9hr5ed4fy0cx89zz0faxm6dhku0vqp2pxxs0ymh7y";
+        let err = Address::parse(testnet, Chain::BitcoinMainnet).unwrap_err();
+        assert!(
+            err.contains("HRP mismatch"),
+            "expected HRP mismatch error, got: {err}"
+        );
     }
 
     #[test]
