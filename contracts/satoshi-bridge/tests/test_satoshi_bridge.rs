@@ -1588,50 +1588,57 @@ async fn test_utxo_passive_management() {
     );
     check!(context.set_passive_management_limit(0, u32::MAX));
     let total_change = 500000 + 60000 - (withdraw_amount - withdraw_fee) as u64;
+    let make_withdraw_msg = || TokenReceiverMessage::Withdraw {
+        target_btc_address: TARGET_ADDRESS.to_string(),
+        input: vec![
+            OutPoint {
+                txid: utxo500000[0].parse().unwrap(),
+                vout: utxo500000[1].parse().unwrap(),
+            },
+            OutPoint {
+                txid: utxo60000[0].parse().unwrap(),
+                vout: utxo60000[1].parse().unwrap(),
+            },
+        ],
+        output: vec![
+            TxOut {
+                value: Amount::from_sat((withdraw_amount - btc_gas_fee - withdraw_fee) as u64),
+                script_pubkey: Address::parse(TARGET_ADDRESS, get_chain())
+                    .expect("Invalid btc address")
+                    .script_pubkey()
+                    .expect("Failed to get script pubkey"),
+            },
+            TxOut {
+                value: Amount::from_sat(total_change),
+                script_pubkey: Address::parse(withdraw_change_address.as_str(), get_chain())
+                    .expect("Invalid btc address")
+                    .script_pubkey()
+                    .expect("Failed to get script pubkey"),
+            },
+        ],
+        max_gas_fee: None,
+        chain_specific_data: None,
+    };
+
+    // Without the UnrestrictedRelayer role the `change < smallest input` rule still fires
+    // (here change = 360_000 + change_fee_adjustment, smallest input = 60_000).
+    check!(context.bridge_acl_revoke_role(
+        "root",
+        "UnrestrictedRelayer",
+        &context.get_account_by_name("alice").sdk_id()
+    ));
     check!(
-        context.do_withdraw(
-            "alice",
-            "bridge",
-            withdraw_amount,
-            TokenReceiverMessage::Withdraw {
-                target_btc_address: TARGET_ADDRESS.to_string(),
-                input: vec![
-                    OutPoint {
-                        txid: utxo500000[0].parse().unwrap(),
-                        vout: utxo500000[1].parse().unwrap(),
-                    },
-                    OutPoint {
-                        txid: utxo60000[0].parse().unwrap(),
-                        vout: utxo60000[1].parse().unwrap(),
-                    }
-                ],
-                output: vec![
-                    TxOut {
-                        value: Amount::from_sat(
-                            (withdraw_amount - btc_gas_fee - withdraw_fee) as u64
-                        ),
-                        script_pubkey: Address::parse(TARGET_ADDRESS, get_chain())
-                            .expect("Invalid btc address")
-                            .script_pubkey()
-                            .expect("Failed to get script pubkey")
-                    },
-                    TxOut {
-                        value: Amount::from_sat(total_change),
-                        script_pubkey: Address::parse(
-                            withdraw_change_address.as_str(),
-                            get_chain()
-                        )
-                        .expect("Invalid btc address")
-                        .script_pubkey()
-                        .expect("Failed to get script pubkey")
-                    }
-                ],
-                max_gas_fee: None,
-                chain_specific_data: None,
-            }
-        ),
-        "The change amount must be less than all inputs"
+        context.do_withdraw("alice", "bridge", withdraw_amount, make_withdraw_msg()),
+        "The change amount must be less than the smallest input"
     );
+
+    // Granting UnrestrictedRelayer back bypasses the rule and the same PSBT succeeds.
+    check!(context.bridge_acl_grant_role(
+        "root",
+        "UnrestrictedRelayer",
+        &context.get_account_by_name("alice").sdk_id()
+    ));
+    check!(context.do_withdraw("alice", "bridge", withdraw_amount, make_withdraw_msg()));
 }
 
 #[tokio::test]
