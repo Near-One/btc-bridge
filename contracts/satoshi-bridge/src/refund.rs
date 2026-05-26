@@ -401,6 +401,21 @@ impl Contract {
             refund_request.refund_address.clone(),
         );
 
+        // `validate_orchard_bundle` only checks the recipient and the bundle's
+        // internal value balance, not that it matches the deposit economics.
+        // Enforce that the shielded output equals deposit - gas, otherwise the
+        // resulting transaction would not balance against the chosen gas fee.
+        if psbt.has_orchard_bundle() {
+            require!(
+                psbt.get_orchard_output_amount() == refund_amount,
+                format!(
+                    "Orchard output amount ({}) does not match refund amount ({})",
+                    psbt.get_orchard_output_amount(),
+                    refund_amount
+                )
+            );
+        }
+
         self.finalize_refund_with_psbt(
             caller,
             refund_request,

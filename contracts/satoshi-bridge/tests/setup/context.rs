@@ -1340,6 +1340,7 @@ impl Context {
             .json::<NearToken>()
     }
 
+    #[cfg(not(feature = "zcash"))]
     pub async fn execute_refund(
         &self,
         user: &str,
@@ -1349,6 +1350,28 @@ impl Context {
             .call(self.bridge_contract.id(), "execute_refund")
             .args_json(json!({
                 "utxo_storage_key": utxo_storage_key,
+            }))
+            .deposit(NearToken::from_millinear(100))
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    /// Zcash `execute_refund` takes `chain_specific_data`: pass `Some` with an
+    /// Orchard bundle for a shielded refund (to a unified address), or `None`
+    /// for a transparent refund.
+    #[cfg(feature = "zcash")]
+    pub async fn execute_refund(
+        &self,
+        user: &str,
+        utxo_storage_key: &str,
+        chain_specific_data: Option<satoshi_bridge::zcash_utils::types::ChainSpecificData>,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "execute_refund")
+            .args_json(json!({
+                "utxo_storage_key": utxo_storage_key,
+                "chain_specific_data": chain_specific_data,
             }))
             .deposit(NearToken::from_millinear(100))
             .max_gas()
