@@ -518,6 +518,23 @@ impl Context {
             .await
     }
 
+    pub async fn bridge_acl_revoke_role(
+        &self,
+        caller: &str,
+        role: &str,
+        account_id: &AccountId,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(caller)
+            .call(self.bridge_contract.id(), "acl_revoke_role")
+            .args_json(json!({
+                "role": role,
+                "account_id": account_id
+            }))
+            .max_gas()
+            .transact()
+            .await
+    }
+
     pub async fn bridge_add_super_admin(
         &self,
         caller: &str,

@@ -1,6 +1,8 @@
+use near_plugins::AccessControllable;
+
 use crate::{
-    env, network::Address, psbt_wrapper::PsbtWrapper, require, Amount, Contract, Event, ScriptBuf,
-    TxOut, U128, VUTXO,
+    env, network::Address, psbt_wrapper::PsbtWrapper, require, Amount, Contract, Event, Role,
+    ScriptBuf, TxOut, U128, VUTXO,
 };
 
 impl Contract {
@@ -169,12 +171,15 @@ impl Contract {
         withdraw_fee: u128,
     ) -> (usize, usize, u128, u128) {
         let config = self.internal_config();
-        let input_amounts = vutxos.iter().map(|vutxo| u128::from(vutxo.get_amount()));
-        let min_input_amount = input_amounts.clone().min().unwrap();
-        let total_input_amount = input_amounts.sum::<u128>();
+        let (min_input_amount, total_input_amount) = vutxos
+            .iter()
+            .map(|vutxo| u128::from(vutxo.get_amount()))
+            .fold((u128::MAX, 0u128), |(min, sum), v| (min.min(v), sum + v));
         let mut total_output_amount = 0;
         let mut actual_received_amounts = vec![];
         let mut change_amounts = vec![];
+        let signer_is_unrestricted =
+            self.acl_has_role(Role::UnrestrictedRelayer.into(), env::signer_account_id());
 
         if !psbt.get_output().is_empty() {
             let target_address_script_pubkey = self
@@ -192,8 +197,8 @@ impl Contract {
                         "The change amount is too small"
                     );
                     require!(
-                        output_value < min_input_amount,
-                        "The change amount must be less than all inputs"
+                        signer_is_unrestricted || output_value < min_input_amount,
+                        "The change amount must be less than the smallest input, or the caller must have the UnrestrictedRelayer role"
                     );
                     change_amounts.push(output_value);
                 } else {
