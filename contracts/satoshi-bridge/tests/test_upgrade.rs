@@ -162,39 +162,18 @@ async fn test_btc_bridge_upgrade_from_v0_8_0_state_migration() {
     );
 }
 
-/// Reproduces the migration bug for `btc_pending_infos` introduced by the
-/// Subsidize RBF PR.
-///
-/// Setup:
-///   1. Deploy v0.8.4 bridge (with the old, single-variant
-///      `enum VBTCPendingInfo { Current(BTCPendingInfo) }`).
-///   2. Create one pending info via the real deposit→withdraw flow.
-///   3. Upgrade to the current wasm, which redefines the enum as
-///      `enum VBTCPendingInfo { V0(BTCPendingInfoV0), Current(BTCPendingInfo) }`.
-///      The borsh discriminant 0 on existing entries now deserializes as `V0`.
-///
-/// Expectation after upgrade:
-///   - View-path via `internal_view_btc_pending_info` (clone-based, handles
-///     both V0 and Current) keeps working. — ASSERTED.
-///   - Any operational path that goes through `internal_unwrap_btc_pending_info`
-///     (returns `&BTCPendingInfo`, conversion hits `unreachable!()` on V0)
-///     must NOT panic with "unreachable". — CURRENTLY FAILS because the
-///     `Current → Current` arm of `migrate_state` does not run
-///     `migrate_btc_pending_infos_to_current`.
-///
-/// This test should remain failing until the migration is fixed (either by
-/// triggering eager pending-info migration on Current→Current upgrades, or by
-/// making the immutable accessor return an owned `BTCPendingInfo`).
-#[tokio::test]
+/// Set up a context on v0.8.4 with exactly one pending withdraw info, return
+/// the context and the pending tx id. Used by upgrade-migration tests.
 #[cfg(not(feature = "zcash"))]
-async fn test_btc_bridge_upgrade_from_v0_8_4_pending_info_survives_unwrap() {
+async fn setup_v0_8_4_with_one_pending(
+    worker: &near_workspaces::Worker<near_workspaces::network::Sandbox>,
+) -> (Context, String) {
     use bitcoin::{Amount, OutPoint, TxOut};
     use satoshi_bridge::network::{Address, Chain};
-    use satoshi_bridge::{PendingInfoState, TokenReceiverMessage};
+    use satoshi_bridge::TokenReceiverMessage;
 
-    let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new_with_bridge_wasm(
-        &worker,
+        worker,
         Some("BitcoinMainnet".to_string()),
         "tests/data/btc_bridge_v0-8-4.wasm",
     )
@@ -284,48 +263,32 @@ async fn test_btc_bridge_upgrade_from_v0_8_4_pending_info_survives_unwrap() {
         }
     ));
 
-    // Snapshot the pending info before upgrade.
-    let pendings_before = context.get_btc_pending_infos_paged().await.unwrap();
-    assert_eq!(pendings_before.len(), 1, "expected exactly one pending info");
-    let (pending_id, info_before) = pendings_before.into_iter().next().unwrap();
+    // Capture the pending id. The OLD contract's JSON response does not include
+    // `subsidize_amount`, so we read raw JSON to avoid client-side schema mismatch.
+    let pendings_raw: std::collections::HashMap<String, near_sdk::serde_json::Value> = context
+        .bridge_contract
+        .call("get_btc_pending_infos_paged")
+        .args_json(json!({}))
+        .view()
+        .await
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(pendings_raw.len(), 1, "expected exactly one pending info");
+    let pending_id = pendings_raw.keys().next().unwrap().clone();
+    (context, pending_id)
+}
 
-    // Upgrade to the current version (this PR).
-    check!(context.upgrade_satoshi_bridge("../../res/bitcoin_bridge.wasm"));
-
-    // View-path: must still deserialize and surface the new `subsidize_amount`
-    // field defaulted to 0.
-    let pendings_after = context.get_btc_pending_infos_paged().await.unwrap();
-    let info_after = pendings_after
-        .get(&pending_id)
-        .expect("pending info must survive view-path after upgrade");
-    assert_eq!(info_after.account_id, info_before.account_id);
-    assert_eq!(info_after.transfer_amount, info_before.transfer_amount);
-    assert_eq!(info_after.gas_fee, info_before.gas_fee);
-    assert_eq!(
-        info_after.actual_received_amount,
-        info_before.actual_received_amount
-    );
-    match &info_after.state {
-        PendingInfoState::WithdrawOriginal(state) => {
-            assert_eq!(
-                state.subsidize_amount, 0,
-                "new field must default to 0 on migrated entries"
-            );
-        }
-        other => panic!("expected WithdrawOriginal state, got {other:?}"),
-    }
-
-    // Mutating-path: `verify_withdraw` calls `internal_unwrap_btc_pending_info`,
-    // which converts `&VBTCPendingInfo` → `&BTCPendingInfo`. For `V0` entries
-    // that conversion currently hits `unreachable!()` (see
-    // `From<&'a VBTCPendingInfo> for &'a BTCPendingInfo` in `btc_pending_info.rs`).
-    //
-    // We expect verify_withdraw to fail (the merkle proof is empty/fake),
-    // but it MUST fail for a domain reason — not by panicking on the unwrap.
+/// Assert that `verify_withdraw` on the given pending id does not panic in
+/// `internal_unwrap_btc_pending_info`. It can still fail for unrelated reasons
+/// (the merkle proof is fake), but must not hit the `unreachable!()` branch in
+/// `From<&'a VBTCPendingInfo> for &'a BTCPendingInfo` on a `V0` entry.
+#[cfg(not(feature = "zcash"))]
+async fn assert_verify_withdraw_does_not_hit_unreachable(context: &Context, pending_id: &str) {
     let result = context
         .verify_withdraw(
             "relayer",
-            &pending_id,
+            pending_id,
             "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
             1,
             vec![],
@@ -336,14 +299,75 @@ async fn test_btc_bridge_upgrade_from_v0_8_4_pending_info_survives_unwrap() {
     let failures = format!("{:?}", result.receipt_failures());
     assert!(
         !failures.contains("unreachable"),
-        "PR breaks read access to pending infos migrated from v0.8.4: \
-         `internal_unwrap_btc_pending_info` hits `unreachable!()` on `VBTCPendingInfo::V0`.\n\
-         The `Current → Current` arm of `migrate_state` does not eagerly migrate \
-         `btc_pending_infos`. After upgrade, every operational read path \
-         (`verify_withdraw`, `sign_btc_transaction`, `cancel_*`, RBF, refund, burn) \
-         panics on existing pending entries.\n\n\
+        "read access to a pending info hit `unreachable!()` — `migrate_state` \
+         did not migrate `VBTCPendingInfo::V0` entries to `Current`.\n\n\
          Receipt failures: {failures}"
     );
+}
+
+/// Verify that on upgrade from v0.8.4, existing pending withdraw infos survive
+/// both the view-path and any operational path that goes through
+/// `internal_unwrap_btc_pending_info`. Regression for the migration bug where
+/// `migrate_state`'s `Current → Current` arm did not eagerly migrate
+/// `btc_pending_infos`, leaving all entries as `VBTCPendingInfo::V0` and
+/// blocking every in-flight withdraw after upgrade.
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_btc_bridge_upgrade_from_v0_8_4_pending_info_survives_unwrap() {
+    use satoshi_bridge::PendingInfoState;
+
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let (context, pending_id) = setup_v0_8_4_with_one_pending(&worker).await;
+
+    check!(context.upgrade_satoshi_bridge("../../res/bitcoin_bridge.wasm"));
+
+    // View-path: must surface the new `subsidize_amount` field defaulted to 0.
+    let pendings_after = context.get_btc_pending_infos_paged().await.unwrap();
+    let info_after = pendings_after
+        .get(&pending_id)
+        .expect("pending info must survive view-path after upgrade");
+    match &info_after.state {
+        PendingInfoState::WithdrawOriginal(state) => {
+            assert_eq!(
+                state.subsidize_amount, 0,
+                "new field must default to 0 on migrated entries"
+            );
+        }
+        other => panic!("expected WithdrawOriginal state, got {other:?}"),
+    }
+
+    assert_verify_withdraw_does_not_hit_unreachable(&context, &pending_id).await;
+}
+
+/// Upgrading twice in a row must be safe: the second `migrate_state` runs on
+/// already-`Current` `VBTCPendingInfo` entries and must leave the data
+/// unchanged (no panic, `subsidize_amount` stays at 0).
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_btc_bridge_upgrade_from_v0_8_4_double_migration_is_idempotent() {
+    use satoshi_bridge::PendingInfoState;
+
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let (context, pending_id) = setup_v0_8_4_with_one_pending(&worker).await;
+
+    check!(context.upgrade_satoshi_bridge("../../res/bitcoin_bridge.wasm"));
+    check!(context.upgrade_satoshi_bridge("../../res/bitcoin_bridge.wasm"));
+
+    let pendings_after = context.get_btc_pending_infos_paged().await.unwrap();
+    let info_after = pendings_after
+        .get(&pending_id)
+        .expect("pending info must survive two upgrades");
+    match &info_after.state {
+        PendingInfoState::WithdrawOriginal(state) => {
+            assert_eq!(
+                state.subsidize_amount, 0,
+                "double migration must keep `subsidize_amount` at 0"
+            );
+        }
+        other => panic!("expected WithdrawOriginal state, got {other:?}"),
+    }
+
+    assert_verify_withdraw_does_not_hit_unreachable(&context, &pending_id).await;
 }
 
 #[tokio::test]

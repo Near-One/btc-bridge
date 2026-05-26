@@ -7,7 +7,7 @@ use crate::{
     VAccount, VBTCPendingInfo, U128, VUTXO,
 };
 
-fn migrate_btc_pending_infos_to_current(
+pub(crate) fn migrate_btc_pending_infos_to_current(
     btc_pending_infos: &mut IterableMap<String, VBTCPendingInfo>,
 ) {
     let keys: Vec<String> = btc_pending_infos.keys().cloned().collect();

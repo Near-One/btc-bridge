@@ -14,7 +14,7 @@ pub struct OriginalState {
     pub max_gas_fee: u128,
     pub last_rbf_time_sec: Option<u32>,
     pub cancel_rbf_reserved: Option<U128>,
-    #[serde(with = "u128_dec_format")]
+    #[serde(default, with = "u128_dec_format")]
     pub subsidize_amount: u128,
 }
 
