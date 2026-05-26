@@ -45,6 +45,14 @@ pub struct Context {
 
 impl Context {
     pub async fn new(worker: &Worker<Sandbox>, chain: Option<String>) -> Self {
+        Self::new_with_bridge_wasm(worker, chain, BRIDGE_WASM_PATH).await
+    }
+
+    pub async fn new_with_bridge_wasm(
+        worker: &Worker<Sandbox>,
+        chain: Option<String>,
+        bridge_wasm_path: &str,
+    ) -> Self {
         let root = worker.root_account().unwrap();
         let (
             bridge_contract,
@@ -62,7 +70,7 @@ impl Context {
                     .unwrap()
                     .unwrap();
                 bridge
-                    .deploy(&std::fs::read(BRIDGE_WASM_PATH).unwrap())
+                    .deploy(&std::fs::read(bridge_wasm_path).unwrap())
                     .await
                     .unwrap()
                     .unwrap()
@@ -1092,6 +1100,42 @@ impl Context {
                 "gas_token_id": gas_token_id,
                 "amount": amount.map(U128),
             }))
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn upgrade_satoshi_bridge(&self, wasm_path: &str) -> Result<ExecutionFinalResult> {
+        let _ = self
+            .root
+            .call(self.bridge_contract.id(), "up_stage_code")
+            .args_borsh(std::fs::read(wasm_path).unwrap())
+            .max_gas()
+            .transact()
+            .await
+            .unwrap();
+
+        let staged_code_hash: near_sdk::CryptoHash = self
+            .root
+            .call(self.bridge_contract.id(), "up_staged_code_hash")
+            .view()
+            .await
+            .unwrap()
+            .json::<Option<near_sdk::CryptoHash>>()
+            .unwrap()
+            .unwrap();
+
+        self.root
+            .call(self.bridge_contract.id(), "up_deploy_code")
+            .args_json(
+                json!({"hash":  base64::engine::general_purpose::STANDARD.encode(staged_code_hash),
+                "function_call_args": Some(near_plugins::upgradable::FunctionCallArgs{
+                    function_name: "migrate_state".to_string(),
+                    arguments: vec![],
+                    amount: NearToken::from_near(0),
+                    gas: Gas::from_tgas(20)
+                })}),
+            )
             .max_gas()
             .transact()
             .await
