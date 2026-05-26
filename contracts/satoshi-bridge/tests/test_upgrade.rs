@@ -1,8 +1,9 @@
 mod setup;
+#[cfg(not(feature = "zcash"))]
 use near_sdk::serde_json::json;
-use satoshi_bridge::{
-    Account, Config, DEFAULT_REFUND_TIMELOCK_SEC, DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC,
-};
+#[cfg(not(feature = "zcash"))]
+use satoshi_bridge::Account;
+use satoshi_bridge::{Config, DEFAULT_REFUND_TIMELOCK_SEC, DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC};
 use setup::*;
 
 #[tokio::test]
@@ -30,6 +31,20 @@ async fn test_btc_bridge_upgrade_from_v0_8_0() {
     .await;
     check!(view upgrade_context.get_satoshi_bridge_version());
     check!(upgrade_context.upgrade_satoshi_bridge("../../res/bitcoin_bridge.wasm"));
+    check!(view upgrade_context.get_satoshi_bridge_version());
+}
+
+#[tokio::test]
+async fn test_zcash_bridge_upgrade_from_v7_3_0() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let upgrade_context = UpgradeContext::new(
+        &worker,
+        "tests/data/zcash_bridge_v7.3.0.wasm",
+        "tests/data/nbtc_v0-6-0.wasm",
+    )
+    .await;
+    check!(view upgrade_context.get_satoshi_bridge_version());
+    check!(upgrade_context.upgrade_satoshi_bridge("../../res/zcash_bridge.wasm"));
     check!(view upgrade_context.get_satoshi_bridge_version());
 }
 

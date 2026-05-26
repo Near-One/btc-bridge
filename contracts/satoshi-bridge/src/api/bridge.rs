@@ -428,11 +428,10 @@ impl Contract {
     }
 }
 
-#[cfg(not(feature = "zcash"))]
 #[trusted_relayer]
 #[near]
 impl Contract {
-    // ── Refund API (Bitcoin only) ──
+    // ── Refund API ──
 
     /// Submit a refund request for a deposit that was never finalized via `verify_deposit` or `safe_verify_deposit`.
     /// The BTC transaction is verified through the Light Client to prove the deposit exists.
@@ -514,36 +513,28 @@ impl Contract {
     /// # Arguments
     ///
     /// * `utxo_storage_key` - The UTXO key identifying the refund request (`{tx_id}@{vout}`).
+    #[cfg(not(feature = "zcash"))]
     #[payable]
     #[pause(except(roles(Role::DAO)))]
     pub fn execute_refund(&mut self, utxo_storage_key: String) {
-        require!(
-            env::attached_deposit() >= self.required_balance_for_execute_refund(),
-            "Insufficient deposit for storage"
-        );
-        let caller = env::predecessor_account_id();
-        let is_privileged =
-            self.acl_has_any_role(vec![Role::DAO.into(), Role::RefundOperator.into()], caller);
-        let refund_request: crate::RefundRequest = self
-            .data()
-            .refund_requests
-            .get(&utxo_storage_key)
-            .expect("Refund request not found")
-            .into();
-        let config = self.internal_config();
-        let timelock_sec = if refund_request.deposit_msg().refund_address.is_some() {
-            // Pre-authorized refund address: privileged users can fast-track.
-            if is_privileged {
-                0
-            } else {
-                config.refund_timelock_sec
-            }
-        } else {
-            // Refund address supplied by caller of `request_refund`: longer
-            // timelock to give DAO/Operator time to reject suspicious requests.
-            config.unsafe_refund_timelock_sec
-        };
+        let timelock_sec = self.resolve_execute_refund_timelock(&utxo_storage_key);
         self.internal_execute_refund(utxo_storage_key, timelock_sec);
+    }
+
+    /// Execute a refund on Zcash. Pass `chain_specific_data` with an Orchard
+    /// bundle to refund to a shielded address; omit it for a transparent refund.
+    /// Returns a `Promise` because the Zcash transaction is built only after the
+    /// current block height is fetched.
+    #[cfg(feature = "zcash")]
+    #[payable]
+    #[pause(except(roles(Role::DAO)))]
+    pub fn execute_refund(
+        &mut self,
+        utxo_storage_key: String,
+        chain_specific_data: Option<crate::zcash_utils::types::ChainSpecificData>,
+    ) -> Promise {
+        let timelock_sec = self.resolve_execute_refund_timelock(&utxo_storage_key);
+        self.internal_execute_refund(utxo_storage_key, timelock_sec, chain_specific_data)
     }
 
     /// Verify that the refund BTC transaction has been confirmed on the Bitcoin network.
@@ -581,6 +572,38 @@ impl Contract {
 }
 
 impl Contract {
+    /// Validate the attached storage deposit and resolve the timelock that must
+    /// elapse before this refund can be executed. Shared by the Bitcoin and
+    /// Zcash `execute_refund` entrypoints.
+    fn resolve_execute_refund_timelock(&self, utxo_storage_key: &str) -> u64 {
+        require!(
+            env::attached_deposit() >= self.required_balance_for_execute_refund(),
+            "Insufficient deposit for storage"
+        );
+        let caller = env::predecessor_account_id();
+        let is_privileged =
+            self.acl_has_any_role(vec![Role::DAO.into(), Role::RefundOperator.into()], caller);
+        let refund_request: crate::RefundRequest = self
+            .data()
+            .refund_requests
+            .get(utxo_storage_key)
+            .expect("Refund request not found")
+            .into();
+        let config = self.internal_config();
+        if refund_request.deposit_msg().refund_address.is_some() {
+            // Pre-authorized refund address: privileged users can fast-track.
+            if is_privileged {
+                0
+            } else {
+                config.refund_timelock_sec
+            }
+        } else {
+            // Refund address supplied by caller of `request_refund`: longer
+            // timelock to give DAO/Operator time to reject suspicious requests.
+            config.unsafe_refund_timelock_sec
+        }
+    }
+
     pub fn create_active_utxo_management_pending_info(
         &mut self,
         account_id: AccountId,
