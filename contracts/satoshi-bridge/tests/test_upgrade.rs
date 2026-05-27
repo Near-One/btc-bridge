@@ -34,26 +34,15 @@ async fn test_btc_bridge_upgrade_from_v0_8_0() {
     check!(view upgrade_context.get_satoshi_bridge_version());
 }
 
+/// Upgrade from the currently deployed Zcash version (0.7.4) to the version in
+/// this PR. Exercises the `refund_requests` storage migration (the field is
+/// un-gated for Zcash here) and confirms the config still deserializes.
 #[tokio::test]
-async fn test_zcash_bridge_upgrade_from_v7_3_0() {
+async fn test_zcash_bridge_upgrade_from_v7_4_0() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let upgrade_context = UpgradeContext::new(
         &worker,
-        "tests/data/zcash_bridge_v7.3.0.wasm",
-        "tests/data/nbtc_v0-6-0.wasm",
-    )
-    .await;
-    check!(view upgrade_context.get_satoshi_bridge_version());
-    check!(upgrade_context.upgrade_satoshi_bridge("../../res/zcash_bridge.wasm"));
-    check!(view upgrade_context.get_satoshi_bridge_version());
-}
-
-#[tokio::test]
-async fn test_zcash_bridge_upgrade_from_v0_6_0() {
-    let worker = near_workspaces::sandbox().await.unwrap();
-    let upgrade_context = UpgradeContext::new(
-        &worker,
-        "tests/data/zcash_bridge_v0-6-0.wasm",
+        "tests/data/zcash_bridge_v7.4.0.wasm",
         "tests/data/nbtc_v0-6-0.wasm",
     )
     .await;
