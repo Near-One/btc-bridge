@@ -182,14 +182,17 @@ impl Contract {
             self.acl_has_role(Role::UnrestrictedRelayer.into(), env::signer_account_id());
 
         if !psbt.get_output().is_empty() {
+            // `None` when the target is a shielded-only Zcash unified address (no transparent
+            // receiver): the user is paid via the Orchard bundle and every transparent output
+            // is change, so there is nothing for a transparent output to match against.
             let target_address_script_pubkey = self
                 .internal_config()
-                .string_to_script_pubkey(&target_btc_address);
+                .target_script_pubkey(&target_btc_address);
 
             psbt.get_output().iter().for_each(|output| {
                 let output_value = output.value.to_sat() as u128;
                 total_output_amount += output_value;
-                if output.script_pubkey == target_address_script_pubkey {
+                if target_address_script_pubkey.as_ref() == Some(&output.script_pubkey) {
                     actual_received_amounts.push(output_value);
                 } else if &output.script_pubkey == withdraw_change_address_script_pubkey {
                     require!(
