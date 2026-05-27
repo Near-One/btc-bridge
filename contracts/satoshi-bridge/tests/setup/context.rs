@@ -1350,6 +1350,7 @@ impl Context {
             .call(self.bridge_contract.id(), "execute_refund")
             .args_json(json!({
                 "utxo_storage_key": utxo_storage_key,
+                "chain_specific_data": null,
             }))
             .deposit(NearToken::from_millinear(100))
             .max_gas()

@@ -513,26 +513,21 @@ impl Contract {
     /// # Arguments
     ///
     /// * `utxo_storage_key` - The UTXO key identifying the refund request (`{tx_id}@{vout}`).
-    #[cfg(not(feature = "zcash"))]
-    #[payable]
-    #[pause(except(roles(Role::DAO)))]
-    pub fn execute_refund(&mut self, utxo_storage_key: String) {
-        let timelock_sec = self.resolve_execute_refund_timelock(&utxo_storage_key);
-        self.internal_execute_refund(utxo_storage_key, timelock_sec);
-    }
-
-    /// Execute a refund on Zcash. Pass `chain_specific_data` with an Orchard
-    /// bundle to refund to a shielded address; omit it for a transparent refund.
-    /// Returns a `Promise` because the Zcash transaction is built only after the
-    /// current block height is fetched.
-    #[cfg(feature = "zcash")]
+    /// Execute a refund after the timelock has passed (or immediately, for a
+    /// privileged caller with a pre-authorized refund address).
+    ///
+    /// `chain_specific_data` is only meaningful on Zcash: pass `Some` with an
+    /// Orchard bundle to refund to a shielded/unified address, or `None` for a
+    /// transparent refund. On Bitcoin it is ignored. The Zcash path resolves to
+    /// a `Promise` (the transaction is built after fetching the block height);
+    /// the Bitcoin path returns immediately.
     #[payable]
     #[pause(except(roles(Role::DAO)))]
     pub fn execute_refund(
         &mut self,
         utxo_storage_key: String,
-        chain_specific_data: Option<crate::zcash_utils::types::ChainSpecificData>,
-    ) -> Promise {
+        chain_specific_data: Option<ChainSpecificData>,
+    ) -> PromiseOrValue<bool> {
         let timelock_sec = self.resolve_execute_refund_timelock(&utxo_storage_key);
         self.internal_execute_refund(utxo_storage_key, timelock_sec, chain_specific_data)
     }

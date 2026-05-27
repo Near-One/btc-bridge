@@ -1,9 +1,9 @@
 use bitcoin::{Amount, OutPoint, TxOut};
 
 use crate::{
-    env, near, require, serde_json, AccountId, BTCPendingInfo, Contract, ContractExt, DepositMsg,
-    Event, Gas, OriginalState, PendingInfoStage, PendingInfoState, Promise, MAX_BOOL_RESULT, UTXO,
-    VUTXO,
+    env, near, require, serde_json, AccountId, BTCPendingInfo, ChainSpecificData, Contract,
+    ContractExt, DepositMsg, Event, Gas, OriginalState, PendingInfoStage, PendingInfoState, Promise,
+    PromiseOrValue, MAX_BOOL_RESULT, UTXO, VUTXO,
 };
 
 use crate::deposit_msg::get_deposit_path;
@@ -313,7 +313,13 @@ impl Contract {
 impl Contract {
     /// Execute an approved refund request (Bitcoin). Builds the refund PSBT
     /// synchronously. The caller chooses `timelock_sec` (pass `0` to bypass).
-    pub fn internal_execute_refund(&mut self, utxo_storage_key: String, timelock_sec: u64) {
+    /// `chain_specific_data` is unused on Bitcoin (kept for a uniform API).
+    pub fn internal_execute_refund(
+        &mut self,
+        utxo_storage_key: String,
+        timelock_sec: u64,
+        _chain_specific_data: Option<ChainSpecificData>,
+    ) -> PromiseOrValue<bool> {
         let refund_request = self.load_refund_request_for_execute(&utxo_storage_key, timelock_sec);
         let (outpoint, deposit_output, refund_amount) =
             self.refund_execution_inputs(&refund_request);
@@ -324,6 +330,7 @@ impl Contract {
 
         let caller = env::predecessor_account_id();
         self.finalize_refund_with_psbt(caller, refund_request, psbt, refund_amount, utxo_storage_key);
+        PromiseOrValue::Value(true)
     }
 }
 
@@ -341,16 +348,16 @@ impl Contract {
         &mut self,
         utxo_storage_key: String,
         timelock_sec: u64,
-        chain_specific_data: Option<crate::zcash_utils::types::ChainSpecificData>,
-    ) -> Promise {
+        chain_specific_data: Option<ChainSpecificData>,
+    ) -> PromiseOrValue<bool> {
         // Validate before spending gas on the height fetch.
         let _ = self.load_refund_request_for_execute(&utxo_storage_key, timelock_sec);
         let caller = env::predecessor_account_id();
-        self.get_last_block_height_promise().then(
+        PromiseOrValue::Promise(self.get_last_block_height_promise().then(
             Self::ext(env::current_account_id())
                 .with_static_gas(GAS_FOR_EXECUTE_REFUND_CALLBACK)
                 .execute_refund_callback(utxo_storage_key, caller, chain_specific_data),
-        )
+        ))
     }
 }
 
@@ -362,7 +369,7 @@ impl Contract {
         &mut self,
         utxo_storage_key: String,
         caller: AccountId,
-        chain_specific_data: Option<crate::zcash_utils::types::ChainSpecificData>,
+        chain_specific_data: Option<ChainSpecificData>,
         #[callback_unwrap] last_block_height: u32,
     ) {
         // Timelock was already enforced in internal_execute_refund; re-validate
