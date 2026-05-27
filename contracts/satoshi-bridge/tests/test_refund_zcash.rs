@@ -392,7 +392,11 @@ async fn test_zcash_refund_no_refund_address() {
         .await
         .unwrap();
     let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![("c4c5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f21", 0, None)],
+        vec![(
+            "c4c5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f21",
+            0,
+            None,
+        )],
         vec![(deposit_address.as_str(), 100_000)],
     );
 
@@ -424,7 +428,11 @@ async fn test_zcash_refund_duplicate_request() {
         .await
         .unwrap();
     let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![("d5d5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f22", 0, None)],
+        vec![(
+            "d5d5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f22",
+            0,
+            None,
+        )],
         vec![(deposit_address.as_str(), 100_000)],
     );
 
@@ -437,8 +445,15 @@ async fn test_zcash_refund_duplicate_request() {
     );
     check!(
         context.request_refund(
-            "alice", deposit_msg, ZEC_REFUND_TADDR, tx_bytes, 0,
-            BLOCKHASH.to_string(), 1, vec![], None,
+            "alice",
+            deposit_msg,
+            ZEC_REFUND_TADDR,
+            tx_bytes,
+            0,
+            BLOCKHASH.to_string(),
+            1,
+            vec![],
+            None,
         ),
         "Refund request already exists for this UTXO"
     );
@@ -463,14 +478,25 @@ async fn test_zcash_refund_then_deposit_fails() {
         .await
         .unwrap();
     let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![("e6e6069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f23", 0, None)],
+        vec![(
+            "e6e6069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f23",
+            0,
+            None,
+        )],
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
 
     check!(context.request_refund(
-        "relayer", deposit_msg.clone(), ZEC_REFUND_TADDR, tx_bytes.clone(), vout,
-        BLOCKHASH.to_string(), 1, vec![], None,
+        "relayer",
+        deposit_msg.clone(),
+        ZEC_REFUND_TADDR,
+        tx_bytes.clone(),
+        vout,
+        BLOCKHASH.to_string(),
+        1,
+        vec![],
+        None,
     ));
 
     set_refund_timelock(&context, 0).await;
@@ -480,25 +506,63 @@ async fn test_zcash_refund_then_deposit_fails() {
     check!(print "execute_refund" context.execute_refund("alice", &key, None));
 
     check!(
-        context.verify_deposit("relayer", deposit_msg.clone(), tx_bytes.clone(), vout, BLOCKHASH.to_string(), 1, vec![]),
+        context.verify_deposit(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            BLOCKHASH.to_string(),
+            1,
+            vec![]
+        ),
         "Already deposit utxo"
     );
 
     let pending_keys = context
-        .get_btc_pending_infos_paged().await.unwrap()
-        .keys().cloned().collect::<Vec<_>>();
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
     check!(context.sign_btc_transaction("alice", &pending_keys[0], 0, 0));
 
     check!(
-        context.verify_deposit("relayer", deposit_msg.clone(), tx_bytes.clone(), vout, BLOCKHASH.to_string(), 1, vec![]),
+        context.verify_deposit(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            BLOCKHASH.to_string(),
+            1,
+            vec![]
+        ),
         "Already deposit utxo"
     );
 
-    check!(context.verify_refund_finalize("relayer", &pending_keys[0], BLOCKHASH.to_string(), 1, vec![]));
+    check!(context.verify_refund_finalize(
+        "relayer",
+        &pending_keys[0],
+        BLOCKHASH.to_string(),
+        1,
+        vec![]
+    ));
 
-    assert!(context.get_btc_pending_infos_paged().await.unwrap().is_empty());
+    assert!(context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .is_empty());
     check!(
-        context.verify_deposit("relayer", deposit_msg, tx_bytes, vout, BLOCKHASH.to_string(), 1, vec![]),
+        context.verify_deposit(
+            "relayer",
+            deposit_msg,
+            tx_bytes,
+            vout,
+            BLOCKHASH.to_string(),
+            1,
+            vec![]
+        ),
         "Already deposit utxo"
     );
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
@@ -523,14 +587,25 @@ async fn test_zcash_refund_race_deposit_wins() {
         .await
         .unwrap();
     let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![("f7f7069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f24", 0, None)],
+        vec![(
+            "f7f7069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f24",
+            0,
+            None,
+        )],
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
 
     check!(context.request_refund(
-        "relayer", deposit_msg.clone(), ZEC_REFUND_TADDR, tx_bytes.clone(), vout,
-        BLOCKHASH.to_string(), 1, vec![], None,
+        "relayer",
+        deposit_msg.clone(),
+        ZEC_REFUND_TADDR,
+        tx_bytes.clone(),
+        vout,
+        BLOCKHASH.to_string(),
+        1,
+        vec![],
+        None,
     ));
     let key = refund_key(&context).await;
 
@@ -566,7 +641,11 @@ async fn test_zcash_refund_after_deposit_fails() {
         .await
         .unwrap();
     let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![("a8a8069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f25", 0, None)],
+        vec![(
+            "a8a8069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f25",
+            0,
+            None,
+        )],
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
@@ -577,7 +656,17 @@ async fn test_zcash_refund_after_deposit_fails() {
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
 
     check!(
-        context.request_refund("alice", deposit_msg, ZEC_REFUND_TADDR, tx_bytes, vout, BLOCKHASH.to_string(), 1, vec![], None),
+        context.request_refund(
+            "alice",
+            deposit_msg,
+            ZEC_REFUND_TADDR,
+            tx_bytes,
+            vout,
+            BLOCKHASH.to_string(),
+            1,
+            vec![],
+            None
+        ),
         "UTXO already verified via deposit"
     );
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
@@ -602,19 +691,33 @@ async fn test_zcash_refund_reject_then_deposit_succeeds() {
         .await
         .unwrap();
     let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![("b9b9069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f26", 0, None)],
+        vec![(
+            "b9b9069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f26",
+            0,
+            None,
+        )],
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
 
     check!(context.request_refund(
-        "relayer", deposit_msg.clone(), ZEC_REFUND_TADDR, tx_bytes.clone(), vout,
-        BLOCKHASH.to_string(), 1, vec![], None,
+        "relayer",
+        deposit_msg.clone(),
+        ZEC_REFUND_TADDR,
+        tx_bytes.clone(),
+        vout,
+        BLOCKHASH.to_string(),
+        1,
+        vec![],
+        None,
     ));
     let key = refund_key(&context).await;
 
     check!(print "reject_refund" context.reject_refund("root", &key));
-    check!(context.execute_refund("alice", &key, None), "Refund request not found");
+    check!(
+        context.execute_refund("alice", &key, None),
+        "Refund request not found"
+    );
 
     check!(print "verify_deposit" context.verify_deposit(
         "relayer", deposit_msg, tx_bytes, vout, BLOCKHASH.to_string(), 1, vec![]
@@ -641,14 +744,25 @@ async fn test_zcash_refund_double_request_after_execute() {
         .await
         .unwrap();
     let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![("caca069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f27", 0, None)],
+        vec![(
+            "caca069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f27",
+            0,
+            None,
+        )],
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
 
     check!(context.request_refund(
-        "relayer", deposit_msg.clone(), ZEC_REFUND_TADDR, tx_bytes.clone(), vout,
-        BLOCKHASH.to_string(), 1, vec![], None,
+        "relayer",
+        deposit_msg.clone(),
+        ZEC_REFUND_TADDR,
+        tx_bytes.clone(),
+        vout,
+        BLOCKHASH.to_string(),
+        1,
+        vec![],
+        None,
     ));
     set_refund_timelock(&context, 0).await;
     let key = refund_key(&context).await;
@@ -656,7 +770,17 @@ async fn test_zcash_refund_double_request_after_execute() {
     check!(print "execute_refund" context.execute_refund("alice", &key, None));
 
     check!(
-        context.request_refund("alice", deposit_msg, ZEC_REFUND_TADDR, tx_bytes, vout, BLOCKHASH.to_string(), 1, vec![], None),
+        context.request_refund(
+            "alice",
+            deposit_msg,
+            ZEC_REFUND_TADDR,
+            tx_bytes,
+            vout,
+            BLOCKHASH.to_string(),
+            1,
+            vec![],
+            None
+        ),
         "UTXO already verified via deposit"
     );
 }
@@ -681,7 +805,11 @@ async fn test_zcash_refund_spoofed_refund_address() {
         .await
         .unwrap();
     let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![("dbdb069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f28", 0, None)],
+        vec![(
+            "dbdb069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f28",
+            0,
+            None,
+        )],
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
@@ -695,7 +823,17 @@ async fn test_zcash_refund_spoofed_refund_address() {
     };
 
     check!(
-        context.request_refund("bob", spoofed_deposit_msg, ZEC_REFUND_TADDR, tx_bytes.clone(), vout, BLOCKHASH.to_string(), 1, vec![], None),
+        context.request_refund(
+            "bob",
+            spoofed_deposit_msg,
+            ZEC_REFUND_TADDR,
+            tx_bytes.clone(),
+            vout,
+            BLOCKHASH.to_string(),
+            1,
+            vec![],
+            None
+        ),
         "refund_address does not match deposit_msg.refund_address"
     );
 
@@ -715,7 +853,9 @@ async fn test_zcash_refund_race_safe_deposit_wins() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: "".to_string() }),
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -723,14 +863,25 @@ async fn test_zcash_refund_race_safe_deposit_wins() {
         .await
         .unwrap();
     let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![("ecec069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f29", 0, None)],
+        vec![(
+            "ecec069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f29",
+            0,
+            None,
+        )],
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
 
     check!(context.request_refund(
-        "relayer", deposit_msg.clone(), ZEC_REFUND_TADDR, tx_bytes.clone(), vout,
-        BLOCKHASH.to_string(), 1, vec![], None,
+        "relayer",
+        deposit_msg.clone(),
+        ZEC_REFUND_TADDR,
+        tx_bytes.clone(),
+        vout,
+        BLOCKHASH.to_string(),
+        1,
+        vec![],
+        None,
     ));
     let key = refund_key(&context).await;
 
@@ -758,7 +909,9 @@ async fn test_zcash_refund_after_safe_deposit_fails() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: "".to_string() }),
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -766,7 +919,11 @@ async fn test_zcash_refund_after_safe_deposit_fails() {
         .await
         .unwrap();
     let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![("fdfd069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f30", 0, None)],
+        vec![(
+            "fdfd069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f30",
+            0,
+            None,
+        )],
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
@@ -778,7 +935,17 @@ async fn test_zcash_refund_after_safe_deposit_fails() {
     assert!(context.ft_balance_of("alice").await.unwrap().0 > 0);
 
     check!(
-        context.request_refund("alice", deposit_msg, ZEC_REFUND_TADDR, tx_bytes, vout, BLOCKHASH.to_string(), 1, vec![], None),
+        context.request_refund(
+            "alice",
+            deposit_msg,
+            ZEC_REFUND_TADDR,
+            tx_bytes,
+            vout,
+            BLOCKHASH.to_string(),
+            1,
+            vec![],
+            None
+        ),
         "UTXO already verified via deposit"
     );
 }
@@ -794,7 +961,9 @@ async fn test_zcash_refund_then_safe_deposit_fails() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: "".to_string() }),
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -802,15 +971,26 @@ async fn test_zcash_refund_then_safe_deposit_fails() {
         .await
         .unwrap();
     let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![("abab069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f31", 0, None)],
+        vec![(
+            "abab069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f31",
+            0,
+            None,
+        )],
         vec![(deposit_address.as_str(), 100_000)],
     );
     let vout: u32 = 0;
 
     check!(context.storage_deposit("nbtc", "alice"));
     check!(context.request_refund(
-        "relayer", deposit_msg.clone(), ZEC_REFUND_TADDR, tx_bytes.clone(), vout,
-        BLOCKHASH.to_string(), 1, vec![], None,
+        "relayer",
+        deposit_msg.clone(),
+        ZEC_REFUND_TADDR,
+        tx_bytes.clone(),
+        vout,
+        BLOCKHASH.to_string(),
+        1,
+        vec![],
+        None,
     ));
     set_refund_timelock(&context, 0).await;
     let key = refund_key(&context).await;
@@ -818,24 +998,62 @@ async fn test_zcash_refund_then_safe_deposit_fails() {
     check!(print "execute_refund" context.execute_refund("alice", &key, None));
 
     check!(
-        context.safe_verify_deposit("relayer", deposit_msg.clone(), tx_bytes.clone(), vout, BLOCKHASH.to_string(), 1, vec![]),
+        context.safe_verify_deposit(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            BLOCKHASH.to_string(),
+            1,
+            vec![]
+        ),
         "Already deposit utxo"
     );
 
     let pending_keys = context
-        .get_btc_pending_infos_paged().await.unwrap()
-        .keys().cloned().collect::<Vec<_>>();
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
     check!(context.sign_btc_transaction("alice", &pending_keys[0], 0, 0));
 
     check!(
-        context.safe_verify_deposit("relayer", deposit_msg.clone(), tx_bytes.clone(), vout, BLOCKHASH.to_string(), 1, vec![]),
+        context.safe_verify_deposit(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            BLOCKHASH.to_string(),
+            1,
+            vec![]
+        ),
         "Already deposit utxo"
     );
 
-    check!(context.verify_refund_finalize("relayer", &pending_keys[0], BLOCKHASH.to_string(), 1, vec![]));
-    assert!(context.get_btc_pending_infos_paged().await.unwrap().is_empty());
+    check!(context.verify_refund_finalize(
+        "relayer",
+        &pending_keys[0],
+        BLOCKHASH.to_string(),
+        1,
+        vec![]
+    ));
+    assert!(context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .is_empty());
     check!(
-        context.safe_verify_deposit("relayer", deposit_msg, tx_bytes, vout, BLOCKHASH.to_string(), 1, vec![]),
+        context.safe_verify_deposit(
+            "relayer",
+            deposit_msg,
+            tx_bytes,
+            vout,
+            BLOCKHASH.to_string(),
+            1,
+            vec![]
+        ),
         "Already deposit utxo"
     );
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
@@ -860,7 +1078,11 @@ async fn test_zcash_refund_address_matches_deposit_msg() {
         .await
         .unwrap();
     let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![("e1e1069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f30", 0, None)],
+        vec![(
+            "e1e1069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f30",
+            0,
+            None,
+        )],
         vec![(deposit_address.as_str(), 100_000)],
     );
 
@@ -888,7 +1110,11 @@ async fn test_zcash_refund_address_none_in_deposit_msg() {
         .await
         .unwrap();
     let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![("f2f2069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f31", 0, None)],
+        vec![(
+            "f2f2069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f31",
+            0,
+            None,
+        )],
         vec![(deposit_address.as_str(), 100_000)],
     );
 
@@ -916,13 +1142,27 @@ async fn test_zcash_refund_address_mismatch() {
         .await
         .unwrap();
     let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![("a3a3069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f32", 0, None)],
+        vec![(
+            "a3a3069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f32",
+            0,
+            None,
+        )],
         vec![(deposit_address.as_str(), 100_000)],
     );
 
     let wrong_address = "tmEgW8c44RQQfft9FHXnqGp8XEcQQSRcUXD";
     check!(
-        context.request_refund("alice", deposit_msg, wrong_address, tx_bytes, 0, BLOCKHASH.to_string(), 1, vec![], None),
+        context.request_refund(
+            "alice",
+            deposit_msg,
+            wrong_address,
+            tx_bytes,
+            0,
+            BLOCKHASH.to_string(),
+            1,
+            vec![],
+            None
+        ),
         "refund_address does not match deposit_msg.refund_address"
     );
 }
@@ -946,13 +1186,24 @@ async fn test_zcash_refund_operator_skips_timelock() {
         .await
         .unwrap();
     let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![("f4f5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f30", 0, None)],
+        vec![(
+            "f4f5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f30",
+            0,
+            None,
+        )],
         vec![(deposit_address.as_str(), 100_000)],
     );
 
     check!(context.request_refund(
-        "alice", deposit_msg.clone(), ZEC_REFUND_TADDR, tx_bytes, 0,
-        BLOCKHASH.to_string(), 1, vec![], None,
+        "alice",
+        deposit_msg.clone(),
+        ZEC_REFUND_TADDR,
+        tx_bytes,
+        0,
+        BLOCKHASH.to_string(),
+        1,
+        vec![],
+        None,
     ));
     let key = refund_key(&context).await;
 
@@ -974,7 +1225,9 @@ async fn test_zcash_refund_operator_skips_timelock() {
     );
 
     check!(context.bridge_acl_grant_role(
-        "root", "Operator", &context.get_account_by_name("alice").sdk_id()
+        "root",
+        "Operator",
+        &context.get_account_by_name("alice").sdk_id()
     ));
 
     check!(print "execute as operator" context.execute_refund("alice", &key, None));

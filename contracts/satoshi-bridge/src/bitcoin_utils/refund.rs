@@ -24,7 +24,13 @@ impl Contract {
         psbt.set_input_utxo(vec![deposit_output]);
 
         let caller = env::predecessor_account_id();
-        self.finalize_refund_with_psbt(caller, refund_request, psbt, refund_amount, utxo_storage_key);
+        self.finalize_refund_with_psbt(
+            caller,
+            refund_request,
+            psbt,
+            refund_amount,
+            utxo_storage_key,
+        );
         PromiseOrValue::Value(())
     }
 }

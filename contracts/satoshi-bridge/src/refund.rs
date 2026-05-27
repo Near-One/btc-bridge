@@ -2,8 +2,8 @@ use bitcoin::{Amount, OutPoint, TxOut};
 
 use crate::{
     env, near, require, serde_json, AccessControllable, AccountId, BTCPendingInfo, Contract,
-    ContractExt, DepositMsg, Event, Gas, OriginalState, PendingInfoStage, PendingInfoState, Promise,
-    Role, MAX_BOOL_RESULT, UTXO, VUTXO,
+    ContractExt, DepositMsg, Event, Gas, OriginalState, PendingInfoStage, PendingInfoState,
+    Promise, Role, MAX_BOOL_RESULT, UTXO, VUTXO,
 };
 
 use crate::deposit_msg::get_deposit_path;

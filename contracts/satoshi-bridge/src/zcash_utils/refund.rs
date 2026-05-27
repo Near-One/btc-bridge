@@ -56,11 +56,13 @@ impl Contract {
         // Validate before spending gas on the height fetch.
         let _ = self.load_refund_request_for_execute(&utxo_storage_key, timelock_sec);
         let caller = env::predecessor_account_id();
-        PromiseOrValue::Promise(self.get_last_block_height_promise().then(
-            Self::ext(env::current_account_id())
-                .with_static_gas(GAS_FOR_EXECUTE_REFUND_CALLBACK)
-                .execute_refund_callback(utxo_storage_key, caller, chain_specific_data),
-        ))
+        PromiseOrValue::Promise(
+            self.get_last_block_height_promise().then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(GAS_FOR_EXECUTE_REFUND_CALLBACK)
+                    .execute_refund_callback(utxo_storage_key, caller, chain_specific_data),
+            ),
+        )
     }
 }
 
