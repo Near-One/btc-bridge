@@ -1,9 +1,9 @@
 use bitcoin::{Amount, OutPoint, TxOut};
 
 use crate::{
-    env, near, require, serde_json, AccountId, BTCPendingInfo, ChainSpecificData, Contract,
-    ContractExt, DepositMsg, Event, Gas, OriginalState, PendingInfoStage, PendingInfoState, Promise,
-    PromiseOrValue, MAX_BOOL_RESULT, UTXO, VUTXO,
+    env, near, require, serde_json, AccessControllable, AccountId, BTCPendingInfo,
+    ChainSpecificData, Contract, ContractExt, DepositMsg, Event, Gas, OriginalState,
+    PendingInfoStage, PendingInfoState, Promise, PromiseOrValue, Role, MAX_BOOL_RESULT, UTXO, VUTXO,
 };
 
 use crate::deposit_msg::get_deposit_path;
@@ -119,6 +119,38 @@ impl Contract {
             "Refund request not found"
         );
         Event::RefundRejected { utxo_storage_key }.emit();
+    }
+
+    /// Validate the attached storage deposit and resolve the timelock that must
+    /// elapse before this refund can be executed. Shared by the Bitcoin and
+    /// Zcash `execute_refund` entrypoints.
+    pub(crate) fn resolve_execute_refund_timelock(&self, utxo_storage_key: &str) -> u64 {
+        require!(
+            env::attached_deposit() >= self.required_balance_for_execute_refund(),
+            "Insufficient deposit for storage"
+        );
+        let caller = env::predecessor_account_id();
+        let is_privileged =
+            self.acl_has_any_role(vec![Role::DAO.into(), Role::RefundOperator.into()], caller);
+        let refund_request: RefundRequest = self
+            .data()
+            .refund_requests
+            .get(utxo_storage_key)
+            .expect("Refund request not found")
+            .into();
+        let config = self.internal_config();
+        if refund_request.deposit_msg().refund_address.is_some() {
+            // Pre-authorized refund address: privileged users can fast-track.
+            if is_privileged {
+                0
+            } else {
+                config.refund_timelock_sec
+            }
+        } else {
+            // Refund address supplied by caller of `request_refund`: longer
+            // timelock to give DAO/Operator time to reject suspicious requests.
+            config.unsafe_refund_timelock_sec
+        }
     }
 
     /// Load a refund request and run the common pre-execution checks
