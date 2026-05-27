@@ -5,10 +5,10 @@ use crate::zcash_utils::types::ChainSpecificData;
 use crate::*;
 use near_sdk::{near, require, AccountId};
 
-pub const GAS_FOR_EXECUTE_REFUND_CALLBACK: Gas = Gas::from_tgas(60);
+pub(crate) const GAS_FOR_EXECUTE_REFUND_CALLBACK: Gas = Gas::from_tgas(60);
 
 /// Refund transactions never expire (`expiry_height = 0`).
-pub const REFUND_EXPIRY_HEIGHT: u32 = 0;
+pub(crate) const REFUND_EXPIRY_HEIGHT: u32 = 0;
 
 impl Contract {
     /// Execute an approved refund request (Zcash). Building a Zcash transaction
@@ -16,7 +16,7 @@ impl Contract {
     /// fetches it asynchronously and finishes in `execute_refund_callback`.
     /// When `chain_specific_data` carries an Orchard bundle the refund is shielded;
     /// otherwise it is a transparent refund to `refund_address`.
-    pub fn internal_execute_refund(
+    pub(crate) fn internal_execute_refund(
         &mut self,
         utxo_storage_key: String,
         timelock_sec: u64,

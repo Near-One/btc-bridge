@@ -10,8 +10,8 @@ use crate::deposit_msg::get_deposit_path;
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::utils::{generate_utxo_storage_key, nano_to_sec};
 
-pub const GAS_FOR_REQUEST_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
-pub const GAS_FOR_VERIFY_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
+pub(crate) const GAS_FOR_REQUEST_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
+pub(crate) const GAS_FOR_VERIFY_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
 
 /// Stored refund request. `deposit_msg` is kept as JSON string
 /// because `DepositMsg` does not implement Borsh serialization.
@@ -77,7 +77,7 @@ impl Contract {
     /// If `deposit_msg.refund_address` is set, it must match the provided `refund_address`.
     /// If `deposit_msg.refund_address` is None, the provided `refund_address` is used.
     #[allow(clippy::too_many_arguments)]
-    pub fn internal_request_refund(
+    pub(crate) fn internal_request_refund(
         &self,
         deposit_msg: DepositMsg,
         refund_address: String,
@@ -120,7 +120,7 @@ impl Contract {
     }
 
     /// Reject a pending refund request.
-    pub fn internal_reject_refund(&mut self, utxo_storage_key: String) {
+    pub(crate) fn internal_reject_refund(&mut self, utxo_storage_key: String) {
         require!(
             self.data_mut()
                 .refund_requests
@@ -327,7 +327,7 @@ impl Contract {
     }
 
     /// Verify refund transaction was included in Bitcoin blockchain.
-    pub fn internal_verify_refund_finalize(
+    pub(crate) fn internal_verify_refund_finalize(
         &self,
         tx_id: String,
         tx_block_blockhash: String,

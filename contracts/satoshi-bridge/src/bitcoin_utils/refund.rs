@@ -9,7 +9,7 @@ impl Contract {
     /// synchronously. The caller chooses `timelock_sec` (pass `0` to bypass).
     /// `chain_specific_data` is unused on Bitcoin (kept for a uniform API with
     /// the Zcash variant).
-    pub fn internal_execute_refund(
+    pub(crate) fn internal_execute_refund(
         &mut self,
         utxo_storage_key: String,
         timelock_sec: u64,
