@@ -53,8 +53,6 @@ impl Contract {
         timelock_sec: u64,
         chain_specific_data: Option<ChainSpecificData>,
     ) -> PromiseOrValue<()> {
-        // Validate before spending gas on the height fetch.
-        let _ = self.load_refund_request_for_execute(&utxo_storage_key, timelock_sec);
         let caller = env::predecessor_account_id();
         PromiseOrValue::Promise(
             self.get_last_block_height_promise().then(
