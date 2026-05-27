@@ -1,7 +1,7 @@
 use crate::bitcoin_utils::types::ChainSpecificData;
 use crate::env;
 use crate::psbt_wrapper::PsbtWrapper;
-use crate::Contract;
+use crate::{Contract, RefundExecutionInputs};
 use near_sdk::PromiseOrValue;
 
 impl Contract {
@@ -16,8 +16,11 @@ impl Contract {
         _chain_specific_data: Option<ChainSpecificData>,
     ) -> PromiseOrValue<()> {
         let refund_request = self.load_refund_request_for_execute(&utxo_storage_key, timelock_sec);
-        let (outpoint, deposit_output, refund_amount) =
-            self.refund_execution_inputs(&refund_request);
+        let RefundExecutionInputs {
+            outpoint,
+            deposit_output,
+            refund_amount,
+        } = self.refund_execution_inputs(&refund_request);
         let refund_output = self.build_refund_output(&refund_request.refund_address, refund_amount);
 
         let mut psbt = PsbtWrapper::new(vec![outpoint], vec![refund_output]);

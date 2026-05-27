@@ -51,8 +51,11 @@ impl Contract {
     ) {
         // Enforce the timelock and that the UTXO has not been finalized via deposit.
         let refund_request = self.load_refund_request_for_execute(&utxo_storage_key, timelock_sec);
-        let (outpoint, deposit_output, refund_amount) =
-            self.refund_execution_inputs(&refund_request);
+        let RefundExecutionInputs {
+            outpoint,
+            deposit_output,
+            refund_amount,
+        } = self.refund_execution_inputs(&refund_request);
 
         let expiry_height = REFUND_EXPIRY_HEIGHT;
         let orchard_bundle = chain_specific_data.map(|c| c.orchard_bundle_bytes.0);

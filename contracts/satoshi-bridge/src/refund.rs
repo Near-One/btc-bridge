@@ -62,6 +62,16 @@ impl From<RefundRequest> for VRefundRequest {
     }
 }
 
+/// Inputs derived from the original deposit transaction, needed to build a refund.
+pub(crate) struct RefundExecutionInputs {
+    /// The deposit UTXO being spent by the refund.
+    pub outpoint: OutPoint,
+    /// The deposit output (used as the input witness amount/script).
+    pub deposit_output: TxOut,
+    /// Amount returned to the user: deposit value minus the gas fee.
+    pub refund_amount: u128,
+}
+
 impl Contract {
     /// Submit a refund request. Verifies the BTC transaction via Light Client first.
     /// If `deposit_msg.refund_address` is set, it must match the provided `refund_address`.
@@ -182,12 +192,10 @@ impl Contract {
     }
 
     /// Parse the original deposit transaction and compute the refund economics.
-    /// Returns the spending outpoint, the deposit output (input witness) and the
-    /// refund amount (deposit minus gas fee).
     pub(crate) fn refund_execution_inputs(
         &self,
         refund_request: &RefundRequest,
-    ) -> (OutPoint, TxOut, u128) {
+    ) -> RefundExecutionInputs {
         let config = self.internal_config();
         let transaction =
             crate::WrappedTransaction::decode(&refund_request.tx_bytes, &config.chain)
@@ -206,7 +214,11 @@ impl Contract {
             .expect("Deposit amount too small to cover gas fee");
         require!(refund_amount > 0, "Refund amount is zero after gas fee");
 
-        (outpoint, deposit_output, refund_amount)
+        RefundExecutionInputs {
+            outpoint,
+            deposit_output,
+            refund_amount,
+        }
     }
 
     /// Build a transparent refund output paying `refund_amount` to `refund_address`.
