@@ -7,44 +7,13 @@ use near_sdk::{near, require, AccountId};
 
 pub const GAS_FOR_EXECUTE_REFUND_CALLBACK: Gas = Gas::from_tgas(60);
 
-/// Refund transactions get a generous, ~3-month validity window so a temporarily
-/// stuck refund (there is no RBF path for refunds) does not expire before it can
-/// be mined. Zcash targets 75-second blocks ⇒ 90 days ≈ 103,680 blocks.
-pub const REFUND_EXPIRY_HEIGHT_DELTA: u32 = 103_680;
+/// Refund transactions never expire (`expiry_height = 0`).
+pub const REFUND_EXPIRY_HEIGHT: u32 = 0;
 
 impl Contract {
-    /// Resolve the expiry height for a refund transaction.
-    ///
-    /// - Transparent refund: the contract builds and MPC-signs the whole tx, so
-    ///   it sets the expiry directly to `last_block_height + REFUND_EXPIRY_HEIGHT_DELTA`.
-    /// - Shielded refund: the Orchard bundle's binding signature commits to the
-    ///   expiry (it is part of the sighash), so the value is fixed off-chain. We
-    ///   only bound it to `[last + expiry_height_gap, last + REFUND_EXPIRY_HEIGHT_DELTA]`.
-    fn refund_expiry_height(
-        &self,
-        chain_specific_data: &Option<ChainSpecificData>,
-        last_block_height: u32,
-    ) -> u32 {
-        let max_expiry = last_block_height + REFUND_EXPIRY_HEIGHT_DELTA;
-        match chain_specific_data {
-            Some(csd) => {
-                let min_expiry = last_block_height + self.internal_config().expiry_height_gap;
-                require!(
-                    csd.expiry_height >= min_expiry && csd.expiry_height <= max_expiry,
-                    format!(
-                        "Invalid refund expiry height {}. Expected [{}, {}].",
-                        csd.expiry_height, min_expiry, max_expiry
-                    )
-                );
-                csd.expiry_height
-            }
-            None => max_expiry,
-        }
-    }
-
     /// Execute an approved refund request (Zcash). Building a Zcash transaction
-    /// requires the current block height (for `expiry_height`/`branch_id`), so
-    /// this fetches it asynchronously and finishes in `execute_refund_callback`.
+    /// requires the current block height (for the consensus `branch_id`), so this
+    /// fetches it asynchronously and finishes in `execute_refund_callback`.
     /// When `chain_specific_data` carries an Orchard bundle the refund is shielded;
     /// otherwise it is a transparent refund to `refund_address`.
     pub fn internal_execute_refund(
@@ -58,7 +27,12 @@ impl Contract {
             self.get_last_block_height_promise().then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_EXECUTE_REFUND_CALLBACK)
-                    .execute_refund_callback(utxo_storage_key, caller, chain_specific_data),
+                    .execute_refund_callback(
+                        utxo_storage_key,
+                        caller,
+                        timelock_sec,
+                        chain_specific_data,
+                    ),
             ),
         )
     }
@@ -71,16 +45,16 @@ impl Contract {
         &mut self,
         utxo_storage_key: String,
         caller: AccountId,
+        timelock_sec: u64,
         chain_specific_data: Option<ChainSpecificData>,
         #[callback_unwrap] last_block_height: u32,
     ) {
-        // Timelock was already enforced in internal_execute_refund; re-validate
-        // only that the UTXO has not been finalized in the meantime.
-        let refund_request = self.load_refund_request_for_execute(&utxo_storage_key, 0);
+        // Enforce the timelock and that the UTXO has not been finalized via deposit.
+        let refund_request = self.load_refund_request_for_execute(&utxo_storage_key, timelock_sec);
         let (outpoint, deposit_output, refund_amount) =
             self.refund_execution_inputs(&refund_request);
 
-        let expiry_height = self.refund_expiry_height(&chain_specific_data, last_block_height);
+        let expiry_height = REFUND_EXPIRY_HEIGHT;
         let orchard_bundle = chain_specific_data.map(|c| c.orchard_bundle_bytes.0);
 
         // Shielded refund routes funds through the Orchard bundle (no transparent
