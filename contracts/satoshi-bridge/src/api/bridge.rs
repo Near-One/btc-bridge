@@ -527,7 +527,7 @@ impl Contract {
         &mut self,
         utxo_storage_key: String,
         chain_specific_data: Option<ChainSpecificData>,
-    ) -> PromiseOrValue<bool> {
+    ) -> PromiseOrValue<()> {
         let timelock_sec = self.resolve_execute_refund_timelock(&utxo_storage_key);
         self.internal_execute_refund(utxo_storage_key, timelock_sec, chain_specific_data)
     }

@@ -14,7 +14,7 @@ impl Contract {
         utxo_storage_key: String,
         timelock_sec: u64,
         _chain_specific_data: Option<ChainSpecificData>,
-    ) -> PromiseOrValue<bool> {
+    ) -> PromiseOrValue<()> {
         let refund_request = self.load_refund_request_for_execute(&utxo_storage_key, timelock_sec);
         let (outpoint, deposit_output, refund_amount) =
             self.refund_execution_inputs(&refund_request);
@@ -25,6 +25,6 @@ impl Contract {
 
         let caller = env::predecessor_account_id();
         self.finalize_refund_with_psbt(caller, refund_request, psbt, refund_amount, utxo_storage_key);
-        PromiseOrValue::Value(true)
+        PromiseOrValue::Value(())
     }
 }
