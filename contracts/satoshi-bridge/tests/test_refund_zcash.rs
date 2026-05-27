@@ -979,3 +979,37 @@ async fn test_zcash_refund_operator_skips_timelock() {
 
     check!(print "execute as operator" context.execute_refund("alice", &key, None));
 }
+
+/// Negative: a shielded refund whose requested expiry height is beyond the
+/// ~3-month window is rejected.
+#[tokio::test]
+#[cfg(feature = "zcash")]
+async fn test_zcash_refund_orchard_expiry_too_far() {
+    use satoshi_bridge::zcash_utils::types::ChainSpecificData;
+
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+
+    // deposit 150000, gas 50000 → refund 100000 (cached bundle).
+    let (recipient_ua, bundle_hex) = setup::orchard::get_or_gen_bundle(100_000);
+    let key = deposit_and_request_refund(&context, &recipient_ua, 150_000).await;
+
+    // Mock light client height is 1000, so max allowed expiry = 1000 + 103_680.
+    check!(
+        context.execute_refund(
+            "root",
+            &key,
+            Some(ChainSpecificData {
+                orchard_bundle_bytes: hex::decode(&bundle_hex).unwrap().into(),
+                expiry_height: 1_000_000, // far beyond the 3-month window
+            }),
+        ),
+        "Invalid refund expiry height"
+    );
+
+    assert!(context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .is_empty());
+}

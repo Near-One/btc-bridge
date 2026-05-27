@@ -7,7 +7,41 @@ use near_sdk::{near, require, AccountId};
 
 pub const GAS_FOR_EXECUTE_REFUND_CALLBACK: Gas = Gas::from_tgas(60);
 
+/// Refund transactions get a generous, ~3-month validity window so a temporarily
+/// stuck refund (there is no RBF path for refunds) does not expire before it can
+/// be mined. Zcash targets 75-second blocks ⇒ 90 days ≈ 103,680 blocks.
+pub const REFUND_EXPIRY_HEIGHT_DELTA: u32 = 103_680;
+
 impl Contract {
+    /// Resolve the expiry height for a refund transaction.
+    ///
+    /// - Transparent refund: the contract builds and MPC-signs the whole tx, so
+    ///   it sets the expiry directly to `last_block_height + REFUND_EXPIRY_HEIGHT_DELTA`.
+    /// - Shielded refund: the Orchard bundle's binding signature commits to the
+    ///   expiry (it is part of the sighash), so the value is fixed off-chain. We
+    ///   only bound it to `[last + expiry_height_gap, last + REFUND_EXPIRY_HEIGHT_DELTA]`.
+    fn refund_expiry_height(
+        &self,
+        chain_specific_data: &Option<ChainSpecificData>,
+        last_block_height: u32,
+    ) -> u32 {
+        let max_expiry = last_block_height + REFUND_EXPIRY_HEIGHT_DELTA;
+        match chain_specific_data {
+            Some(csd) => {
+                let min_expiry = last_block_height + self.internal_config().expiry_height_gap;
+                require!(
+                    csd.expiry_height >= min_expiry && csd.expiry_height <= max_expiry,
+                    format!(
+                        "Invalid refund expiry height {}. Expected [{}, {}].",
+                        csd.expiry_height, min_expiry, max_expiry
+                    )
+                );
+                csd.expiry_height
+            }
+            None => max_expiry,
+        }
+    }
+
     /// Execute an approved refund request (Zcash). Building a Zcash transaction
     /// requires the current block height (for `expiry_height`/`branch_id`), so
     /// this fetches it asynchronously and finishes in `execute_refund_callback`.
@@ -46,7 +80,7 @@ impl Contract {
         let (outpoint, deposit_output, refund_amount) =
             self.refund_execution_inputs(&refund_request);
 
-        let expiry_height = self.get_expiry_height(&chain_specific_data, last_block_height);
+        let expiry_height = self.refund_expiry_height(&chain_specific_data, last_block_height);
         let orchard_bundle = chain_specific_data.map(|c| c.orchard_bundle_bytes.0);
 
         // Shielded refund routes funds through the Orchard bundle (no transparent
