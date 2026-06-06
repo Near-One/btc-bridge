@@ -1,4 +1,7 @@
-use crate::{env, near, Contract, ContractExt, VersionedContractData};
+use crate::{
+    env, legacy::migrate_btc_pending_infos_to_current, near, Contract, ContractExt,
+    VersionedContractData,
+};
 
 #[near]
 impl Contract {
@@ -14,7 +17,15 @@ impl Contract {
             VersionedContractData::V2(data) => VersionedContractData::Current(data.into()),
             VersionedContractData::V3(data) => VersionedContractData::Current(data.into()),
             VersionedContractData::V4(data) => VersionedContractData::Current(data.into()),
-            VersionedContractData::Current(data) => VersionedContractData::Current(data),
+            VersionedContractData::Current(mut data) => {
+                // Ensure all `VBTCPendingInfo` entries are in the `Current` variant
+                // even when the outer `ContractData` schema did not change. Without
+                // this, an upgrade that only modifies the inner pending-info schema
+                // leaves entries in the older variant, and `internal_unwrap_*`
+                // paths that take `&BTCPendingInfo` hit `unreachable!()`.
+                migrate_btc_pending_infos_to_current(&mut data.btc_pending_infos);
+                VersionedContractData::Current(data)
+            }
         };
         contract
     }

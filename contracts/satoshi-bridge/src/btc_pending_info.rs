@@ -1,8 +1,8 @@
 use std::borrow::{Borrow, BorrowMut};
 
 use crate::{
-    env, nano_to_sec, near, network, psbt_wrapper::PsbtWrapper, require, u128_dec_format,
-    AccountId, Contract, SignatureResponse, WrappedTransaction, U128, VUTXO,
+    env, legacy::BTCPendingInfoV0, nano_to_sec, near, network, psbt_wrapper::PsbtWrapper, require,
+    u128_dec_format, AccountId, Contract, SignatureResponse, WrappedTransaction, U128, VUTXO,
 };
 
 #[near(serializers = [borsh, json])]
@@ -14,6 +14,8 @@ pub struct OriginalState {
     pub max_gas_fee: u128,
     pub last_rbf_time_sec: Option<u32>,
     pub cancel_rbf_reserved: Option<U128>,
+    #[serde(default, with = "u128_dec_format")]
+    pub subsidize_amount: u128,
 }
 
 impl OriginalState {
@@ -212,6 +214,28 @@ impl BTCPendingInfo {
         }
     }
 
+    pub fn get_subsidize_amount(&self) -> u128 {
+        match self.state.borrow() {
+            PendingInfoState::WithdrawOriginal(state) => state.subsidize_amount,
+            PendingInfoState::ActiveUtxoManagementOriginal(state) => state.subsidize_amount,
+            _ => env::panic_str("Not original tx"),
+        }
+    }
+
+    pub fn update_subsidize_amount(&mut self, subsidize_amount: u128) {
+        match self.state.borrow_mut() {
+            PendingInfoState::WithdrawOriginal(state) => {
+                state.subsidize_amount = subsidize_amount;
+                state.last_rbf_time_sec = Some(nano_to_sec(env::block_timestamp()));
+            }
+            PendingInfoState::ActiveUtxoManagementOriginal(state) => {
+                state.subsidize_amount = subsidize_amount;
+                state.last_rbf_time_sec = Some(nano_to_sec(env::block_timestamp()));
+            }
+            _ => env::panic_str("Not original tx"),
+        }
+    }
+
     pub fn to_pending_verify_stage(&mut self) {
         match self.state.borrow_mut() {
             PendingInfoState::WithdrawOriginal(state) => {
@@ -309,12 +333,14 @@ impl BTCPendingInfo {
 
 #[near(serializers = [borsh])]
 pub enum VBTCPendingInfo {
+    V0(BTCPendingInfoV0),
     Current(BTCPendingInfo),
 }
 
 impl From<VBTCPendingInfo> for BTCPendingInfo {
     fn from(v: VBTCPendingInfo) -> Self {
         match v {
+            VBTCPendingInfo::V0(c) => c.into(),
             VBTCPendingInfo::Current(c) => c,
         }
     }
@@ -323,6 +349,7 @@ impl From<VBTCPendingInfo> for BTCPendingInfo {
 impl From<&VBTCPendingInfo> for BTCPendingInfo {
     fn from(v: &VBTCPendingInfo) -> Self {
         match v {
+            VBTCPendingInfo::V0(c) => c.clone().into(),
             VBTCPendingInfo::Current(c) => c.clone(),
         }
     }
@@ -331,6 +358,7 @@ impl From<&VBTCPendingInfo> for BTCPendingInfo {
 impl<'a> From<&'a VBTCPendingInfo> for &'a BTCPendingInfo {
     fn from(v: &'a VBTCPendingInfo) -> Self {
         match v {
+            VBTCPendingInfo::V0(_) => unreachable!(),
             VBTCPendingInfo::Current(c) => c,
         }
     }
@@ -339,6 +367,7 @@ impl<'a> From<&'a VBTCPendingInfo> for &'a BTCPendingInfo {
 impl<'a> From<&'a mut VBTCPendingInfo> for &'a mut BTCPendingInfo {
     fn from(v: &'a mut VBTCPendingInfo) -> Self {
         match v {
+            VBTCPendingInfo::V0(_) => unreachable!(),
             VBTCPendingInfo::Current(c) => c,
         }
     }
@@ -377,11 +406,18 @@ impl Contract {
         &mut self,
         btc_pending_id: &String,
     ) -> &mut BTCPendingInfo {
-        self.data_mut()
+        let btc_pending_info = self
+            .data_mut()
             .btc_pending_infos
             .get_mut(btc_pending_id)
-            .map(Into::into)
-            .expect("BTC pending info not exist")
+            .expect("BTC pending info not exist");
+
+        if let VBTCPendingInfo::V0(old) = &btc_pending_info {
+            let new_current = BTCPendingInfo::from(old.clone());
+            *btc_pending_info = VBTCPendingInfo::Current(new_current);
+        }
+
+        btc_pending_info.into()
     }
 
     pub fn internal_remove_btc_pending_info(&mut self, btc_pending_id: &String) -> BTCPendingInfo {

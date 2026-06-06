@@ -1,9 +1,23 @@
 #[cfg(not(feature = "zcash"))]
 use crate::VRefundRequest;
 use crate::{
-    env, near, AccountId, BridgeFee, Config, ContractData, HashMap, HashSet, IterableMap,
-    IterableSet, LazyOption, LookupSet, PublicKey, StorageKey, VAccount, VBTCPendingInfo, VUTXO,
+    env, near, u128_dec_format, AccountId, BTCPendingInfo, BridgeFee, Config, ContractData,
+    HashMap, HashSet, IterableMap, IterableSet, LazyOption, LookupSet, OriginalState,
+    PendingInfoStage, PendingInfoState, PublicKey, RbfState, SignatureResponse, StorageKey,
+    VAccount, VBTCPendingInfo, U128, VUTXO,
 };
+
+pub(crate) fn migrate_btc_pending_infos_to_current(
+    btc_pending_infos: &mut IterableMap<String, VBTCPendingInfo>,
+) {
+    let keys: Vec<String> = btc_pending_infos.keys().cloned().collect();
+    for key in keys {
+        if let Some(value) = btc_pending_infos.get(&key) {
+            let current: BTCPendingInfo = value.into();
+            btc_pending_infos.insert(key, VBTCPendingInfo::Current(current));
+        }
+    }
+}
 
 #[near(serializers = [borsh])]
 pub struct ContractDataV0 {
@@ -32,7 +46,7 @@ impl From<ContractDataV0> for ContractData {
             utxos,
             unavailable_utxos,
             verified_deposit_utxo,
-            btc_pending_infos,
+            mut btc_pending_infos,
             rbf_txs,
             relayer_white_list,
             post_action_receiver_id_white_list,
@@ -43,6 +57,8 @@ impl From<ContractDataV0> for ContractData {
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
         } = c;
+
+        migrate_btc_pending_infos_to_current(&mut btc_pending_infos);
 
         Self {
             config,
@@ -371,7 +387,7 @@ impl From<ContractDataV1> for ContractData {
             utxos,
             unavailable_utxos,
             verified_deposit_utxo,
-            btc_pending_infos,
+            mut btc_pending_infos,
             rbf_txs,
             relayer_white_list,
             post_action_receiver_id_white_list,
@@ -383,6 +399,9 @@ impl From<ContractDataV1> for ContractData {
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
         } = c;
+
+        migrate_btc_pending_infos_to_current(&mut btc_pending_infos);
+
         let config_v0 = config.get().clone().unwrap();
         Self {
             config: LazyOption::new(StorageKey::Config, Some(config_v0.into())),
@@ -441,7 +460,7 @@ impl From<ContractDataV2> for ContractData {
             utxos,
             unavailable_utxos,
             verified_deposit_utxo,
-            btc_pending_infos,
+            mut btc_pending_infos,
             rbf_txs,
             relayer_white_list,
             extra_msg_relayer_white_list,
@@ -454,6 +473,8 @@ impl From<ContractDataV2> for ContractData {
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
         } = c;
+
+        migrate_btc_pending_infos_to_current(&mut btc_pending_infos);
 
         Self {
             config: LazyOption::new(
@@ -619,7 +640,7 @@ impl From<ContractDataV3> for ContractData {
             utxos,
             unavailable_utxos,
             verified_deposit_utxo,
-            btc_pending_infos,
+            mut btc_pending_infos,
             rbf_txs,
             relayer_white_list,
             extra_msg_relayer_white_list,
@@ -632,6 +653,8 @@ impl From<ContractDataV3> for ContractData {
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
         } = c;
+
+        migrate_btc_pending_infos_to_current(&mut btc_pending_infos);
 
         Self {
             config: LazyOption::new(
@@ -806,7 +829,7 @@ impl From<ContractDataV4> for ContractData {
             utxos,
             unavailable_utxos,
             verified_deposit_utxo,
-            btc_pending_infos,
+            mut btc_pending_infos,
             rbf_txs,
             relayer_white_list,
             extra_msg_relayer_white_list,
@@ -822,6 +845,8 @@ impl From<ContractDataV4> for ContractData {
             #[cfg(not(feature = "zcash"))]
             refund_requests,
         } = c;
+
+        migrate_btc_pending_infos_to_current(&mut btc_pending_infos);
 
         Self {
             config: LazyOption::new(
@@ -847,6 +872,106 @@ impl From<ContractDataV4> for ContractData {
             acc_protocol_fee_for_gas,
             #[cfg(not(feature = "zcash"))]
             refund_requests,
+        }
+    }
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub struct OriginalStateV0 {
+    pub stage: PendingInfoStage,
+    #[serde(with = "u128_dec_format")]
+    pub max_gas_fee: u128,
+    pub last_rbf_time_sec: Option<u32>,
+    pub cancel_rbf_reserved: Option<U128>,
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub enum PendingInfoStateV0 {
+    WithdrawOriginal(OriginalStateV0),
+    WithdrawUserRbf(RbfState),
+    WithdrawCancelRbf(RbfState),
+    ActiveUtxoManagementOriginal(OriginalStateV0),
+    ActiveUtxoManagementRbf(RbfState),
+    ActiveUtxoManagementCancelRbf(RbfState),
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub struct BTCPendingInfoV0 {
+    pub account_id: AccountId,
+    pub btc_pending_id: String,
+    #[serde(with = "u128_dec_format")]
+    pub transfer_amount: u128,
+    #[serde(with = "u128_dec_format")]
+    pub actual_received_amount: u128,
+    #[serde(with = "u128_dec_format")]
+    pub withdraw_fee: u128,
+    #[serde(with = "u128_dec_format")]
+    pub gas_fee: u128,
+    #[serde(with = "u128_dec_format")]
+    pub burn_amount: u128,
+    pub psbt_hex: String,
+    pub vutxos: Vec<VUTXO>,
+    pub signatures: Vec<Option<SignatureResponse>>,
+    pub tx_bytes_with_sign: Option<Vec<u8>>,
+    pub create_time_sec: u32,
+    pub last_sign_time_sec: u32,
+    pub state: PendingInfoStateV0,
+}
+
+impl From<OriginalStateV0> for OriginalState {
+    fn from(c: OriginalStateV0) -> Self {
+        Self {
+            stage: c.stage,
+            max_gas_fee: c.max_gas_fee,
+            last_rbf_time_sec: c.last_rbf_time_sec,
+            cancel_rbf_reserved: c.cancel_rbf_reserved,
+            subsidize_amount: 0,
+        }
+    }
+}
+
+impl From<PendingInfoStateV0> for PendingInfoState {
+    fn from(c: PendingInfoStateV0) -> Self {
+        match c {
+            PendingInfoStateV0::WithdrawOriginal(x) => PendingInfoState::WithdrawOriginal(x.into()),
+            PendingInfoStateV0::WithdrawUserRbf(x) => PendingInfoState::WithdrawUserRbf(x),
+            PendingInfoStateV0::WithdrawCancelRbf(x) => PendingInfoState::WithdrawCancelRbf(x),
+            PendingInfoStateV0::ActiveUtxoManagementOriginal(x) => {
+                PendingInfoState::ActiveUtxoManagementOriginal(x.into())
+            }
+            PendingInfoStateV0::ActiveUtxoManagementRbf(x) => {
+                PendingInfoState::ActiveUtxoManagementRbf(x)
+            }
+            PendingInfoStateV0::ActiveUtxoManagementCancelRbf(x) => {
+                PendingInfoState::ActiveUtxoManagementCancelRbf(x)
+            }
+        }
+    }
+}
+
+impl From<BTCPendingInfoV0> for BTCPendingInfo {
+    fn from(c: BTCPendingInfoV0) -> Self {
+        Self {
+            account_id: c.account_id,
+            btc_pending_id: c.btc_pending_id,
+            transfer_amount: c.transfer_amount,
+            actual_received_amount: c.actual_received_amount,
+            withdraw_fee: c.withdraw_fee,
+            gas_fee: c.gas_fee,
+            burn_amount: c.burn_amount,
+            psbt_hex: c.psbt_hex,
+            vutxos: c.vutxos,
+            signatures: c.signatures,
+            tx_bytes_with_sign: c.tx_bytes_with_sign,
+            create_time_sec: c.create_time_sec,
+            last_sign_time_sec: c.last_sign_time_sec,
+            state: c.state.into(),
         }
     }
 }

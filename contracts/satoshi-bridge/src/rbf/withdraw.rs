@@ -8,6 +8,7 @@ impl Contract {
         &self,
         original_tx_btc_pending_info: &BTCPendingInfo,
         withdraw_rbf_psbt: &PsbtWrapper,
+        subsidy_amount: u128,
     ) -> (u128, u128) {
         let withdraw_change_address_script_pubkey =
             self.internal_config().get_change_script_pubkey();
@@ -25,7 +26,7 @@ impl Contract {
             target_address,
             &withdraw_change_address_script_pubkey,
             &original_tx_btc_pending_info.vutxos,
-            original_tx_btc_pending_info.transfer_amount,
+            original_tx_btc_pending_info.transfer_amount + subsidy_amount,
             original_tx_btc_pending_info.withdraw_fee,
         );
         (actual_received_amount, gas_fee)
@@ -54,8 +55,18 @@ impl Contract {
                 original_tx_id: original_btc_pending_verify_id.clone(),
             }),
         );
-        let (actual_received_amount, gas_fee) =
-            self.check_withdraw_rbf_psbt_valid(original_tx_btc_pending_info, &withdraw_rbf_psbt);
+
+        let full_subsidy_amount = self
+            .internal_unwrap_btc_pending_info(&original_btc_pending_verify_id)
+            .get_subsidize_amount();
+        btc_pending_info.transfer_amount += full_subsidy_amount;
+
+        let (actual_received_amount, gas_fee) = self.check_withdraw_rbf_psbt_valid(
+            original_tx_btc_pending_info,
+            &withdraw_rbf_psbt,
+            full_subsidy_amount,
+        );
+
         btc_pending_info.gas_fee = gas_fee;
         btc_pending_info.actual_received_amount = actual_received_amount;
         btc_pending_info.burn_amount = actual_received_amount + gas_fee;

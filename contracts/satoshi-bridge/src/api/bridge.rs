@@ -620,6 +620,7 @@ impl Contract {
                 max_gas_fee: gas_fee,
                 last_rbf_time_sec: None,
                 cancel_rbf_reserved: None,
+                subsidize_amount: 0,
             }),
         };
         require!(

@@ -276,4 +276,14 @@ impl Contract {
             self.internal_config(),
         )
     }
+
+    pub(crate) fn rbf_subsidize_chain_specific(
+        &mut self,
+        _amount: u128,
+        _sender_id: AccountId,
+        _pending_tx_id: String,
+        _output: Vec<TxOut>,
+    ) -> PromiseOrValue<U128> {
+        unimplemented!("This function is not supported yet");
+    }
 }

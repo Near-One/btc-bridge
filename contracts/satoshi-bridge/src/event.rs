@@ -44,6 +44,13 @@ pub enum Event<'a> {
         account_id: &'a AccountId,
         btc_pending_id: &'a String,
     },
+    SubsidizeRbf {
+        origin_btc_pending_id: &'a String,
+        subsidy_amount: U128,
+        full_subsidy_amount: U128,
+        subsidizer: &'a AccountId,
+        beneficiary: &'a AccountId,
+    },
     BtcInputSignature {
         account_id: &'a AccountId,
         btc_pending_id: &'a String,

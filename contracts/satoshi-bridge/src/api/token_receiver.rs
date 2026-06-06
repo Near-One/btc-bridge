@@ -15,6 +15,10 @@ pub enum TokenReceiverMessage {
         max_gas_fee: Option<U128>,
         chain_specific_data: Option<ChainSpecificData>,
     },
+    Rbf {
+        pending_tx_id: String,
+        output: Vec<TxOut>,
+    },
 }
 
 #[near]
@@ -27,10 +31,6 @@ impl FungibleTokenReceiver for Contract {
         msg: String,
     ) -> PromiseOrValue<U128> {
         let amount = amount.into();
-        require!(
-            amount >= self.internal_config().min_withdraw_amount,
-            "Invalid amount"
-        );
         let message = serde_json::from_str::<TokenReceiverMessage>(&msg).expect("INVALID MSG");
         let token_id = env::predecessor_account_id();
         require!(
@@ -54,15 +54,26 @@ impl FungibleTokenReceiver for Contract {
                 output,
                 max_gas_fee,
                 chain_specific_data,
-            } => self.ft_on_transfer_withdraw_chain_specific(
-                sender_id,
-                amount,
-                target_btc_address,
-                input,
+            } => {
+                require!(
+                    amount >= self.internal_config().min_withdraw_amount,
+                    "Invalid amount"
+                );
+
+                self.ft_on_transfer_withdraw_chain_specific(
+                    sender_id,
+                    amount,
+                    target_btc_address,
+                    input,
+                    output,
+                    max_gas_fee,
+                    chain_specific_data,
+                )
+            }
+            TokenReceiverMessage::Rbf {
+                pending_tx_id,
                 output,
-                max_gas_fee,
-                chain_specific_data,
-            ),
+            } => self.rbf_subsidize_chain_specific(amount, sender_id, pending_tx_id, output),
         }
     }
 }
@@ -119,6 +130,7 @@ impl Contract {
                 max_gas_fee: gas_fee,
                 last_rbf_time_sec: None,
                 cancel_rbf_reserved: None,
+                subsidize_amount: 0,
             }),
         };
         require!(
