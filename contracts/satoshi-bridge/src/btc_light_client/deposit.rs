@@ -1,11 +1,12 @@
 use near_sdk::serde_json::Value;
 
+use super::assert_verification_succeeded;
 use crate::{
     burn::GAS_FOR_BURN_CALL,
     env, ext_nbtc,
     mint::{GAS_FOR_MINT_CALL, GAS_FOR_MINT_CALL_BACK},
     near, require, serde_json, AccountId, Contract, ContractExt, DepositMsg, Event, Gas, NearToken,
-    PendingUTXOInfo, PostAction, Promise, PromiseOrValue, SafeDepositMsg, MAX_BOOL_RESULT,
+    PendingUTXOInfo, PostAction, Promise, PromiseOrValue, SafeDepositMsg,
     MAX_FT_TRANSFER_CALL_RESULT, U128,
 };
 
@@ -13,6 +14,7 @@ pub const GAS_FOR_VERIFY_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(130);
 pub const GAS_FOR_UNAVAILABLE_UTXO_CALL_BACK: Gas = Gas::from_tgas(20);
 
 impl Contract {
+    #[allow(unused_variables)]
     pub(crate) fn internal_verify_deposit(
         &mut self,
         deposit_amount: u128,
@@ -29,6 +31,8 @@ impl Contract {
         } else {
             self.get_extra_msg_confirmations(config, deposit_amount)
         };
+
+        #[cfg(not(feature = "dash"))]
         let promise = self.verify_transaction_inclusion_promise(
             config.btc_light_client_account_id.clone(),
             pending_utxo_info.tx_id.clone(),
@@ -37,6 +41,10 @@ impl Contract {
             merkle_proof,
             confirmations,
         );
+
+        #[cfg(feature = "dash")]
+        let promise =
+            self.verify_transaction_via_mpc(pending_utxo_info.tx_id.clone(), confirmations);
 
         if deposit_amount < config.min_deposit_amount {
             promise.then(
@@ -67,7 +75,7 @@ impl Contract {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, unused_variables)]
     pub(crate) fn internal_safe_verify_deposit(
         &mut self,
         deposit_amount: u128,
@@ -80,6 +88,8 @@ impl Contract {
     ) -> Promise {
         let config = self.internal_config();
         let confirmations = self.get_confirmations(config, deposit_amount);
+
+        #[cfg(not(feature = "dash"))]
         let promise = self.verify_transaction_inclusion_promise(
             config.btc_light_client_account_id.clone(),
             pending_utxo_info.tx_id.clone(),
@@ -88,6 +98,10 @@ impl Contract {
             merkle_proof,
             confirmations,
         );
+
+        #[cfg(feature = "dash")]
+        let promise =
+            self.verify_transaction_via_mpc(pending_utxo_info.tx_id.clone(), confirmations);
 
         if deposit_amount < config.min_deposit_amount {
             promise.then(
@@ -118,11 +132,7 @@ impl Contract {
         recipient_id: AccountId,
         pending_utxo_info: PendingUTXOInfo,
     ) -> PromiseOrValue<bool> {
-        let result_bytes = env::promise_result_checked(0, MAX_BOOL_RESULT)
-            .expect("Call verify_transaction_inclusion failed");
-        let is_valid = serde_json::from_slice::<bool>(&result_bytes)
-            .expect("verify_transaction_inclusion return not bool");
-        require!(is_valid, "verify_transaction_inclusion return false");
+        assert_verification_succeeded();
         require!(
             self.data_mut()
                 .verified_deposit_utxo
@@ -153,11 +163,7 @@ impl Contract {
         pending_utxo_info: PendingUTXOInfo,
         post_actions: Option<Vec<PostAction>>,
     ) -> PromiseOrValue<bool> {
-        let result_bytes = env::promise_result_checked(0, MAX_BOOL_RESULT)
-            .expect("Call verify_transaction_inclusion failed");
-        let is_valid = serde_json::from_slice::<bool>(&result_bytes)
-            .expect("verify_transaction_inclusion return not bool");
-        require!(is_valid, "verify_transaction_inclusion return false");
+        assert_verification_succeeded();
         require!(
             self.data_mut()
                 .verified_deposit_utxo
@@ -183,11 +189,7 @@ impl Contract {
         msg: String,
         pending_utxo_info: PendingUTXOInfo,
     ) -> PromiseOrValue<bool> {
-        let result_bytes = env::promise_result_checked(0, MAX_BOOL_RESULT)
-            .expect("Call verify_transaction_inclusion failed");
-        let is_valid = serde_json::from_slice::<bool>(&result_bytes)
-            .expect("verify_transaction_inclusion return not bool");
-        require!(is_valid, "verify_transaction_inclusion return false");
+        assert_verification_succeeded();
         require!(
             self.data_mut()
                 .verified_deposit_utxo

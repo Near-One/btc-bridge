@@ -5,10 +5,36 @@ use near_sdk::serde::{
 };
 use std::{fmt, str::FromStr};
 
+#[cfg(not(feature = "dash"))]
+use crate::require;
 use crate::{env, ext_contract, near, AccountId, Contract, Gas, Promise};
 pub mod active_utxo_management;
 pub mod deposit;
 pub mod withdraw;
+
+#[cfg(not(feature = "dash"))]
+pub(crate) const MAX_VERIFY_RESULT: usize = crate::MAX_BOOL_RESULT;
+#[cfg(feature = "dash")]
+pub(crate) const MAX_VERIFY_RESULT: usize = crate::MAX_MPC_VERIFY_RESULT;
+
+pub(crate) fn assert_verification_succeeded() {
+    let result_bytes =
+        env::promise_result_checked(0, MAX_VERIFY_RESULT).expect("Call verify_transaction failed");
+
+    #[cfg(not(feature = "dash"))]
+    {
+        let is_valid = crate::serde_json::from_slice::<bool>(&result_bytes)
+            .expect("verify_transaction_inclusion return not bool");
+        require!(is_valid, "verify_transaction_inclusion return false");
+    }
+
+    #[cfg(feature = "dash")]
+    {
+        let _response: crate::mpc_verifier::VerifyForeignTransactionResponse =
+            crate::serde_json::from_slice(&result_bytes)
+                .expect("ERR_MPC_VERIFY: failed to deserialize response");
+    }
+}
 
 pub const GAS_FOR_VERIFY_TRANSACTION_INCLUSION: Gas = Gas::from_tgas(10);
 pub const GAS_FOR_GET_LAST_BLOCK_HEIGHT: Gas = Gas::from_tgas(3);

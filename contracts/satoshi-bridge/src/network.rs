@@ -25,6 +25,8 @@ pub enum Chain {
     ZcashTestnet,
     DogecoinMainnet,
     DogecoinTestnet,
+    DashMainnet,
+    DashTestnet,
 }
 #[cfg(feature = "zcash")]
 pub struct BranchIdUpdateBlockHeight {
@@ -335,6 +337,9 @@ pub fn get_segwit_hrp(chain: &Chain) -> Option<&'static str> {
 
         // Dogecoin (no native Bech32 support yet)
         Chain::DogecoinMainnet | Chain::DogecoinTestnet => None,
+
+        // Dash (no SegWit support)
+        Chain::DashMainnet | Chain::DashTestnet => None,
     }
 }
 
@@ -356,6 +361,10 @@ fn get_pubkey_address_prefix(chain: &Chain) -> Vec<u8> {
         // Dogecoin
         Chain::DogecoinMainnet => vec![0x1E], // "D"
         Chain::DogecoinTestnet => vec![0x71], // "n"
+
+        // Dash
+        Chain::DashMainnet => vec![0x4C], // "X"
+        Chain::DashTestnet => vec![0x8C], // "y"
     }
 }
 
@@ -377,6 +386,10 @@ fn get_script_address_prefix(chain: &Chain) -> Vec<u8> {
         // Dogecoin
         Chain::DogecoinMainnet => vec![0x16], // "9"
         Chain::DogecoinTestnet => vec![0xC4], // same as Bitcoin testnet
+
+        // Dash
+        Chain::DashMainnet => vec![0x10], // "7"
+        Chain::DashTestnet => vec![0x13], // "8"
     }
 }
 
@@ -431,6 +444,8 @@ mod tests {
             ("tmJpMbYtRf9Hgi8HUJ4FGkoM3FUSHsu28wM", Chain::ZcashTestnet),
             ("DKNmffVbxrBcNvQ9uJEDLe8f6prxSmH2Vm", Chain::DogecoinMainnet),
             ("njyMWWyh1L7tSX6QkWRgetMVCVyVtfoDta", Chain::DogecoinTestnet),
+            ("XoEnDiUTs3x8BmmQdBwWRxrhLmVvEu1Htw", Chain::DashMainnet),
+            ("yYsPEfYuJbcCXWgxC3FuTzH3d3zHjgWz7m", Chain::DashTestnet),
         ] {
             let parse_address = Address::parse(address, chain.clone()).unwrap();
             let script_pubkey = parse_address.script_pubkey().unwrap();
@@ -481,6 +496,8 @@ mod tests {
             Chain::ZcashTestnet,
             Chain::DogecoinMainnet,
             Chain::DogecoinTestnet,
+            Chain::DashMainnet,
+            Chain::DashTestnet,
         ] {
             let btc_public_key = generate_btc_public_key("path");
             let address = Address::from_pubkey(chain.clone(), btc_public_key).unwrap();

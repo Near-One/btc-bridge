@@ -1,5 +1,7 @@
-#[cfg(not(feature = "zcash"))]
+#[cfg(not(any(feature = "zcash", feature = "dash")))]
 use crate::network::Chain::BitcoinTestnet;
+#[cfg(feature = "dash")]
+use crate::network::Chain::DashTestnet;
 #[cfg(feature = "zcash")]
 use crate::network::Chain::ZcashTestnet;
 use crate::*;
@@ -40,8 +42,10 @@ pub fn btc_light_client_id() -> AccountId {
 
 pub fn init_contract() -> Contract {
     Contract::new(Config {
-        #[cfg(not(feature = "zcash"))]
+        #[cfg(not(any(feature = "zcash", feature = "dash")))]
         chain: BitcoinTestnet,
+        #[cfg(feature = "dash")]
+        chain: DashTestnet,
         #[cfg(feature = "zcash")]
         chain: ZcashTestnet,
         chain_signatures_account_id: chain_signatures_id(),
