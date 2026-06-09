@@ -1,5 +1,6 @@
 use crate::*;
 use near_plugins::{access_control_any, pause};
+use near_sdk::json_types::Base64VecU8;
 
 #[trusted_relayer]
 #[near]
@@ -153,6 +154,30 @@ impl Contract {
             proof.tx_index,
             proof.merkle_proof,
             Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
+        )
+    }
+
+    #[payable]
+    #[trusted_relayer]
+    #[pause(except(roles(Role::DAO)))]
+    #[deprecated(note = "use safe_verify_deposit_v2")]
+    pub fn safe_verify_deposit_compact(
+        &mut self,
+        deposit_msg: DepositMsg,
+        tx_bytes: Base64VecU8,
+        vout: usize,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Promise {
+        self.internal_safe_verify_deposit_entry(
+            deposit_msg,
+            tx_bytes.0,
+            vout,
+            tx_block_blockhash,
+            tx_index,
+            merkle_proof,
+            None
         )
     }
 
@@ -533,9 +558,20 @@ impl Contract {
             .get(&utxo_storage_key)
             .expect("Refund request not found")
             .into();
-        let has_refund_address = refund_request.deposit_msg().refund_address.is_some();
-        let skip_timelock = is_privileged && has_refund_address;
-        self.internal_execute_refund(utxo_storage_key, skip_timelock);
+        let config = self.internal_config();
+        let timelock_sec = if refund_request.deposit_msg().refund_address.is_some() {
+            // Pre-authorized refund address: privileged users can fast-track.
+            if is_privileged {
+                0
+            } else {
+                config.refund_timelock_sec
+            }
+        } else {
+            // Refund address supplied by caller of `request_refund`: longer
+            // timelock to give DAO/Operator time to reject suspicious requests.
+            config.unsafe_refund_timelock_sec
+        };
+        self.internal_execute_refund(utxo_storage_key, timelock_sec);
     }
 
     /// Verify that the refund BTC transaction has been confirmed on the Bitcoin network.

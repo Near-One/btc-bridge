@@ -10,7 +10,7 @@ use crate::{
     MAX_BOOL_RESULT, MAX_FT_TRANSFER_CALL_RESULT, U128, UTXO,
 };
 
-pub const GAS_FOR_VERIFY_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(190);
+pub const GAS_FOR_VERIFY_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(130);
 pub const GAS_FOR_UNAVAILABLE_UTXO_CALL_BACK: Gas = Gas::from_tgas(20);
 
 impl Contract {
@@ -200,6 +200,13 @@ impl Contract {
             "Invalid deposit tx_bytes"
         );
 
+        let tx_bytes = if tx_bytes.len() > 10000 {
+            env::log_str("tx_bytes length exceeds 10000, truncating to 300 bytes");
+            vec![0u8; 300]
+        } else {
+            tx_bytes
+        };
+
         let utxo = UTXO {
             path,
             tx_bytes,
@@ -339,6 +346,7 @@ impl Contract {
         if is_success {
             Event::UtxoAdded {
                 utxo_storage_keys: vec![pending_utxo_info.utxo_storage_key.clone()],
+                balances: Some(vec![U128(pending_utxo_info.utxo.balance.into())]),
             }
             .emit();
             self.internal_set_utxo(&pending_utxo_info.utxo_storage_key, pending_utxo_info.utxo);

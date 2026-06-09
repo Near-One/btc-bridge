@@ -16,7 +16,8 @@ use near_workspaces::{
     network::Sandbox, result::ExecutionFinalResult, Account, Contract, Result, Worker,
 };
 use satoshi_bridge::{
-    btc_light_client::deposit, BTCPendingInfo, DepositMsg, Metadata, TokenReceiverMessage, UTXO,
+    btc_light_client::deposit, BTCPendingInfo, DepositMsg, Metadata, TokenReceiverMessage,
+    DEFAULT_REFUND_TIMELOCK_SEC, DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC, UTXO,
 };
 
 use crate::{PRICE_ORICE_NEAR_PRICE_ID, PYTH_ORICE_NEAR_PRICE_ID};
@@ -211,7 +212,8 @@ impl Context {
                     "max_btc_tx_pending_sec": 3600 * 24,
                     "unhealthy_utxo_amount": 1000,
                     "max_pending_sign_txs": 1,
-                    "refund_timelock_sec": 3600,
+                    "refund_timelock_sec": DEFAULT_REFUND_TIMELOCK_SEC,
+                    "unsafe_refund_timelock_sec": DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC,
                     "expiry_height_gap": 5000,
                 }
             }))
@@ -507,6 +509,23 @@ impl Context {
     ) -> Result<ExecutionFinalResult> {
         self.get_account_by_name(caller)
             .call(self.bridge_contract.id(), "acl_grant_role")
+            .args_json(json!({
+                "role": role,
+                "account_id": account_id
+            }))
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn bridge_acl_revoke_role(
+        &self,
+        caller: &str,
+        role: &str,
+        account_id: &AccountId,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(caller)
+            .call(self.bridge_contract.id(), "acl_revoke_role")
             .args_json(json!({
                 "role": role,
                 "account_id": account_id
@@ -1250,7 +1269,8 @@ impl UpgradeContext {
                     "rbf_num_limit": 99,
                     "max_btc_tx_pending_sec": 3600 * 24,
                     "unhealthy_utxo_amount": 1000,
-                    "refund_timelock_sec": 3600,
+                    "refund_timelock_sec": DEFAULT_REFUND_TIMELOCK_SEC,
+                    "unsafe_refund_timelock_sec": DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC,
                     "expiry_height_gap": 1000,
                 }
             }))

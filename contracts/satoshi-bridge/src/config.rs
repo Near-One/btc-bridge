@@ -6,6 +6,7 @@ use crate::{
 pub const MAX_RATIO: u32 = 10000;
 
 pub const DEFAULT_REFUND_TIMELOCK_SEC: u64 = 2 * 24 * 3600;
+pub const DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC: u64 = 14 * 24 * 3600;
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone)]
@@ -110,8 +111,11 @@ pub struct Config {
     pub max_btc_tx_pending_sec: u32,
     // UTXOs less than or equal to this amount are allowed to be merged through active management.
     pub unhealthy_utxo_amount: u64,
-    // Timelock in seconds before a refund request can be executed.
+    // Timelock for refunds where `deposit_msg.refund_address` is pre-authorized.
     pub refund_timelock_sec: u64,
+    // Timelock for refunds where the refund address comes from the request caller
+    // (`deposit_msg.refund_address` was None). Must be >= `refund_timelock_sec`.
+    pub unsafe_refund_timelock_sec: u64,
     #[cfg(feature = "zcash")]
     pub expiry_height_gap: u32,
 }
@@ -147,6 +151,10 @@ impl Config {
             u128::from(self.unhealthy_utxo_amount) > self.min_change_amount,
             "unhealthy_utxo_amount must be greater than min_change_amount"
         );
+        require!(
+            self.refund_timelock_sec <= self.unsafe_refund_timelock_sec,
+            "refund_timelock_sec must be <= unsafe_refund_timelock_sec"
+        );
     }
 
     pub fn get_change_script_pubkey(&self) -> ScriptBuf {
@@ -164,6 +172,21 @@ impl Config {
             .unwrap_or_else(|e| env::panic_str(&format!("{address_string}: {e}")))
             .script_pubkey()
             .expect("Failed to get script pubkey")
+    }
+
+    /// scriptPubKey for a withdrawal target address, or `None` when the address has no
+    /// transparent receiver (e.g. a shielded-only Zcash unified address that carries only
+    /// Sapling/Orchard receivers). Such a recipient is paid via the Orchard bundle, so the
+    /// withdrawal's transparent outputs are all change and there is no target scriptPubKey
+    /// to match against. The address must still be parseable for the configured chain; an
+    /// unparseable address panics, matching `string_to_script_pubkey`.
+    pub fn target_script_pubkey(&self, address_string: &str) -> Option<ScriptBuf> {
+        let chain = self.get_utxo_network();
+
+        Address::parse(address_string, chain)
+            .unwrap_or_else(|e| env::panic_str(&format!("{address_string}: {e}")))
+            .script_pubkey()
+            .ok()
     }
 
     pub fn get_utxo_network(&self) -> network::Chain {
@@ -236,6 +259,7 @@ pub struct ConfigUpdate {
     pub max_btc_tx_pending_sec: Option<u32>,
     pub unhealthy_utxo_amount: Option<u64>,
     pub refund_timelock_sec: Option<u64>,
+    pub unsafe_refund_timelock_sec: Option<u64>,
 }
 
 impl ConfigUpdate {
@@ -271,6 +295,7 @@ impl ConfigUpdate {
         set_if_some!(max_btc_tx_pending_sec);
         set_if_some!(unhealthy_utxo_amount);
         set_if_some!(refund_timelock_sec);
+        set_if_some!(unsafe_refund_timelock_sec);
 
         config.assert_valid();
     }
@@ -348,5 +373,47 @@ mod tests {
 
         assert_eq!(config_after.min_deposit_amount, 21000);
         assert_eq!(config_after.min_change_amount, 500);
+    }
+
+    // Regression: a Zcash unified address with no transparent receiver (shielded-only,
+    // e.g. Sapling+Orchard) has no scriptPubKey. `string_to_script_pubkey` panics on it
+    // ("Failed to get script pubkey: No receiver found in address"), which is what broke
+    // Orchard withdrawals to such addresses. `target_script_pubkey` must return `None`
+    // for it (so the withdraw path treats transparent outputs as change) while still
+    // resolving transparent addresses.
+    #[test]
+    #[cfg(feature = "zcash")]
+    fn test_target_script_pubkey_shielded_only_ua_is_none() {
+        use crate::network::{Address, Chain};
+
+        let mut unit_env = init_unit_env();
+        let config = unit_env.contract.internal_mut_config();
+        config.chain = Chain::ZcashMainnet;
+
+        // Real mainnet recipient from the failed withdrawal: Sapling + Orchard, no
+        // transparent receiver.
+        let shielded_only_ua = "u15a97e324mckwx89t0ucxytpd7v3pfzey7daldrk4mwu3u55ej39f6v7myqjxw0e098hnhyp0tvfgfnxj8swt22rl4f77a8wrg9zjynh9dwj20lf232h7yzfr0v53l2s824l22l63xwlxyypnxkx9qq7dd249pj565q7490fey5czu2pm";
+
+        // Precondition documenting the bug: the address parses, but yields no scriptPubKey.
+        assert!(
+            Address::parse(shielded_only_ua, Chain::ZcashMainnet)
+                .expect("valid unified address")
+                .script_pubkey()
+                .is_err(),
+            "fixture must be a shielded-only UA with no transparent receiver"
+        );
+
+        assert!(
+            config.target_script_pubkey(shielded_only_ua).is_none(),
+            "shielded-only UA must yield no transparent scriptPubKey instead of panicking"
+        );
+
+        // A transparent t1 address still resolves to a scriptPubKey.
+        assert!(
+            config
+                .target_script_pubkey("t1KfwsnwJeNRVjQGBDZhwKskpQbih2qx5Ua")
+                .is_some(),
+            "transparent address must resolve to a scriptPubKey"
+        );
     }
 }

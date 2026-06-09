@@ -3,7 +3,7 @@ use near_sdk::{
     assert_one_yocto,
     borsh::{BorshDeserialize, BorshSerialize},
     env, ext_contract, is_promise_success,
-    json_types::{Base64VecU8, U128},
+    json_types::U128,
     log, near, require,
     serde::{Deserialize, Serialize},
     serde_json::{self, json, Value},
@@ -154,6 +154,7 @@ pub enum VersionedContractData {
     V1(ContractDataV1),
     V2(ContractDataV2),
     V3(ContractDataV3),
+    V4(ContractDataV4),
     Current(ContractData),
 }
 
