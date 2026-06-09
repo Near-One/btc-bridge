@@ -935,6 +935,12 @@ impl Context {
         vout: u32,
         proof: Value,
     ) -> Result<ExecutionFinalResult> {
+        // Safe deposits require an attached storage deposit; standard deposits attach nothing.
+        let deposit = if deposit_msg.safe_deposit.is_some() {
+            self.required_balance_for_safe_deposit().await.unwrap()
+        } else {
+            NearToken::from_yoctonear(0)
+        };
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "verify_deposit_v2")
             .args_json(json!({
@@ -943,6 +949,7 @@ impl Context {
                 "vout": vout,
                 "proof": proof,
             }))
+            .deposit(deposit)
             .max_gas()
             .transact()
             .await
@@ -960,29 +967,6 @@ impl Context {
                 "tx_id": tx_id,
                 "proof": proof,
             }))
-            .max_gas()
-            .transact()
-            .await
-    }
-
-    pub async fn safe_verify_deposit_v2(
-        &self,
-        user: &str,
-        deposit_msg: DepositMsg,
-        tx_bytes: Vec<u8>,
-        vout: u32,
-        proof: Value,
-    ) -> Result<ExecutionFinalResult> {
-        let required_balance = self.required_balance_for_safe_deposit().await.unwrap();
-        self.get_account_by_name(user)
-            .call(self.bridge_contract.id(), "safe_verify_deposit_v2")
-            .args_json(json!({
-                "deposit_msg": deposit_msg,
-                "tx_bytes": Base64VecU8(tx_bytes),
-                "vout": vout,
-                "proof": proof,
-            }))
-            .deposit(required_balance)
             .max_gas()
             .transact()
             .await

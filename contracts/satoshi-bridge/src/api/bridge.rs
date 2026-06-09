@@ -47,8 +47,15 @@ impl Contract {
     }
 
     /// Verify that the user has transferred BTC asset to the protocol's designated BTC deposit account,
-    /// and mint NBTC to the user's NEAR account.
-    /// Includes coinbase proof for stronger transaction inclusion verification.
+    /// and mint nBTC to the user's NEAR account. Includes coinbase proof for stronger
+    /// transaction inclusion verification.
+    ///
+    /// The deposit flow is selected by `deposit_msg.safe_deposit`:
+    /// * `Some(..)` — safe deposit (e.g. Omni Bridge): charges no fee, reverts the whole
+    ///   transaction if minting fails (no lost & found), and the caller must attach NEAR for
+    ///   the user's token storage (see `required_balance_for_safe_deposit`).
+    /// * `None` — standard deposit: charges the deposit fee, pays the user's storage, and
+    ///   routes mint failures to lost & found.
     ///
     /// # Arguments
     ///
@@ -60,6 +67,7 @@ impl Contract {
     /// # Returns
     ///
     /// bool - Whether nBTC minting was successful.
+    #[payable]
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_deposit_v2(
@@ -69,22 +77,36 @@ impl Contract {
         vout: usize,
         proof: TxInclusionProof,
     ) -> Promise {
-        self.internal_verify_deposit_entry(
-            deposit_msg,
-            tx_bytes.0,
-            vout,
-            proof.tx_block_blockhash,
-            proof.tx_index,
-            proof.merkle_proof,
-            Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
-        )
+        let coinbase_proof = Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof));
+        if deposit_msg.safe_deposit.is_some() {
+            self.internal_safe_verify_deposit_entry(
+                deposit_msg,
+                tx_bytes.0,
+                vout,
+                proof.tx_block_blockhash,
+                proof.tx_index,
+                proof.merkle_proof,
+                coinbase_proof,
+            )
+        } else {
+            self.internal_verify_deposit_entry(
+                deposit_msg,
+                tx_bytes.0,
+                vout,
+                proof.tx_block_blockhash,
+                proof.tx_index,
+                proof.merkle_proof,
+                coinbase_proof,
+            )
+        }
     }
 
     /// Safe version of verify_deposit, only supports minting nBTC with safe_deposit message and revert the deposit on failed XCC calls.
     /// It doesn't charge deposit fee, and doesn't pay the token storage for the user
     ///
     /// # Deprecated
-    /// Use `safe_verify_deposit_v2` instead, which includes coinbase proof for stronger verification.
+    /// Use `verify_deposit_v2` instead (pass `deposit_msg.safe_deposit = Some(..)`), which
+    /// includes coinbase proof for stronger verification.
     ///
     /// # Arguments
     ///
@@ -101,7 +123,7 @@ impl Contract {
     #[payable]
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
-    #[deprecated(note = "use safe_verify_deposit_v2")]
+    #[deprecated(note = "use verify_deposit_v2 with deposit_msg.safe_deposit = Some(..)")]
     pub fn safe_verify_deposit(
         &mut self,
         deposit_msg: DepositMsg,
@@ -122,45 +144,10 @@ impl Contract {
         )
     }
 
-    /// Safe version of verify_deposit. Reverts the entire transaction if mint fails (no lost & found).
-    /// Does not charge deposit fees. User must attach NEAR for storage.
-    /// Includes coinbase proof for stronger transaction inclusion verification.
-    ///
-    /// # Arguments
-    ///
-    /// * `deposit_msg` - Information used to generate the deposit address path. Must contain `safe_deposit`.
-    /// * `tx_bytes` - Successfully confirmed BTC transaction bytes.
-    /// * `vout` - The index of the output where the user sent BTC to the deposit address.
-    /// * `proof` - Transaction inclusion proof with coinbase verification.
-    ///
-    /// # Returns
-    ///
-    /// bool - Whether nBTC minting was successful.
     #[payable]
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
-    pub fn safe_verify_deposit_v2(
-        &mut self,
-        deposit_msg: DepositMsg,
-        tx_bytes: Base64VecU8,
-        vout: usize,
-        proof: TxInclusionProof,
-    ) -> Promise {
-        self.internal_safe_verify_deposit_entry(
-            deposit_msg,
-            tx_bytes.0,
-            vout,
-            proof.tx_block_blockhash,
-            proof.tx_index,
-            proof.merkle_proof,
-            Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
-        )
-    }
-
-    #[payable]
-    #[trusted_relayer]
-    #[pause(except(roles(Role::DAO)))]
-    #[deprecated(note = "use safe_verify_deposit_v2")]
+    #[deprecated(note = "use verify_deposit_v2")]
     pub fn safe_verify_deposit_compact(
         &mut self,
         deposit_msg: DepositMsg,

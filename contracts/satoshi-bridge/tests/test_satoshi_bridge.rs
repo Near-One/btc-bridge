@@ -2850,8 +2850,8 @@ async fn test_safe_verify_deposit_v2() {
     // Register alice for nBTC storage (required for safe_verify_deposit)
     check!(context.storage_deposit("nbtc", "alice"));
 
-    // safe_verify_deposit_v2: same nested proof struct
-    check!(printr "safe_verify_deposit_v2" context.safe_verify_deposit_v2(
+    // verify_deposit_v2 dispatches to the safe flow because deposit_msg.safe_deposit is Some.
+    check!(printr "verify_deposit_v2 (safe)" context.verify_deposit_v2(
         "relayer",
         deposit_msg,
         generate_transaction_bytes(
