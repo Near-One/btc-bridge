@@ -582,9 +582,11 @@ impl Contract {
     /// # Arguments
     ///
     /// * `tx_id` - Transaction ID of the confirmed refund transaction.
-    /// * `tx_block_blockhash` - Block hash containing the transaction.
-    /// * `tx_index` - Transaction index within the block.
-    /// * `merkle_proof` - Merkle proof for Light Client verification.
+    /// * `proof` - Transaction inclusion proof for Light Client verification, bundling:
+    ///   `tx_block_blockhash` (block hash containing the transaction), `tx_index`
+    ///   (transaction index within the block), `merkle_proof` (Merkle proof of the
+    ///   transaction), and the coinbase fields `coinbase_tx_id` and
+    ///   `coinbase_merkle_proof` used to verify the block's coinbase.
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_refund_finalize(&mut self, tx_id: String, proof: TxInclusionProof) -> Promise {
