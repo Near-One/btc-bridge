@@ -478,9 +478,11 @@ impl Contract {
     ///   is `None`, this value is used directly.
     /// * `tx_bytes` - BTC transaction bytes proving the deposit.
     /// * `vout` - Output index of the deposit in the transaction.
-    /// * `tx_block_blockhash` - Block hash containing the transaction.
-    /// * `tx_index` - Transaction index within the block.
-    /// * `merkle_proof` - Merkle proof for Light Client verification.
+    /// * `proof` - Transaction inclusion proof for Light Client verification, bundling:
+    ///   `tx_block_blockhash` (block hash containing the transaction), `tx_index`
+    ///   (transaction index within the block), `merkle_proof` (Merkle proof of the
+    ///   transaction), and the coinbase fields `coinbase_tx_id` and
+    ///   `coinbase_merkle_proof` used to verify the block's coinbase.
     /// * `gas_fee` - Optional custom gas fee. Only DAO or Operator can set this.
     ///   If `None`, the default `config.max_btc_gas_fee` is used during `execute_refund`.
     #[allow(clippy::too_many_arguments)]
