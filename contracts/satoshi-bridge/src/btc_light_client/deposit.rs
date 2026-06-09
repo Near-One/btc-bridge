@@ -214,7 +214,10 @@ impl Contract {
             balance: transaction.output()[vout].value.to_sat(),
         };
         let tx_id = transaction.compute_txid().to_string();
-        let utxo_storage_key = generate_utxo_storage_key(tx_id.clone(), vout.try_into().unwrap());
+        let utxo_storage_key = generate_utxo_storage_key(
+            tx_id.clone(),
+            u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
+        );
 
         self.internal_safe_verify_deposit(
             deposit_amount,
