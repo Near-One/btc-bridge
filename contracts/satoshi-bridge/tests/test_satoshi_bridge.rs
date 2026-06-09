@@ -3292,14 +3292,11 @@ async fn test_verify_active_utxo_management_v2() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
 
-    // verify_active_utxo_management_v2 with non-existent tx_id
+    // verify_active_utxo_management_v2 with a non-existent tx_id must be rejected:
+    // internal_unwrap_btc_pending_info panics before any proof verification.
     check!(
-        print "verify_active_utxo_management_v2"
-        context.verify_active_utxo_management_v2(
-            "relayer",
-            "non_existent_tx_id",
-            mock_proof()
-        )
+        context.verify_active_utxo_management_v2("relayer", "non_existent_tx_id", mock_proof()),
+        "BTC pending info not exist"
     );
 }
 
