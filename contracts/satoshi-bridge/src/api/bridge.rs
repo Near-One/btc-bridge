@@ -177,7 +177,7 @@ impl Contract {
             tx_block_blockhash,
             tx_index,
             merkle_proof,
-            None
+            None,
         )
     }
 
