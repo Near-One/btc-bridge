@@ -973,6 +973,7 @@ impl Context {
         vout: u32,
         proof: Value,
     ) -> Result<ExecutionFinalResult> {
+        let required_balance = self.required_balance_for_safe_deposit().await.unwrap();
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "safe_verify_deposit_v2")
             .args_json(json!({
@@ -981,7 +982,7 @@ impl Context {
                 "vout": vout,
                 "proof": proof,
             }))
-            .deposit(NearToken::from_near(1))
+            .deposit(required_balance)
             .max_gas()
             .transact()
             .await
@@ -1417,6 +1418,16 @@ impl Context {
     pub async fn required_balance_for_execute_refund(&self) -> Result<NearToken> {
         self.bridge_contract
             .call("required_balance_for_execute_refund")
+            .args_json(json!({}))
+            .view()
+            .await
+            .unwrap()
+            .json::<NearToken>()
+    }
+
+    pub async fn required_balance_for_safe_deposit(&self) -> Result<NearToken> {
+        self.bridge_contract
+            .call("required_balance_for_safe_deposit")
             .args_json(json!({}))
             .view()
             .await
