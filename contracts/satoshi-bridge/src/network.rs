@@ -29,6 +29,7 @@ pub enum Chain {
 #[cfg(feature = "zcash")]
 pub struct BranchIdUpdateBlockHeight {
     pub nu6_1_update: u32,
+    pub nu6_2_update: u32,
 }
 
 #[cfg(feature = "zcash")]
@@ -37,9 +38,11 @@ impl BranchIdUpdateBlockHeight {
         match chain {
             Chain::ZcashMainnet => Self {
                 nu6_1_update: 3146400,
+                nu6_2_update: 3364600,
             },
             Chain::ZcashTestnet => Self {
                 nu6_1_update: 3536500,
+                nu6_2_update: 4052000,
             },
             _ => unreachable!(),
         }
@@ -49,6 +52,10 @@ impl Chain {
     #[cfg(feature = "zcash")]
     pub fn get_branch_id(&self, block_height: u32) -> BranchId {
         let block_height_update = BranchIdUpdateBlockHeight::new(self);
+        if block_height_update.nu6_2_update != 0 && block_height >= block_height_update.nu6_2_update
+        {
+            return BranchId::Nu6_2;
+        }
         if block_height_update.nu6_1_update != 0 && block_height >= block_height_update.nu6_1_update
         {
             return BranchId::Nu6_1;
@@ -490,5 +497,23 @@ mod tests {
             let address_from_str = Address::parse(&address_from_script.to_string(), chain).unwrap();
             assert_eq!(address, address_from_str);
         }
+    }
+
+    #[cfg(feature = "zcash")]
+    #[test]
+    fn test_get_branch_id_activation_boundaries() {
+        use zcash_protocol::consensus::BranchId;
+
+        // Mainnet: NU6.1 at 3_146_400, NU6.2 at 3_364_600.
+        assert_eq!(Chain::ZcashMainnet.get_branch_id(3_146_399), BranchId::Nu6);
+        assert_eq!(Chain::ZcashMainnet.get_branch_id(3_146_400), BranchId::Nu6_1);
+        assert_eq!(Chain::ZcashMainnet.get_branch_id(3_364_599), BranchId::Nu6_1);
+        assert_eq!(Chain::ZcashMainnet.get_branch_id(3_364_600), BranchId::Nu6_2);
+
+        // Testnet: NU6.1 at 3_536_500, NU6.2 at 4_052_000.
+        assert_eq!(Chain::ZcashTestnet.get_branch_id(3_536_499), BranchId::Nu6);
+        assert_eq!(Chain::ZcashTestnet.get_branch_id(3_536_500), BranchId::Nu6_1);
+        assert_eq!(Chain::ZcashTestnet.get_branch_id(4_051_999), BranchId::Nu6_1);
+        assert_eq!(Chain::ZcashTestnet.get_branch_id(4_052_000), BranchId::Nu6_2);
     }
 }
