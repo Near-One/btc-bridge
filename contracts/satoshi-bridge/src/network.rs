@@ -506,14 +506,32 @@ mod tests {
 
         // Mainnet: NU6.1 at 3_146_400, NU6.2 at 3_364_600.
         assert_eq!(Chain::ZcashMainnet.get_branch_id(3_146_399), BranchId::Nu6);
-        assert_eq!(Chain::ZcashMainnet.get_branch_id(3_146_400), BranchId::Nu6_1);
-        assert_eq!(Chain::ZcashMainnet.get_branch_id(3_364_599), BranchId::Nu6_1);
-        assert_eq!(Chain::ZcashMainnet.get_branch_id(3_364_600), BranchId::Nu6_2);
+        assert_eq!(
+            Chain::ZcashMainnet.get_branch_id(3_146_400),
+            BranchId::Nu6_1
+        );
+        assert_eq!(
+            Chain::ZcashMainnet.get_branch_id(3_364_599),
+            BranchId::Nu6_1
+        );
+        assert_eq!(
+            Chain::ZcashMainnet.get_branch_id(3_364_600),
+            BranchId::Nu6_2
+        );
 
         // Testnet: NU6.1 at 3_536_500, NU6.2 at 4_052_000.
         assert_eq!(Chain::ZcashTestnet.get_branch_id(3_536_499), BranchId::Nu6);
-        assert_eq!(Chain::ZcashTestnet.get_branch_id(3_536_500), BranchId::Nu6_1);
-        assert_eq!(Chain::ZcashTestnet.get_branch_id(4_051_999), BranchId::Nu6_1);
-        assert_eq!(Chain::ZcashTestnet.get_branch_id(4_052_000), BranchId::Nu6_2);
+        assert_eq!(
+            Chain::ZcashTestnet.get_branch_id(3_536_500),
+            BranchId::Nu6_1
+        );
+        assert_eq!(
+            Chain::ZcashTestnet.get_branch_id(4_051_999),
+            BranchId::Nu6_1
+        );
+        assert_eq!(
+            Chain::ZcashTestnet.get_branch_id(4_052_000),
+            BranchId::Nu6_2
+        );
     }
 }
