@@ -48,12 +48,9 @@ impl Transaction {
         Ok(buf)
     }
 
-    pub fn decode(data: &[u8], chain: &network::Chain) -> Result<Self, std::io::Error> {
+    pub fn decode(data: &[u8], _chain: &network::Chain) -> Result<Self, std::io::Error> {
         let mut cursor = std::io::Cursor::new(data);
-        let branch_id = match chain {
-            network::Chain::ZcashTestnet => BranchId::Nu6_1,
-            _ => BranchId::Nu6,
-        };
+        let branch_id = BranchId::Nu6_2;
         let tx = ZCashTransaction::read(&mut cursor, branch_id)?;
         Ok(Self { inner_tx: tx })
     }
