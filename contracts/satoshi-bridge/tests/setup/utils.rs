@@ -126,8 +126,9 @@ pub fn generate_transaction_bytes(
     tx_ins: Vec<(&str, u32, Option<&str>)>,
     tx_outs: Vec<(&str, u64)>,
 ) -> Vec<u8> {
-    use zcash_primitives::consensus::{BlockHeight, BranchId};
     use zcash_primitives::transaction::{TransactionData, TxVersion};
+    use zcash_protocol::consensus::{BlockHeight, BranchId};
+    use zcash_script::script::Code;
     use zcash_transparent::bundle::{
         Authorized, OutPoint as ZcashOutPoint, TxIn as ZcashTxIn, TxOut as ZcashTxOut,
     };
@@ -148,16 +149,12 @@ pub fn generate_transaction_bytes(
                 let address = Address::from_str(addr)
                     .expect("Invalid btc address")
                     .assume_checked();
-                zcash_transparent::address::Script(address.script_pubkey().to_bytes())
+                zcash_transparent::address::Script(Code(address.script_pubkey().to_bytes()))
             } else {
-                zcash_transparent::address::Script(vec![])
+                zcash_transparent::address::Script(Code(vec![]))
             };
 
-            ZcashTxIn {
-                prevout,
-                script_sig,
-                sequence: 4294967293, // Same as Bitcoin version
-            }
+            ZcashTxIn::from_parts(prevout, script_sig, 4294967293) // sequence same as Bitcoin version
         })
         .collect();
 
@@ -194,7 +191,7 @@ pub fn generate_transaction_bytes(
                                 script
                             },
                         };
-                        zcash_transparent::address::Script(script_bytes)
+                        zcash_transparent::address::Script(Code(script_bytes))
                     },
                     Err(_) => panic!("Invalid Zcash address: {}", script_addr),
                 }
@@ -203,13 +200,13 @@ pub fn generate_transaction_bytes(
                 let address = Address::from_str(script_addr)
                     .expect("Invalid btc address")
                     .assume_checked();
-                zcash_transparent::address::Script(address.script_pubkey().to_bytes())
+                zcash_transparent::address::Script(Code(address.script_pubkey().to_bytes()))
             };
 
-            ZcashTxOut {
-                value: zcash_protocol::value::Zatoshis::const_from_u64(value),
+            ZcashTxOut::new(
+                zcash_protocol::value::Zatoshis::const_from_u64(value),
                 script_pubkey,
-            }
+            )
         })
         .collect();
 

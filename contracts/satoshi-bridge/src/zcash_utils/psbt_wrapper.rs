@@ -5,6 +5,7 @@ use crate::*;
 use bitcoin::hashes::Hash;
 use bitcoin::{OutPoint, TxOut};
 use near_sdk::{env, require};
+use orchard::bundle::ProofSizeEnforcement;
 use std::io;
 use std::io::{Cursor, Read, Write};
 use zcash_primitives::transaction::components::orchard::read_v5_bundle;
@@ -13,6 +14,8 @@ use zcash_primitives::transaction::fees::FeeRule;
 use zcash_primitives::transaction::{TransactionData, TransactionDigest, TxVersion};
 use zcash_protocol::consensus::{BlockHeight, BranchId};
 use zcash_protocol::value::Zatoshis;
+use zcash_script::script::Code;
+use zcash_transparent::address::Script;
 use zcash_transparent::bundle::Authorized;
 use zcash_transparent::bundle::TxIn as ZcashTxIn;
 use zcash_transparent::bundle::TxOut as ZcashTxOut;
@@ -49,33 +52,35 @@ impl PsbtWrapper {
         let vout = output
             .clone()
             .into_iter()
-            .map(|o| ZcashTxOut {
-                value: Zatoshis::from_u64(o.value.to_sat()).unwrap(),
-                script_pubkey: zcash_primitives::legacy::Script(o.script_pubkey.to_bytes()),
+            .map(|o| {
+                ZcashTxOut::new(
+                    Zatoshis::from_u64(o.value.to_sat()).unwrap(),
+                    Script(Code(o.script_pubkey.to_bytes())),
+                )
             })
             .collect();
 
         let vin: Vec<ZcashTxIn<Authorized>> = input
             .into_iter()
-            .map(|i| ZcashTxIn {
-                prevout: zcash_transparent::bundle::OutPoint::new(*i.txid.as_byte_array(), i.vout),
-                script_sig: zcash_primitives::legacy::Script::default(),
-                sequence: sequence.0,
+            .map(|i| {
+                ZcashTxIn::from_parts(
+                    zcash_transparent::bundle::OutPoint::new(*i.txid.as_byte_array(), i.vout),
+                    Script::default(),
+                    sequence.0,
+                )
             })
             .collect();
 
-        let inputs = vec![
-            ZcashTxOut {
-                value: Zatoshis::from_u64(0).unwrap(),
-                script_pubkey: zcash_primitives::legacy::Script::default(),
-            };
-            vin.len()
-        ];
+        let inputs =
+            vec![ZcashTxOut::new(Zatoshis::from_u64(0).unwrap(), Script::default()); vin.len()];
 
-        let orchard =
-            orchard_policy::extract_orchard_bundle(orchard_bundle_bytes).unwrap_or_else(|_| {
-                env::panic_str("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle")
-            });
+        let orchard = orchard_policy::extract_orchard_bundle(
+            orchard_bundle_bytes,
+            proof_size_enforcement(get_branch_id(current_height, config)),
+        )
+        .unwrap_or_else(|_| {
+            env::panic_str("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle")
+        });
 
         Self {
             branch_id: get_branch_id(current_height, config),
@@ -115,17 +120,22 @@ impl PsbtWrapper {
             output
                 .clone()
                 .into_iter()
-                .map(|o| ZcashTxOut {
-                    value: Zatoshis::from_u64(o.value.to_sat()).unwrap(),
-                    script_pubkey: zcash_primitives::legacy::Script(o.script_pubkey.to_bytes()),
+                .map(|o| {
+                    ZcashTxOut::new(
+                        Zatoshis::from_u64(o.value.to_sat()).unwrap(),
+                        Script(Code(o.script_pubkey.to_bytes())),
+                    )
                 })
                 .collect()
         };
 
-        let orchard =
-            orchard_policy::extract_orchard_bundle(orchard_bundle_bytes).unwrap_or_else(|_| {
-                env::panic_str("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle")
-            });
+        let orchard = orchard_policy::extract_orchard_bundle(
+            orchard_bundle_bytes,
+            proof_size_enforcement(get_branch_id(current_height, config)),
+        )
+        .unwrap_or_else(|_| {
+            env::panic_str("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle")
+        });
 
         Self {
             branch_id: get_branch_id(current_height, config),
@@ -140,10 +150,10 @@ impl PsbtWrapper {
 
     pub fn set_input_utxo(&mut self, input_utxo: Vec<TxOut>) {
         input_utxo.iter().enumerate().for_each(|(i, v)| {
-            self.inputs_utxo[i] = ZcashTxOut {
-                value: Zatoshis::from_u64(v.value.to_sat()).unwrap(),
-                script_pubkey: zcash_primitives::legacy::Script(v.script_pubkey.to_bytes()),
-            }
+            self.inputs_utxo[i] = ZcashTxOut::new(
+                Zatoshis::from_u64(v.value.to_sat()).unwrap(),
+                Script(Code(v.script_pubkey.to_bytes())),
+            )
         });
     }
 
@@ -175,8 +185,8 @@ impl PsbtWrapper {
             .into_iter()
             .map(|out_point| {
                 generate_utxo_storage_key(
-                    out_point.prevout.txid().to_string(),
-                    out_point.prevout.n(),
+                    out_point.prevout().txid().to_string(),
+                    out_point.prevout().n(),
                 )
             })
             .collect()
@@ -196,8 +206,8 @@ impl PsbtWrapper {
             .clone()
             .into_iter()
             .map(|i| TxOut {
-                value: bitcoin::Amount::from_sat(i.value.into_u64()),
-                script_pubkey: ScriptBuf::from_bytes(i.script_pubkey.0),
+                value: bitcoin::Amount::from_sat(i.value().into_u64()),
+                script_pubkey: ScriptBuf::from_bytes(i.script_pubkey().0 .0.clone()),
             })
             .collect()
     }
@@ -209,6 +219,7 @@ impl PsbtWrapper {
         match self.branch_id {
             BranchId::Nu6 => buf.write_all(&[7u8; 1]).unwrap(),
             BranchId::Nu6_1 => buf.write_all(&[8u8; 1]).unwrap(),
+            BranchId::Nu6_2 => buf.write_all(&[9u8; 1]).unwrap(),
             _ => unreachable!(),
         }
         buf.write_all(&self.expiry_height.to_le_bytes()).unwrap();
@@ -278,6 +289,7 @@ impl PsbtWrapper {
             match branch_id_u8 {
                 7 => BranchId::Nu6,
                 8 => BranchId::Nu6_1,
+                9 => BranchId::Nu6_2,
                 _ => env::panic_str("ERR_INVALID_PSBT: unsupported branch_id"),
             }
         } else {
@@ -322,7 +334,7 @@ impl PsbtWrapper {
         }
 
         let orchard_bundle = if version >= 3 {
-            read_v5_bundle(&mut rdr).unwrap_or_else(|_| {
+            read_v5_bundle(&mut rdr, proof_size_enforcement(branch_id)).unwrap_or_else(|_| {
                 env::panic_str("ERR_INVALID_PSBT: failed to read Orchard bundle")
             })
         } else {
@@ -451,15 +463,20 @@ impl PsbtWrapper {
         let txid_parts =
             self.tx_digest(&tx_data, zcash_primitives::transaction::txid::TxIdDigester);
 
-        let script = &self.inputs_utxo[vin].script_pubkey;
+        let script = self.inputs_utxo[vin].script_pubkey();
+        let transparent_bundle = tx_data.transparent_bundle().unwrap_or_else(|| {
+            env::panic_str("ERR_NO_TRANSPARENT_BUNDLE: missing transparent bundle")
+        });
         let sig_input = zcash_primitives::transaction::sighash::SignableInput::Transparent(
             zcash_transparent::sighash::SignableInput::from_parts(
+                transparent_bundle,
                 SighashType::ALL,
                 vin,
                 script,
                 script,
-                self.inputs_utxo[vin].value,
-            ),
+                self.inputs_utxo[vin].value(),
+            )
+            .unwrap_or_else(|_| env::panic_str("ERR_SIGNABLE_INPUT: invalid input index")),
         );
 
         *zcash_primitives::transaction::sighash::signature_hash(&tx_data, &sig_input, &txid_parts)
@@ -477,7 +494,10 @@ impl PsbtWrapper {
             .push_key(&bitcoin::PublicKey::new(public_key))
             .into_script();
 
-        self.vin[sign_index].script_sig = zcash_primitives::legacy::Script(script_sig.to_bytes());
+        let prevout = self.vin[sign_index].prevout().clone();
+        let sequence = self.vin[sign_index].sequence();
+        self.vin[sign_index] =
+            ZcashTxIn::from_parts(prevout, Script(Code(script_sig.to_bytes())), sequence);
     }
 
     pub fn get_min_fee(&self) -> Zatoshis {
@@ -508,6 +528,16 @@ impl PsbtWrapper {
 
 fn get_branch_id(current_height: u32, config: &Config) -> BranchId {
     config.chain.get_branch_id(current_height)
+}
+
+/// Orchard proof-size rule per consensus branch (mirrors `zcash_primitives`):
+/// NU6.2 enforces the canonical proof size; earlier branches tolerate the
+/// pre-NU6.2 non-canonical proofs.
+fn proof_size_enforcement(branch_id: BranchId) -> ProofSizeEnforcement {
+    match branch_id {
+        BranchId::Nu6_2 => ProofSizeEnforcement::Strict,
+        _ => ProofSizeEnforcement::Unenforced,
+    }
 }
 
 fn read_u32_le<R: Read>(r: &mut R) -> io::Result<u32> {
