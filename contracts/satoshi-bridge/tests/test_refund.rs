@@ -1391,3 +1391,175 @@ async fn test_refund_operator_skips_timelock() {
         context.execute_refund("alice", &key)
     );
 }
+
+/// Calling `execute_refund` twice on Bitcoin. Unlike Zcash, Bitcoin has no
+/// consensus `branch_id`, so the refund transaction is byte-for-byte identical
+/// and its txid (= pending id) is the same. The second call therefore tries to
+/// insert an already-existing `BTCPendingInfo` and is rejected — there is only
+/// ever one refund transaction.
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_refund_execute_twice_same_tx() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let refund_btc_address = TARGET_ADDRESS;
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: Some(refund_btc_address.to_string()),
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "a2a5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f19",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 100_000)],
+    );
+    let vout: u32 = 0;
+
+    check!(context.request_refund(
+        "alice",
+        deposit_msg.clone(),
+        TARGET_ADDRESS,
+        tx_bytes.clone(),
+        vout,
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+        1,
+        vec![],
+        None
+    ));
+    let key = utxo_storage_key(&tx_bytes, vout);
+
+    // Allow two pending refund txs so the second call is not blocked by capacity
+    // (we want to observe the same-txid behaviour, not the pending limit).
+    let root_id = context.get_account_by_name("root").id().clone();
+    context
+        .get_account_by_name("root")
+        .call(context.bridge_contract.id(), "set_pending_tx_limit")
+        .args_json(json!({ "account_id": root_id, "max_pending": 2 }))
+        .deposit(near_sdk::NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+
+    // root (DAO) fast-tracks the pre-authorized refund address (timelock 0).
+    check!(print "execute_refund #1" context.execute_refund("root", &key));
+    let pending1 = context.get_btc_pending_infos_paged().await.unwrap();
+    assert_eq!(pending1.len(), 1, "first execute_refund creates one pending tx");
+    let id1 = pending1.keys().next().unwrap().clone();
+
+    // Second call rebuilds the identical refund tx (same id) and is rejected.
+    check!(
+        context.execute_refund("root", &key),
+        "pending info already exist"
+    );
+
+    // Still exactly one refund transaction, with the same id as before.
+    let pending2 = context.get_btc_pending_infos_paged().await.unwrap();
+    assert_eq!(
+        pending2.len(),
+        1,
+        "same txid => the second execute_refund adds no new pending tx"
+    );
+    assert!(pending2.contains_key(&id1), "the single pending tx id is unchanged");
+}
+
+/// A *different* account cannot duplicate or hijack a refund that is already being
+/// executed. Two protections apply on Bitcoin:
+///   1. a non-privileged account is still gated by the timelock;
+///   2. once past the timelock it rebuilds the identical tx (same id), so the
+///      insert is rejected — the pending tx stays owned by the original caller.
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_refund_execute_twice_different_account() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let refund_btc_address = TARGET_ADDRESS;
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: Some(refund_btc_address.to_string()),
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "a2a5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f19",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 100_000)],
+    );
+    let vout: u32 = 0;
+
+    check!(context.request_refund(
+        "alice",
+        deposit_msg.clone(),
+        TARGET_ADDRESS,
+        tx_bytes.clone(),
+        vout,
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+        1,
+        vec![],
+        None
+    ));
+    let key = utxo_storage_key(&tx_bytes, vout);
+
+    // Short timelock so we can fast-forward past it deterministically.
+    context
+        .get_account_by_name("root")
+        .call(context.bridge_contract.id(), "update_config")
+        .args_json(json!({"update": {"refund_timelock_sec": 200}}))
+        .deposit(near_sdk::NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+
+    // root (DAO) fast-tracks the pre-authorized address (timelock 0).
+    check!(print "execute_refund #1 (root)" context.execute_refund("root", &key));
+    let pending1 = context.get_btc_pending_infos_paged().await.unwrap();
+    assert_eq!(pending1.len(), 1);
+    let id1 = pending1.keys().next().unwrap().clone();
+
+    // (1) A non-privileged different account (bob) is still gated by the timelock.
+    check!(
+        context.execute_refund("bob", &key),
+        "Refund timelock has not passed yet"
+    );
+
+    // (2) After the timelock, bob's call reaches the finalize step but rebuilds the
+    // identical tx (same id) and is rejected — no duplicate, no hijack.
+    worker.fast_forward(4000).await.unwrap();
+    check!(
+        context.execute_refund("bob", &key),
+        "pending info already exist"
+    );
+
+    let pending2 = context.get_btc_pending_infos_paged().await.unwrap();
+    assert_eq!(
+        pending2.len(),
+        1,
+        "a different account cannot create a second refund tx"
+    );
+    assert!(
+        pending2.contains_key(&id1),
+        "the original refund pending tx is unchanged"
+    );
+}
