@@ -2,17 +2,17 @@ use bitcoin::{Amount, OutPoint, TxOut};
 use near_sdk::json_types::Base64VecU8;
 
 use crate::{
-    env, near, require, serde_json, BTCPendingInfo, Contract, ContractExt, DepositMsg, Event, Gas,
-    OriginalState, PendingInfoStage, PendingInfoState, Promise, TxInclusionProof, MAX_BOOL_RESULT,
-    UTXO, VUTXO,
+    env, near, require, serde_json, AccessControllable, AccountId, BTCPendingInfo, Contract,
+    ContractExt, DepositMsg, Event, Gas, OriginalState, PendingInfoStage, PendingInfoState,
+    Promise, Role, TxInclusionProof, MAX_BOOL_RESULT, UTXO, VUTXO,
 };
 
 use crate::deposit_msg::get_deposit_path;
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::utils::{generate_utxo_storage_key, nano_to_sec};
 
-pub const GAS_FOR_REQUEST_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
-pub const GAS_FOR_VERIFY_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
+pub(crate) const GAS_FOR_REQUEST_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
+pub(crate) const GAS_FOR_VERIFY_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
 
 /// Stored refund request. `deposit_msg` is kept as JSON string
 /// because `DepositMsg` does not implement Borsh serialization.
@@ -63,12 +63,22 @@ impl From<RefundRequest> for VRefundRequest {
     }
 }
 
+/// Inputs derived from the original deposit transaction, needed to build a refund.
+pub(crate) struct RefundExecutionInputs {
+    /// The deposit UTXO being spent by the refund.
+    pub outpoint: OutPoint,
+    /// The deposit output (used as the input witness amount/script).
+    pub deposit_output: TxOut,
+    /// Amount returned to the user: deposit value minus the gas fee.
+    pub refund_amount: u128,
+}
+
 impl Contract {
     /// Submit a refund request. Verifies the BTC transaction via Light Client first.
     /// If `deposit_msg.refund_address` is set, it must match the provided `refund_address`.
     /// If `deposit_msg.refund_address` is None, the provided `refund_address` is used.
     #[allow(clippy::too_many_arguments)]
-    pub fn internal_request_refund(
+    pub(crate) fn internal_request_refund(
         &self,
         deposit_msg: DepositMsg,
         refund_address: String,
@@ -110,7 +120,7 @@ impl Contract {
     }
 
     /// Reject a pending refund request.
-    pub fn internal_reject_refund(&mut self, utxo_storage_key: String) {
+    pub(crate) fn internal_reject_refund(&mut self, utxo_storage_key: String) {
         require!(
             self.data_mut()
                 .refund_requests
@@ -121,17 +131,51 @@ impl Contract {
         Event::RefundRejected { utxo_storage_key }.emit();
     }
 
-    /// Execute an approved refund request. The caller is responsible for choosing
-    /// the appropriate `timelock_sec` (pass `0` to bypass the check).
-    pub fn internal_execute_refund(&mut self, utxo_storage_key: String, timelock_sec: u64) {
+    /// Validate the attached storage deposit and resolve the timelock that must
+    /// elapse before this refund can be executed. Shared by the Bitcoin and
+    /// Zcash `execute_refund` entrypoints.
+    pub(crate) fn resolve_execute_refund_timelock(&self, utxo_storage_key: &str) -> u64 {
+        require!(
+            env::attached_deposit() >= self.required_balance_for_execute_refund(),
+            "Insufficient deposit for storage"
+        );
+        let caller = env::predecessor_account_id();
+        let is_privileged =
+            self.acl_has_any_role(vec![Role::DAO.into(), Role::RefundOperator.into()], caller);
         let refund_request: RefundRequest = self
             .data()
             .refund_requests
-            .get(&utxo_storage_key)
+            .get(utxo_storage_key)
             .expect("Refund request not found")
             .into();
-
         let config = self.internal_config();
+        if refund_request.deposit_msg().refund_address.is_some() {
+            // Pre-authorized refund address: privileged users can fast-track.
+            if is_privileged {
+                0
+            } else {
+                config.refund_timelock_sec
+            }
+        } else {
+            // Refund address supplied by caller of `request_refund`: longer
+            // timelock to give DAO/Operator time to reject suspicious requests.
+            config.unsafe_refund_timelock_sec
+        }
+    }
+
+    /// Load a refund request and run the common pre-execution checks
+    /// (timelock elapsed, not already finalized via deposit).
+    pub(crate) fn load_refund_request_for_execute(
+        &self,
+        utxo_storage_key: &str,
+        timelock_sec: u64,
+    ) -> RefundRequest {
+        let refund_request: RefundRequest = self
+            .data()
+            .refund_requests
+            .get(utxo_storage_key)
+            .expect("Refund request not found")
+            .into();
 
         let now = nano_to_sec(env::block_timestamp());
         require!(
@@ -139,18 +183,20 @@ impl Contract {
             "Refund timelock has not passed yet"
         );
 
-        // Must still not be finalized
         require!(
-            !self
-                .data()
-                .verified_deposit_utxo
-                .contains(&utxo_storage_key),
+            !self.data().verified_deposit_utxo.contains(utxo_storage_key),
             "UTXO already verified via deposit, cannot refund"
         );
 
-        let refund_address = refund_request.refund_address.clone();
+        refund_request
+    }
 
-        // Parse the original deposit transaction to get OutPoint
+    /// Parse the original deposit transaction and compute the refund economics.
+    pub(crate) fn refund_execution_inputs(
+        &self,
+        refund_request: &RefundRequest,
+    ) -> RefundExecutionInputs {
+        let config = self.internal_config();
         let transaction =
             crate::WrappedTransaction::decode(&refund_request.tx_bytes.0, &config.chain)
                 .expect("Deserialization tx_bytes failed");
@@ -160,39 +206,54 @@ impl Contract {
             vout: u32::try_from(refund_request.vout)
                 .unwrap_or_else(|_| env::panic_str("vout overflow")),
         };
-
-        // The deposit UTXO output (for witness)
         let deposit_output = transaction.output()[refund_request.vout].clone();
 
-        // Parse refund address
-        let refund_addr = crate::network::Address::parse(&refund_address, config.chain.clone())
+        let refund_amount = refund_request
+            .amount
+            .checked_sub(refund_request.gas_fee)
+            .expect("Deposit amount too small to cover gas fee");
+        require!(refund_amount > 0, "Refund amount is zero after gas fee");
+
+        RefundExecutionInputs {
+            outpoint,
+            deposit_output,
+            refund_amount,
+        }
+    }
+
+    /// Build a transparent refund output paying `refund_amount` to `refund_address`.
+    pub(crate) fn build_refund_output(&self, refund_address: &str, refund_amount: u128) -> TxOut {
+        let config = self.internal_config();
+        let refund_addr = crate::network::Address::parse(refund_address, config.chain.clone())
             .expect("Invalid refund address");
         let refund_script_pubkey = refund_addr
             .script_pubkey()
             .expect("Invalid refund script_pubkey");
-
-        // Calculate gas fee: entire remainder goes to gas
-        let gas_fee = refund_request.gas_fee;
-        let refund_amount = refund_request
-            .amount
-            .checked_sub(gas_fee)
-            .expect("Deposit amount too small to cover gas fee");
-        require!(refund_amount > 0, "Refund amount is zero after gas fee");
-
-        // Build refund output
-        let refund_output = TxOut {
+        TxOut {
             value: Amount::from_sat(
                 u64::try_from(refund_amount)
                     .unwrap_or_else(|_| env::panic_str("Refund amount overflow")),
             ),
             script_pubkey: refund_script_pubkey,
-        };
+        }
+    }
 
-        // Build PSBT: 1 input (deposit UTXO), 1 output (refund address)
-        let mut psbt = PsbtWrapper::new(vec![outpoint], vec![refund_output]);
-        psbt.set_input_utxo(vec![deposit_output]);
+    /// Given a fully-built refund PSBT, create the refund `BTCPendingInfo`, mark
+    /// the deposit UTXO verified (to block a later `verify_deposit`), emit events
+    /// and remove the request. `caller` is the account that will own the pending
+    /// info — it must be passed explicitly because on Zcash this runs inside a
+    /// `#[private]` callback where `predecessor` is the contract itself.
+    pub(crate) fn finalize_refund_with_psbt(
+        &mut self,
+        caller: AccountId,
+        refund_request: RefundRequest,
+        psbt: PsbtWrapper,
+        refund_amount: u128,
+        utxo_storage_key: String,
+    ) {
+        let gas_fee = refund_request.gas_fee;
+        let refund_address = refund_request.refund_address.clone();
 
-        // Build VUTXO for signing (path derived from deposit_msg)
         let deposit_msg = refund_request.deposit_msg();
         let path = get_deposit_path(&deposit_msg);
         let vutxo = VUTXO::Current(UTXO {
@@ -203,10 +264,8 @@ impl Contract {
                 .unwrap_or_else(|_| env::panic_str("Amount overflow")),
         });
 
-        // Create BTCPendingInfo
         let psbt_hex = psbt.serialize();
         let btc_pending_id = psbt.get_pending_id();
-        let caller = env::predecessor_account_id();
 
         if !self.check_account_exists(&caller) {
             self.internal_set_account(&caller, crate::Account::new(&caller));
@@ -268,7 +327,7 @@ impl Contract {
     }
 
     /// Verify refund transaction was included in Bitcoin blockchain.
-    pub fn internal_verify_refund_finalize(
+    pub(crate) fn internal_verify_refund_finalize(
         &self,
         tx_id: String,
         proof: TxInclusionProof,

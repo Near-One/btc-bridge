@@ -164,7 +164,7 @@ impl Contract {
 }
 
 impl Contract {
-    fn get_expiry_height(
+    pub(crate) fn get_expiry_height(
         &self,
         chain_specific_data: &Option<ChainSpecificData>,
         last_block_height: u32,
