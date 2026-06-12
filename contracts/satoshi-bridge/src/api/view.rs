@@ -1,4 +1,3 @@
-#[cfg(not(feature = "zcash"))]
 use crate::RefundRequest;
 use crate::{
     env, near, u128_dec_format, AccessControllable, Account, AccountId, BTCPendingInfo, Config,
@@ -296,7 +295,6 @@ impl Contract {
         REQUIRED_BALANCE_FOR_DEPOSIT
     }
 
-    #[cfg(not(feature = "zcash"))]
     pub fn get_refund_requests_paged(
         &self,
         from_index: Option<usize>,
@@ -315,7 +313,6 @@ impl Contract {
             .collect()
     }
 
-    #[cfg(not(feature = "zcash"))]
     pub fn required_balance_for_execute_refund(&self) -> NearToken {
         // execute_refund uses ~700 bytes of storage (BTCPendingInfo + Account + verified_deposit_utxo)
         // At 0.00001 NEAR/byte, that's ~0.007 NEAR. We use 0.01 NEAR as a safe margin.

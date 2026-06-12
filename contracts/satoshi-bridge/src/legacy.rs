@@ -63,7 +63,6 @@ impl From<ContractDataV0> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
-            #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }
@@ -403,7 +402,6 @@ impl From<ContractDataV1> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
-            #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }
@@ -477,7 +475,6 @@ impl From<ContractDataV2> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
-            #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }
@@ -655,7 +652,6 @@ impl From<ContractDataV3> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
-            #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }
@@ -847,6 +843,9 @@ impl From<ContractDataV4> for ContractData {
             acc_protocol_fee_for_gas,
             #[cfg(not(feature = "zcash"))]
             refund_requests,
+            // Zcash V4 had no refund_requests; initialize an empty map on upgrade.
+            #[cfg(feature = "zcash")]
+            refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }
 }

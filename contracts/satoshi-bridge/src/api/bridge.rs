@@ -447,11 +447,10 @@ impl Contract {
     }
 }
 
-#[cfg(not(feature = "zcash"))]
 #[trusted_relayer]
 #[near]
 impl Contract {
-    // ── Refund API (Bitcoin only) ──
+    // ── Refund API ──
 
     /// Submit a refund request for a deposit that was never finalized via `verify_deposit` or `safe_verify_deposit`.
     /// The BTC transaction is verified through the Light Client to prove the deposit exists.
@@ -523,44 +522,24 @@ impl Contract {
         self.internal_reject_refund(utxo_storage_key);
     }
 
-    /// Execute a refund after the timelock has passed. Builds a BTC transaction
-    /// that sends the deposit UTXO back to the `refund_address` specified in the original
-    /// `DepositMsg`. Creates a `BTCPendingInfo` entry for the MPC sign pipeline.
-    /// Marks the UTXO in `verified_deposit_utxo` to prevent future `verify_deposit`.
+    /// Execute a refund: send the deposit UTXO back to the original
+    /// `refund_address` via the MPC sign pipeline. Requires the timelock to have
+    /// passed (bypassed for a privileged caller with a pre-authorized address).
     ///
     /// # Arguments
     ///
-    /// * `utxo_storage_key` - The UTXO key identifying the refund request (`{tx_id}@{vout}`).
+    /// * `utxo_storage_key` - Refund request key (`{tx_id}@{vout}`).
+    /// * `chain_specific_data` - Zcash only: `Some` with an Orchard bundle for a
+    ///   shielded refund, `None` for transparent. Ignored on Bitcoin.
     #[payable]
     #[pause(except(roles(Role::DAO)))]
-    pub fn execute_refund(&mut self, utxo_storage_key: String) {
-        require!(
-            env::attached_deposit() >= self.required_balance_for_execute_refund(),
-            "Insufficient deposit for storage"
-        );
-        let caller = env::predecessor_account_id();
-        let is_privileged =
-            self.acl_has_any_role(vec![Role::DAO.into(), Role::RefundOperator.into()], caller);
-        let refund_request: crate::RefundRequest = self
-            .data()
-            .refund_requests
-            .get(&utxo_storage_key)
-            .expect("Refund request not found")
-            .into();
-        let config = self.internal_config();
-        let timelock_sec = if refund_request.deposit_msg().refund_address.is_some() {
-            // Pre-authorized refund address: privileged users can fast-track.
-            if is_privileged {
-                0
-            } else {
-                config.refund_timelock_sec
-            }
-        } else {
-            // Refund address supplied by caller of `request_refund`: longer
-            // timelock to give DAO/Operator time to reject suspicious requests.
-            config.unsafe_refund_timelock_sec
-        };
-        self.internal_execute_refund(utxo_storage_key, timelock_sec);
+    pub fn execute_refund(
+        &mut self,
+        utxo_storage_key: String,
+        chain_specific_data: Option<ChainSpecificData>,
+    ) -> PromiseOrValue<()> {
+        let timelock_sec = self.resolve_execute_refund_timelock(&utxo_storage_key);
+        self.internal_execute_refund(utxo_storage_key, timelock_sec, chain_specific_data)
     }
 
     /// Verify that the refund BTC transaction has been confirmed on the Bitcoin network.
