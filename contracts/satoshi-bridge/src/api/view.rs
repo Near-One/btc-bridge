@@ -314,8 +314,10 @@ impl Contract {
     }
 
     pub fn required_balance_for_execute_refund(&self) -> NearToken {
-        // execute_refund uses ~700 bytes of storage (BTCPendingInfo + Account + verified_deposit_utxo)
-        // At 0.00001 NEAR/byte, that's ~0.007 NEAR. We use 0.01 NEAR as a safe margin.
-        NearToken::from_millinear(10)
+        // execute_refund now keeps the refund request (so it can be re-run) in addition
+        // to adding a BTCPendingInfo, so it stores ~1.2 KB (the request is no longer
+        // freed to offset the pending info — both hold the deposit tx bytes). At
+        // 0.00001 NEAR/byte we use 0.02 NEAR as a safe margin.
+        NearToken::from_millinear(20)
     }
 }
