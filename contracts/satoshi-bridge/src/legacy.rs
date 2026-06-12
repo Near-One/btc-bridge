@@ -3,63 +3,7 @@ use crate::{
     IterableSet, LazyOption, LookupSet, PublicKey, StorageKey, VAccount, VBTCPendingInfo, VUTXO,
 };
 #[cfg(not(feature = "zcash"))]
-use crate::{RefundRequest, VRefundRequest};
-#[cfg(not(feature = "zcash"))]
-use near_sdk::json_types::Base64VecU8;
-
-/// Refund request as stored by contract versions before the `executed` field was
-/// added (the deployed Bitcoin format — a raw, unversioned `RefundRequest`).
-#[cfg(not(feature = "zcash"))]
-#[near(serializers = [borsh, json])]
-#[derive(Clone)]
-pub struct RefundRequestV0 {
-    pub deposit_msg_json: String,
-    pub utxo_storage_key: String,
-    pub tx_bytes: Base64VecU8,
-    pub vout: usize,
-    pub amount: u128,
-    pub refund_address: String,
-    pub gas_fee: u128,
-    pub created_at_sec: u32,
-}
-
-#[cfg(not(feature = "zcash"))]
-impl From<RefundRequestV0> for RefundRequest {
-    fn from(v: RefundRequestV0) -> Self {
-        RefundRequest {
-            deposit_msg_json: v.deposit_msg_json,
-            utxo_storage_key: v.utxo_storage_key,
-            tx_bytes: v.tx_bytes,
-            vout: v.vout,
-            amount: v.amount,
-            refund_address: v.refund_address,
-            gas_fee: v.gas_fee,
-            created_at_sec: v.created_at_sec,
-            // Stored requests predate `executed`: the old `execute_refund` removed
-            // the request on finalize, so any persisted one was still pending.
-            executed: false,
-        }
-    }
-}
-
-/// Migrate refund requests from the old (unversioned, `RefundRequests` prefix)
-/// storage into the new `RefundRequestsV2` map, adding the `executed` field.
-/// Reads and drains the old prefix (reclaiming its storage); writes the new one.
-/// Uses a different storage prefix to avoid aliasing two `IterableMap`s on one key.
-#[cfg(not(feature = "zcash"))]
-fn migrate_refund_requests_to_v2(
-    mut old: IterableMap<String, RefundRequestV0>,
-) -> IterableMap<String, VRefundRequest> {
-    let entries: Vec<(String, RefundRequestV0)> =
-        old.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-    old.clear();
-    let mut new_map: IterableMap<String, VRefundRequest> =
-        IterableMap::new(StorageKey::RefundRequestsV2);
-    for (k, v0) in entries {
-        new_map.insert(k, VRefundRequest::Current(RefundRequest::from(v0)));
-    }
-    new_map
-}
+use crate::VRefundRequest;
 
 #[near(serializers = [borsh])]
 pub struct ContractDataV0 {
@@ -119,7 +63,7 @@ impl From<ContractDataV0> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
-            refund_requests: IterableMap::new(StorageKey::RefundRequestsV2),
+            refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }
 }
@@ -458,7 +402,7 @@ impl From<ContractDataV1> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
-            refund_requests: IterableMap::new(StorageKey::RefundRequestsV2),
+            refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }
 }
@@ -531,7 +475,7 @@ impl From<ContractDataV2> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
-            refund_requests: IterableMap::new(StorageKey::RefundRequestsV2),
+            refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }
 }
@@ -708,7 +652,7 @@ impl From<ContractDataV3> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
-            refund_requests: IterableMap::new(StorageKey::RefundRequestsV2),
+            refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }
 }
@@ -847,7 +791,7 @@ pub struct ContractDataV4 {
     pub cur_reserved_protocol_fee: u128,
     pub acc_protocol_fee_for_gas: u128,
     #[cfg(not(feature = "zcash"))]
-    pub refund_requests: IterableMap<String, RefundRequestV0>,
+    pub refund_requests: IterableMap<String, VRefundRequest>,
 }
 
 impl From<ContractDataV4> for ContractData {
@@ -897,19 +841,22 @@ impl From<ContractDataV4> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
-            // Migrate the old (unversioned) refund requests into the new map, adding `executed`.
+            // Same versioned map, same storage prefix — old `VRefundRequest::V0`
+            // entries are upgraded lazily to `Current` (adding `executed`) on read.
             #[cfg(not(feature = "zcash"))]
-            refund_requests: migrate_refund_requests_to_v2(refund_requests),
+            refund_requests,
             // Zcash V4 had no refund_requests; initialize an empty map on upgrade.
             #[cfg(feature = "zcash")]
-            refund_requests: IterableMap::new(StorageKey::RefundRequestsV2),
+            refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }
 }
 
-// Snapshot of the deployed (Bitcoin) `ContractData` that has `unsafe_refund_timelock_sec`
-// in `config` and refund requests in the old unversioned `RefundRequest` format.
-// Identical to the current layout except `refund_requests` stores `RefundRequestV0`.
+// Snapshot of the deployed (Bitcoin v0.8.x) `ContractData`, which was the enum's
+// `Current` variant (discriminant 5) at deploy time. Structurally identical to the
+// current `ContractData`: `config` is already the current `Config`, and
+// `refund_requests` is the same versioned `VRefundRequest` map. It exists only to
+// occupy discriminant 5; old `VRefundRequest::V0` entries upgrade lazily on read.
 #[near(serializers = [borsh])]
 pub struct ContractDataV5 {
     pub config: LazyOption<Config>,
@@ -931,7 +878,7 @@ pub struct ContractDataV5 {
     pub cur_reserved_protocol_fee: u128,
     pub acc_protocol_fee_for_gas: u128,
     #[cfg(not(feature = "zcash"))]
-    pub refund_requests: IterableMap<String, RefundRequestV0>,
+    pub refund_requests: IterableMap<String, VRefundRequest>,
 }
 
 impl From<ContractDataV5> for ContractData {
@@ -979,11 +926,12 @@ impl From<ContractDataV5> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
-            // Migrate the old (unversioned) refund requests into the new map, adding `executed`.
+            // Same versioned map, same storage prefix — old `VRefundRequest::V0`
+            // entries are upgraded lazily to `Current` (adding `executed`) on read.
             #[cfg(not(feature = "zcash"))]
-            refund_requests: migrate_refund_requests_to_v2(refund_requests),
+            refund_requests,
             #[cfg(feature = "zcash")]
-            refund_requests: IterableMap::new(StorageKey::RefundRequestsV2),
+            refund_requests: IterableMap::new(StorageKey::RefundRequests),
         }
     }
 }

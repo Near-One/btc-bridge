@@ -1263,6 +1263,18 @@ impl UpgradeContext {
             .await
             .unwrap()
             .unwrap();
+        // Initialize the mock chain-signatures contract before syncing, otherwise
+        // its `public_key()` panics (uninitialized) and the bridge's sync callback
+        // silently leaves `chain_signatures_root_public_key` unset.
+        chain_signatures_contract
+            .call("new")
+            .args_json(json!({
+                "public_key": "secp256k1:4NfTiv3UsGahebgTaHyD9vF8KYKMBnfd6kh94mK6xv8fGBiJB8TBtFMP5WWXz6B89Ac1fbpzPwAvoyQebemHFwx3",
+            }))
+            .transact()
+            .await
+            .unwrap()
+            .unwrap();
         root.call(
             previous_satoshi_bridge_contract.id(),
             "sync_chain_signatures_root_public_key",

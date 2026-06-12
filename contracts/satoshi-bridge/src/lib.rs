@@ -95,12 +95,7 @@ enum StorageKey {
     PostActionMsgTemplates,
     ExtraMsgRelayerWhiteList,
     PendingTxLimits,
-    // No longer constructed in code: refunds moved to `RefundRequestsV2`. Kept so the
-    // discriminant (hence stored prefix) of later keys stays stable, and so the legacy
-    // refund map deployed under this prefix still deserializes during migration.
-    #[allow(dead_code)]
     RefundRequests,
-    RefundRequestsV2,
 }
 
 #[derive(AccessControlRole, Deserialize, Serialize, Copy, Clone)]
@@ -212,7 +207,7 @@ impl Contract {
                 post_action_msg_templates: IterableMap::new(StorageKey::PostActionMsgTemplates),
                 pending_tx_limits: IterableMap::new(StorageKey::PendingTxLimits),
                 lost_found: IterableMap::new(StorageKey::LostFound),
-                refund_requests: IterableMap::new(StorageKey::RefundRequestsV2),
+                refund_requests: IterableMap::new(StorageKey::RefundRequests),
                 acc_collected_protocol_fee: 0,
                 cur_available_protocol_fee: 0,
                 acc_claimed_protocol_fee: 0,

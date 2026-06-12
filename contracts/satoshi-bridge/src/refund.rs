@@ -41,15 +41,53 @@ impl RefundRequest {
     }
 }
 
+/// Refund request as stored before the `executed` field was added (the deployed
+/// 8-field layout). Kept as the `V0` variant of [`VRefundRequest`] so existing
+/// on-chain entries deserialize and are upgraded lazily on read/insert.
+#[near(serializers = [borsh, json])]
+#[derive(Clone)]
+pub struct RefundRequestV0 {
+    pub deposit_msg_json: String,
+    pub utxo_storage_key: String,
+    pub tx_bytes: Base64VecU8,
+    pub vout: usize,
+    pub amount: u128,
+    pub refund_address: String,
+    pub gas_fee: u128,
+    pub created_at_sec: u32,
+}
+
+impl From<RefundRequestV0> for RefundRequest {
+    fn from(v: RefundRequestV0) -> Self {
+        RefundRequest {
+            deposit_msg_json: v.deposit_msg_json,
+            utxo_storage_key: v.utxo_storage_key,
+            tx_bytes: v.tx_bytes,
+            vout: v.vout,
+            amount: v.amount,
+            refund_address: v.refund_address,
+            gas_fee: v.gas_fee,
+            created_at_sec: v.created_at_sec,
+            // Pre-`executed` requests were removed on finalize, so any persisted
+            // one was still pending.
+            executed: false,
+        }
+    }
+}
+
 #[near(serializers = [borsh, json])]
 #[derive(Clone)]
 pub enum VRefundRequest {
+    /// Deployed 8-field layout (no `executed`). Variant tag 0 — must stay first
+    /// so existing on-chain values keep deserializing.
+    V0(RefundRequestV0),
     Current(RefundRequest),
 }
 
 impl From<VRefundRequest> for RefundRequest {
     fn from(v: VRefundRequest) -> Self {
         match v {
+            VRefundRequest::V0(c) => c.into(),
             VRefundRequest::Current(c) => c,
         }
     }
@@ -58,6 +96,7 @@ impl From<VRefundRequest> for RefundRequest {
 impl From<&VRefundRequest> for RefundRequest {
     fn from(v: &VRefundRequest) -> Self {
         match v {
+            VRefundRequest::V0(c) => c.clone().into(),
             VRefundRequest::Current(c) => c.clone(),
         }
     }
