@@ -522,22 +522,15 @@ impl Contract {
         self.internal_reject_refund(utxo_storage_key);
     }
 
-    /// Execute a refund after the timelock has passed. Builds a BTC transaction
-    /// that sends the deposit UTXO back to the `refund_address` specified in the original
-    /// `DepositMsg`. Creates a `BTCPendingInfo` entry for the MPC sign pipeline.
-    /// Marks the UTXO in `verified_deposit_utxo` to prevent future `verify_deposit`.
+    /// Execute a refund: send the deposit UTXO back to the original
+    /// `refund_address` via the MPC sign pipeline. Requires the timelock to have
+    /// passed (bypassed for a privileged caller with a pre-authorized address).
     ///
     /// # Arguments
     ///
-    /// * `utxo_storage_key` - The UTXO key identifying the refund request (`{tx_id}@{vout}`).
-    /// Execute a refund after the timelock has passed (or immediately, for a
-    /// privileged caller with a pre-authorized refund address).
-    ///
-    /// `chain_specific_data` is only meaningful on Zcash: pass `Some` with an
-    /// Orchard bundle to refund to a shielded/unified address, or `None` for a
-    /// transparent refund. On Bitcoin it is ignored. The Zcash path resolves to
-    /// a `Promise` (the transaction is built after fetching the block height);
-    /// the Bitcoin path returns immediately.
+    /// * `utxo_storage_key` - Refund request key (`{tx_id}@{vout}`).
+    /// * `chain_specific_data` - Zcash only: `Some` with an Orchard bundle for a
+    ///   shielded refund, `None` for transparent. Ignored on Bitcoin.
     #[payable]
     #[pause(except(roles(Role::DAO)))]
     pub fn execute_refund(
