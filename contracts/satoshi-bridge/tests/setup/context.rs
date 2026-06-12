@@ -1411,6 +1411,19 @@ impl Context {
             .await
     }
 
+    /// Test-only: drive the mock light client's reported block height, which
+    /// determines the Zcash consensus `branch_id` used when building a tx.
+    pub async fn set_light_client_block_height(&self, height: u32) {
+        self.root
+            .call(self.btc_light_client_contract.id(), "set_last_block_height")
+            .args_json(json!({ "height": height }))
+            .max_gas()
+            .transact()
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
     pub async fn required_balance_for_execute_refund(&self) -> Result<NearToken> {
         self.bridge_contract
             .call("required_balance_for_execute_refund")

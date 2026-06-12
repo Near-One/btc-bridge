@@ -367,16 +367,35 @@ async fn test_zcash_execute_refund_twice() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
 
-    let refund_taddr = "tmD67UTsZ4iBbhCae4D43k1x8fhFNhwd4Jn";
+    let refund_taddr = ZEC_REFUND_TADDR;
     let key = deposit_and_request_refund(&context, refund_taddr, 150_000).await;
 
-    // First execute_refund succeeds and creates the refund pending info.
-    check!(print "execute_refund #1" context.execute_refund("root", &key, None));
+    // Allow the refund caller (root) to hold two pending refund txs at once, so a
+    // re-created refund can coexist with the first while it is still pending.
+    let root_id = context.get_account_by_name("root").id().clone();
+    context
+        .get_account_by_name("root")
+        .call(context.bridge_contract.id(), "set_pending_tx_limit")
+        .args_json(json!({ "account_id": root_id, "max_pending": 2 }))
+        .deposit(near_sdk::NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Build the first refund transaction before the NU6.2 activation height, so it
+    // is signed for consensus branch Nu6 (ZcashTestnet activates Nu6.2 at 4_052_000).
+    context.set_light_client_block_height(3_000_000).await;
+    check!(print "execute_refund #1 (Nu6)" context.execute_refund("root", &key, None));
+
+    let pending_after_first = context.get_btc_pending_infos_paged().await.unwrap();
     assert_eq!(
-        context.get_btc_pending_infos_paged().await.unwrap().len(),
+        pending_after_first.len(),
         1,
         "first execute_refund creates exactly one pending info"
     );
+    let first_id = pending_after_first.keys().next().unwrap().clone();
 
     // The refund request is NOT consumed — it is kept (executed = true) so the
     // refund transaction can be re-created later.
@@ -395,18 +414,50 @@ async fn test_zcash_execute_refund_twice() {
         "refund request is kept (not consumed) after execute_refund"
     );
 
-    // Re-running no longer fails with "Refund request not found" (the request is
-    // kept). With the default pending-sign limit of 1, the second attempt is now
-    // gated by capacity instead — proving the request survived the first call.
-    check!(
-        context.execute_refund("root", &key, None),
-        "Too many pending sign transactions"
+    // The deposit's consensus branch has changed (NU6.2 activated), invalidating
+    // the first refund tx. Re-running execute_refund past the activation height
+    // succeeds: the request was kept (only marked executed, not finalized), and
+    // the new tx is built for branch Nu6_2 — a genuinely different transaction.
+    context.set_light_client_block_height(4_100_000).await;
+    check!(print "execute_refund #2 (Nu6_2)" context.execute_refund("root", &key, None));
+
+    // Both refund txs now coexist: a different consensus branch_id yields a
+    // different txid, so this is a second, distinct pending info — proving we can
+    // really execute_refund twice (not just survive a no-op retry).
+    let pending = context.get_btc_pending_infos_paged().await.unwrap();
+    assert_eq!(
+        pending.len(),
+        2,
+        "second execute_refund creates a distinct second pending info"
+    );
+    assert!(
+        pending.contains_key(&first_id),
+        "the first refund pending tx is preserved"
+    );
+    let second_id = pending
+        .keys()
+        .find(|k| **k != first_id)
+        .expect("a second, different refund tx id");
+    assert_ne!(
+        &first_id, second_id,
+        "the two refund txs must have different ids (different branch_id)"
     );
 
-    // State unchanged: still one pending info and one (kept) refund request.
+    // The request is still kept after the second execution (removed only on
+    // verify_refund_finalize).
+    let requests_after: HashMap<String, near_sdk::serde_json::Value> = context
+        .bridge_contract
+        .call("get_refund_requests_paged")
+        .args_json(json!({}))
+        .view()
+        .await
+        .unwrap()
+        .json()
+        .unwrap();
     assert_eq!(
-        context.get_btc_pending_infos_paged().await.unwrap().len(),
-        1
+        requests_after.len(),
+        1,
+        "refund request still kept after the second execute_refund"
     );
 }
 
