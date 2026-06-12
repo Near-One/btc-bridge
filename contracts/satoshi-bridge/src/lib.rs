@@ -111,6 +111,16 @@ pub enum Role {
     RefundOperator,
 }
 
+/// Transaction inclusion proof with coinbase verification (v2).
+#[near(serializers = [json])]
+pub struct TxInclusionProof {
+    pub tx_block_blockhash: String,
+    pub tx_index: u64,
+    pub merkle_proof: Vec<String>,
+    pub coinbase_tx_id: String,
+    pub coinbase_merkle_proof: Vec<String>,
+}
+
 #[near(serializers = [borsh])]
 pub struct ContractData {
     pub config: LazyOption<Config>,

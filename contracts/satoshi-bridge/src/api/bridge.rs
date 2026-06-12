@@ -1,4 +1,3 @@
-use crate::psbt_wrapper::PsbtWrapper;
 use crate::*;
 use near_plugins::{access_control_any, pause};
 use near_sdk::json_types::Base64VecU8;
@@ -6,13 +5,17 @@ use near_sdk::json_types::Base64VecU8;
 #[trusted_relayer]
 #[near]
 impl Contract {
-    /// Verify that the user has transferred BTC asset to the protocol's designated BTC deposit account, and mint NBTC to the user's NEAR account.
+    /// Verify that the user has transferred BTC asset to the protocol's designated BTC deposit account,
+    /// and mint NBTC to the user's NEAR account.
+    ///
+    /// # Deprecated
+    /// Use `verify_deposit_v2` instead, which includes coinbase proof for stronger verification.
     ///
     /// # Arguments
     ///
     /// * `deposit_msg` - Information used to generate the deposit address path.
-    /// * `tx_bytes` - Successfully confirmed BTC transaction bytes
-    /// * `vout` - The index of the output where the user sent BTC to the deposit address
+    /// * `tx_bytes` - Successfully confirmed BTC transaction bytes.
+    /// * `vout` - The index of the output where the user sent BTC to the deposit address.
     /// * `tx_block_blockhash` - The block hash where the transaction is located.
     /// * `tx_index` - The index of the transaction in the block.
     /// * `merkle_proof` - Merkle proof of the transaction.
@@ -22,6 +25,7 @@ impl Contract {
     /// bool - Whether nBTC minting was successful.
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
+    #[deprecated(note = "use verify_deposit_v2")]
     pub fn verify_deposit(
         &mut self,
         deposit_msg: DepositMsg,
@@ -31,57 +35,84 @@ impl Contract {
         tx_index: u64,
         merkle_proof: Vec<String>,
     ) -> Promise {
-        require!(
-            deposit_msg.safe_deposit.is_none(),
-            "safe_deposit not supported in verify_deposit"
-        );
-        let path = get_deposit_path(&deposit_msg);
-        let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
-            .expect("Deserialization tx_bytes failed");
-        let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
-        require!(deposit_amount > 0, "Invalid deposit_amount");
-        let deposit_address = self.generate_utxo_chain_address(&path);
-        let deposit_address_script_pubkey = deposit_address
-            .script_pubkey()
-            .expect("Invalid deposit address");
-        require!(
-            deposit_address_script_pubkey == transaction.output()[vout].script_pubkey,
-            "Invalid deposit tx_bytes"
-        );
-
-        let utxo = UTXO {
-            path,
+        self.internal_verify_deposit_entry(
+            deposit_msg,
             tx_bytes,
             vout,
-            balance: transaction.output()[vout].value.to_sat(),
-        };
-        let tx_id = transaction.compute_txid().to_string();
-        let utxo_storage_key = generate_utxo_storage_key(
-            tx_id.clone(),
-            u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
-        );
-        self.internal_verify_deposit(
-            deposit_amount,
             tx_block_blockhash,
             tx_index,
             merkle_proof,
-            PendingUTXOInfo {
-                tx_id,
-                utxo_storage_key,
-                utxo,
-            },
-            deposit_msg,
+            None,
         )
+    }
+
+    /// Verify that the user has transferred BTC asset to the protocol's designated BTC deposit account,
+    /// and mint nBTC to the user's NEAR account. Includes coinbase proof for stronger
+    /// transaction inclusion verification.
+    ///
+    /// The deposit flow is selected by `deposit_msg.safe_deposit`:
+    /// * `Some(..)` — safe deposit (e.g. Omni Bridge): charges no fee, reverts the whole
+    ///   transaction if minting fails (no lost & found), and the caller must attach NEAR for
+    ///   the user's token storage (see `required_balance_for_safe_deposit`).
+    /// * `None` — standard deposit: charges the deposit fee, pays the user's storage, and
+    ///   routes mint failures to lost & found.
+    ///
+    /// # Arguments
+    ///
+    /// * `deposit_msg` - Information used to generate the deposit address path.
+    /// * `tx_bytes` - Successfully confirmed BTC transaction bytes.
+    /// * `vout` - The index of the output where the user sent BTC to the deposit address.
+    /// * `proof` - Transaction inclusion proof with coinbase verification.
+    ///
+    /// # Returns
+    ///
+    /// bool - Whether nBTC minting was successful.
+    #[payable]
+    #[trusted_relayer]
+    #[pause(except(roles(Role::DAO)))]
+    pub fn verify_deposit_v2(
+        &mut self,
+        deposit_msg: DepositMsg,
+        tx_bytes: Base64VecU8,
+        vout: usize,
+        proof: TxInclusionProof,
+    ) -> Promise {
+        let coinbase_proof = Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof));
+        if deposit_msg.safe_deposit.is_some() {
+            self.internal_safe_verify_deposit_entry(
+                deposit_msg,
+                tx_bytes.0,
+                vout,
+                proof.tx_block_blockhash,
+                proof.tx_index,
+                proof.merkle_proof,
+                coinbase_proof,
+            )
+        } else {
+            self.internal_verify_deposit_entry(
+                deposit_msg,
+                tx_bytes.0,
+                vout,
+                proof.tx_block_blockhash,
+                proof.tx_index,
+                proof.merkle_proof,
+                coinbase_proof,
+            )
+        }
     }
 
     /// Safe version of verify_deposit, only supports minting nBTC with safe_deposit message and revert the deposit on failed XCC calls.
     /// It doesn't charge deposit fee, and doesn't pay the token storage for the user
     ///
+    /// # Deprecated
+    /// Use `verify_deposit_v2` instead (pass `deposit_msg.safe_deposit = Some(..)`), which
+    /// includes coinbase proof for stronger verification.
+    ///
     /// # Arguments
     ///
-    /// * `deposit_msg` - Information used to generate the deposit address path.
-    /// * `tx_bytes` - Successfully confirmed BTC transaction bytes
-    /// * `vout` - The index of the output where the user sent BTC to the deposit address
+    /// * `deposit_msg` - Information used to generate the deposit address path. Must contain `safe_deposit`.
+    /// * `tx_bytes` - Successfully confirmed BTC transaction bytes.
+    /// * `vout` - The index of the output where the user sent BTC to the deposit address.
     /// * `tx_block_blockhash` - The block hash where the transaction is located.
     /// * `tx_index` - The index of the transaction in the block.
     /// * `merkle_proof` - Merkle proof of the transaction.
@@ -92,6 +123,7 @@ impl Contract {
     #[payable]
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
+    #[deprecated(note = "use verify_deposit_v2 with deposit_msg.safe_deposit = Some(..)")]
     pub fn safe_verify_deposit(
         &mut self,
         deposit_msg: DepositMsg,
@@ -101,63 +133,21 @@ impl Contract {
         tx_index: u64,
         merkle_proof: Vec<String>,
     ) -> Promise {
-        require!(
-            env::attached_deposit() >= self.required_balance_for_safe_deposit(),
-            "Insufficient deposit for storage"
-        );
-
-        let path = get_deposit_path(&deposit_msg);
-        let safe_deposit_msg = deposit_msg
-            .safe_deposit
-            .unwrap_or_else(|| env::panic_str("safe_deposit is required in safe_verify_deposit"));
-
-        let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
-            .expect("Deserialization tx_bytes failed");
-        let deposit_amount = transaction.output()[vout].value.to_sat().into();
-        require!(deposit_amount > 0, "Invalid deposit_amount");
-        let deposit_address = self.generate_utxo_chain_address(&path);
-        let deposit_address_script_pubkey = deposit_address
-            .script_pubkey()
-            .expect("Invalid deposit address");
-        require!(
-            deposit_address_script_pubkey == transaction.output()[vout].script_pubkey,
-            "Invalid deposit tx_bytes"
-        );
-
-        let tx_bytes = if tx_bytes.len() > 10000 {
-            env::log_str("tx_bytes length exceeds 10000, truncating to 300 bytes");
-            vec![0u8; 300]
-        } else {
-            tx_bytes
-        };
-
-        let utxo = UTXO {
-            path,
+        self.internal_safe_verify_deposit_entry(
+            deposit_msg,
             tx_bytes,
             vout,
-            balance: transaction.output()[vout].value.to_sat(),
-        };
-        let tx_id = transaction.compute_txid().to_string();
-        let utxo_storage_key = generate_utxo_storage_key(tx_id.clone(), vout.try_into().unwrap());
-
-        self.internal_safe_verify_deposit(
-            deposit_amount,
             tx_block_blockhash,
             tx_index,
             merkle_proof,
-            PendingUTXOInfo {
-                tx_id,
-                utxo_storage_key,
-                utxo,
-            },
-            deposit_msg.recipient_id,
-            safe_deposit_msg,
+            None,
         )
     }
 
     #[payable]
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
+    #[deprecated(note = "use verify_deposit_v2")]
     pub fn safe_verify_deposit_compact(
         &mut self,
         deposit_msg: DepositMsg,
@@ -167,17 +157,21 @@ impl Contract {
         tx_index: u64,
         merkle_proof: Vec<String>,
     ) -> Promise {
-        self.safe_verify_deposit(
+        self.internal_safe_verify_deposit_entry(
             deposit_msg,
             tx_bytes.0,
             vout,
             tx_block_blockhash,
             tx_index,
             merkle_proof,
+            None,
         )
     }
 
-    /// Verify that the user’s withdrawal has been successful, and then burn the corresponding amount of tokens.
+    /// Verify that the user's withdrawal has been successful, and burn the corresponding amount of tokens.
+    ///
+    /// # Deprecated
+    /// Use `verify_withdraw_v2` instead, which includes coinbase proof for stronger verification.
     ///
     /// # Arguments
     ///
@@ -191,6 +185,7 @@ impl Contract {
     /// bool - Whether nBTC burning was successful.
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
+    #[deprecated(note = "use verify_withdraw_v2")]
     pub fn verify_withdraw(
         &mut self,
         tx_id: String,
@@ -198,24 +193,29 @@ impl Contract {
         tx_index: u64,
         merkle_proof: Vec<String>,
     ) -> Promise {
-        let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id);
-        btc_pending_info.assert_withdraw_related_pending_verify_tx();
-        if let Some(original_tx_id) = btc_pending_info.get_original_tx_id() {
-            require!(
-                self.check_btc_pending_info_exists(original_tx_id),
-                "original tx already verified"
-            );
-        }
-        require!(
-            btc_pending_info.tx_bytes_with_sign.is_some(),
-            "Missing tx_bytes_with_sign"
-        );
-        self.internal_verify_withdraw(
+        self.internal_verify_withdraw_entry(tx_id, tx_block_blockhash, tx_index, merkle_proof, None)
+    }
+
+    /// Verify that the user's withdrawal has been successful, and burn the corresponding amount of tokens.
+    /// Includes coinbase proof for stronger transaction inclusion verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `tx_id` - The transaction ID of the successfully on-chain withdrawal.
+    /// * `proof` - Transaction inclusion proof with coinbase verification.
+    ///
+    /// # Returns
+    ///
+    /// bool - Whether nBTC burning was successful.
+    #[trusted_relayer]
+    #[pause(except(roles(Role::DAO)))]
+    pub fn verify_withdraw_v2(&mut self, tx_id: String, proof: TxInclusionProof) -> Promise {
+        self.internal_verify_withdraw_entry(
             tx_id,
-            tx_block_blockhash,
-            tx_index,
-            merkle_proof,
-            btc_pending_info,
+            proof.tx_block_blockhash,
+            proof.tx_index,
+            proof.merkle_proof,
+            Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
         )
     }
 
@@ -268,11 +268,14 @@ impl Contract {
         );
     }
 
-    /// Verify that the active utxo management has been successful, and then burn the corresponding amount of tokens.
+    /// Verify that the active UTXO management has been successful, and burn the gas fee.
+    ///
+    /// # Deprecated
+    /// Use `verify_active_utxo_management_v2` instead, which includes coinbase proof for stronger verification.
     ///
     /// # Arguments
     ///
-    /// * `tx_id` - The transaction ID of the successfully on-chain withdrawal.
+    /// * `tx_id` - The transaction ID of the successfully on-chain UTXO management.
     /// * `tx_block_blockhash` - The block hash where the transaction is located.
     /// * `tx_index` - The index of the transaction in the block.
     /// * `merkle_proof` - Merkle proof of the transaction.
@@ -282,6 +285,7 @@ impl Contract {
     /// bool - Whether nBTC burning was successful.
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
+    #[deprecated(note = "use verify_active_utxo_management_v2")]
     pub fn verify_active_utxo_management(
         &mut self,
         tx_id: String,
@@ -289,24 +293,39 @@ impl Contract {
         tx_index: u64,
         merkle_proof: Vec<String>,
     ) -> Promise {
-        let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id);
-        btc_pending_info.assert_active_utxo_management_related_pending_verify_tx();
-        if let Some(original_tx_id) = btc_pending_info.get_original_tx_id() {
-            require!(
-                self.check_btc_pending_info_exists(original_tx_id),
-                "original tx already verified"
-            );
-        }
-        require!(
-            btc_pending_info.tx_bytes_with_sign.is_some(),
-            "Missing tx_bytes_with_sign"
-        );
-        self.internal_verify_active_utxo_management(
+        self.internal_verify_active_utxo_management_entry(
             tx_id,
             tx_block_blockhash,
             tx_index,
             merkle_proof,
-            btc_pending_info,
+            None,
+        )
+    }
+
+    /// Verify that the active UTXO management has been successful, and burn the gas fee.
+    /// Includes coinbase proof for stronger transaction inclusion verification.
+    ///
+    /// # Arguments
+    ///
+    /// * `tx_id` - The transaction ID of the successfully on-chain UTXO management.
+    /// * `proof` - Transaction inclusion proof with coinbase verification.
+    ///
+    /// # Returns
+    ///
+    /// bool - Whether nBTC burning was successful.
+    #[trusted_relayer]
+    #[pause(except(roles(Role::DAO)))]
+    pub fn verify_active_utxo_management_v2(
+        &mut self,
+        tx_id: String,
+        proof: TxInclusionProof,
+    ) -> Promise {
+        self.internal_verify_active_utxo_management_entry(
+            tx_id,
+            proof.tx_block_blockhash,
+            proof.tx_index,
+            proof.merkle_proof,
+            Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
         )
     }
 
@@ -445,9 +464,11 @@ impl Contract {
     ///   is `None`, this value is used directly.
     /// * `tx_bytes` - BTC transaction bytes proving the deposit.
     /// * `vout` - Output index of the deposit in the transaction.
-    /// * `tx_block_blockhash` - Block hash containing the transaction.
-    /// * `tx_index` - Transaction index within the block.
-    /// * `merkle_proof` - Merkle proof for Light Client verification.
+    /// * `proof` - Transaction inclusion proof for Light Client verification, bundling:
+    ///   `tx_block_blockhash` (block hash containing the transaction), `tx_index`
+    ///   (transaction index within the block), `merkle_proof` (Merkle proof of the
+    ///   transaction), and the coinbase fields `coinbase_tx_id` and
+    ///   `coinbase_merkle_proof` used to verify the block's coinbase.
     /// * `gas_fee` - Optional custom gas fee. Only DAO or Operator can set this.
     ///   If `None`, the default `config.max_btc_gas_fee` is used during `execute_refund`.
     #[allow(clippy::too_many_arguments)]
@@ -456,11 +477,9 @@ impl Contract {
         &mut self,
         deposit_msg: DepositMsg,
         refund_address: String,
-        tx_bytes: Vec<u8>,
+        tx_bytes: Base64VecU8,
         vout: usize,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
+        proof: TxInclusionProof,
         gas_fee: Option<U128>,
     ) -> Promise {
         if gas_fee.is_some() {
@@ -476,9 +495,7 @@ impl Contract {
             refund_address,
             tx_bytes,
             vout,
-            tx_block_blockhash,
-            tx_index,
-            merkle_proof,
+            proof,
             gas_fee.map(|v| v.0),
         )
     }
@@ -538,91 +555,20 @@ impl Contract {
     /// # Arguments
     ///
     /// * `tx_id` - Transaction ID of the confirmed refund transaction.
-    /// * `tx_block_blockhash` - Block hash containing the transaction.
-    /// * `tx_index` - Transaction index within the block.
-    /// * `merkle_proof` - Merkle proof for Light Client verification.
+    /// * `proof` - Transaction inclusion proof for Light Client verification, bundling:
+    ///   `tx_block_blockhash` (block hash containing the transaction), `tx_index`
+    ///   (transaction index within the block), `merkle_proof` (Merkle proof of the
+    ///   transaction), and the coinbase fields `coinbase_tx_id` and
+    ///   `coinbase_merkle_proof` used to verify the block's coinbase.
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
-    pub fn verify_refund_finalize(
-        &mut self,
-        tx_id: String,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-    ) -> Promise {
+    pub fn verify_refund_finalize(&mut self, tx_id: String, proof: TxInclusionProof) -> Promise {
         let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id);
         btc_pending_info.assert_refund_pending_verify_tx();
         require!(
             btc_pending_info.tx_bytes_with_sign.is_some(),
             "Missing tx_bytes_with_sign"
         );
-        self.internal_verify_refund_finalize(
-            tx_id,
-            tx_block_blockhash,
-            tx_index,
-            merkle_proof,
-            btc_pending_info,
-        )
-    }
-}
-
-impl Contract {
-    pub fn create_active_utxo_management_pending_info(
-        &mut self,
-        account_id: AccountId,
-        mut psbt: PsbtWrapper,
-    ) {
-        self.require_pending_sign_capacity(&account_id);
-
-        let (utxo_storage_keys, vutxos) = self.generate_vutxos(&mut psbt);
-        let (actual_received_amount, gas_fee) =
-            self.check_active_management_psbt_valid(&psbt, &vutxos);
-        require!(
-            gas_fee <= self.data().cur_available_protocol_fee,
-            "Insufficient protocol_fee"
-        );
-        self.data_mut().cur_available_protocol_fee -= gas_fee;
-        self.data_mut().cur_reserved_protocol_fee += gas_fee;
-
-        let need_signature_num = psbt.get_input_num();
-        let psbt_hex = psbt.serialize();
-        let btc_pending_id = psbt.get_pending_id();
-        let btc_pending_info = BTCPendingInfo {
-            account_id: account_id.clone(),
-            btc_pending_id: btc_pending_id.clone(),
-            transfer_amount: 0,
-            actual_received_amount,
-            withdraw_fee: 0,
-            gas_fee,
-            burn_amount: gas_fee,
-            psbt_hex,
-            vutxos,
-            signatures: vec![None; need_signature_num],
-            tx_bytes_with_sign: None,
-            create_time_sec: nano_to_sec(env::block_timestamp()),
-            last_sign_time_sec: 0,
-            state: PendingInfoState::ActiveUtxoManagementOriginal(OriginalState {
-                stage: PendingInfoStage::PendingSign,
-                max_gas_fee: gas_fee,
-                last_rbf_time_sec: None,
-                cancel_rbf_reserved: None,
-            }),
-        };
-        require!(
-            self.data_mut()
-                .btc_pending_infos
-                .insert(btc_pending_id.clone(), btc_pending_info.into())
-                .is_none(),
-            "pending info already exist"
-        );
-        self.internal_unwrap_mut_account(&account_id)
-            .btc_pending_sign_ids
-            .insert(btc_pending_id.clone());
-        Event::UtxoRemoved { utxo_storage_keys }.emit();
-        Event::GenerateBtcPendingInfo {
-            account_id: &account_id,
-            btc_pending_id: &btc_pending_id,
-        }
-        .emit();
+        self.internal_verify_refund_finalize(tx_id, proof, btc_pending_info)
     }
 }

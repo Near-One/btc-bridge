@@ -29,6 +29,17 @@ pub struct ProofArgs {
     pub confirmations: u64,
 }
 
+#[near(serializers = [borsh])]
+pub struct ProofArgsV2 {
+    pub tx_id: H256,
+    pub tx_block_blockhash: H256,
+    pub tx_index: u64,
+    pub merkle_proof: Vec<H256>,
+    pub coinbase_tx_id: H256,
+    pub coinbase_merkle_proof: Vec<H256>,
+    pub confirmations: u64,
+}
+
 impl<'de> Deserialize<'de> for H256 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -79,6 +90,11 @@ pub struct Contract {}
 impl Contract {
     #[allow(unused_variables)]
     pub fn verify_transaction_inclusion(&self, #[serializer(borsh)] args: ProofArgs) -> bool {
+        true
+    }
+
+    #[allow(unused_variables)]
+    pub fn verify_transaction_inclusion_v2(&self, #[serializer(borsh)] args: ProofArgsV2) -> bool {
         true
     }
 
