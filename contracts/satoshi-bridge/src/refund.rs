@@ -27,6 +27,12 @@ pub struct RefundRequest {
     pub refund_address: String,
     pub gas_fee: u128,
     pub created_at_sec: u32,
+    /// Set once `execute_refund` has built a refund transaction for this request.
+    /// While `true` the request is kept (not removed) so `execute_refund` can be
+    /// called again to re-create the transaction (e.g. after a consensus branch
+    /// change); it is removed only when the refund is finalized in
+    /// `verify_refund_finalize`.
+    pub executed: bool,
 }
 
 impl RefundRequest {
@@ -183,8 +189,13 @@ impl Contract {
             "Refund timelock has not passed yet"
         );
 
+        // Block only if the UTXO was claimed by a deposit. If it was claimed by
+        // our own refund (executed == true, which also set verified_deposit_utxo),
+        // re-running execute_refund is allowed — re-creating the refund tx, e.g.
+        // after a consensus branch change.
         require!(
-            !self.data().verified_deposit_utxo.contains(utxo_storage_key),
+            !self.data().verified_deposit_utxo.contains(utxo_storage_key)
+                || refund_request.executed,
             "UTXO already verified via deposit, cannot refund"
         );
 
@@ -246,7 +257,7 @@ impl Contract {
     pub(crate) fn finalize_refund_with_psbt(
         &mut self,
         caller: AccountId,
-        refund_request: RefundRequest,
+        mut refund_request: RefundRequest,
         psbt: PsbtWrapper,
         refund_amount: u128,
         utxo_storage_key: String,
@@ -323,7 +334,42 @@ impl Contract {
         }
         .emit();
 
-        self.data_mut().refund_requests.remove(&utxo_storage_key);
+        // Keep the request (so `execute_refund` can be called again to re-create
+        // the transaction) but mark it executed; it is removed only when the
+        // refund is finalized in `verify_refund_finalize`.
+        refund_request.executed = true;
+        self.data_mut()
+            .refund_requests
+            .insert(utxo_storage_key, refund_request.into());
+    }
+
+    /// Remove a leftover refund pending transaction. Only allowed once its refund
+    /// request is gone — i.e. the refund was finalized via another candidate or
+    /// rejected — in which case this pending tx can never confirm (its UTXO is
+    /// spent or the refund was cancelled) and is just stale state to clean up.
+    pub(crate) fn internal_remove_refund_pending_tx_id(&mut self, tx_id: String) {
+        let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id).clone();
+        btc_pending_info.assert_refund_related();
+
+        // A refund spends exactly one deposit UTXO, whose key is the refund request key.
+        let utxo_storage_keys = btc_pending_info.get_psbt().get_utxo_storage_keys();
+        require!(
+            utxo_storage_keys.len() == 1,
+            "refund transaction must spend exactly one input"
+        );
+        require!(
+            !self
+                .data()
+                .refund_requests
+                .contains_key(&utxo_storage_keys[0]),
+            "refund request still active"
+        );
+
+        let account_id = btc_pending_info.account_id.clone();
+        self.internal_remove_btc_pending_info(&tx_id);
+        let account = self.internal_unwrap_mut_account(&account_id);
+        account.btc_pending_sign_ids.remove(&tx_id);
+        account.btc_pending_verify_list.remove(&tx_id);
     }
 
     /// Verify refund transaction was included in Bitcoin blockchain.
@@ -362,10 +408,23 @@ impl Contract {
             .expect("verify_transaction_inclusion return not bool");
         require!(is_valid, "verify_transaction_inclusion return false");
 
-        let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id);
+        let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id).clone();
         btc_pending_info.assert_refund_pending_verify_tx();
 
         let account_id = btc_pending_info.account_id.clone();
+
+        // A refund spends exactly one deposit UTXO, whose key is the refund request
+        // key. More than one input would be abnormal for a refund.
+        let utxo_storage_keys = btc_pending_info.get_psbt().get_utxo_storage_keys();
+        require!(
+            utxo_storage_keys.len() == 1,
+            "refund transaction must spend exactly one input"
+        );
+        // Refund confirmed on-chain → drop the request so no further execute_refund
+        // is possible. If it was already removed, this is harmlessly a no-op.
+        self.data_mut()
+            .refund_requests
+            .remove(&utxo_storage_keys[0]);
 
         // Clean up: remove pending info
         self.internal_remove_btc_pending_info(&tx_id);
@@ -453,6 +512,7 @@ impl Contract {
             refund_address,
             gas_fee: resolved_gas_fee,
             created_at_sec: nano_to_sec(env::block_timestamp()),
+            executed: false,
         };
 
         self.data_mut()

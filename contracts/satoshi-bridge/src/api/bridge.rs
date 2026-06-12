@@ -564,4 +564,17 @@ impl Contract {
         );
         self.internal_verify_refund_finalize(tx_id, proof, btc_pending_info)
     }
+
+    /// Remove a leftover refund pending transaction whose refund request is gone
+    /// (the refund was already finalized via another candidate, or rejected). Such
+    /// a transaction can never confirm, so this only cleans up stale state — it is
+    /// rejected while the refund request still exists.
+    ///
+    /// # Arguments
+    ///
+    /// * `tx_id` - Pending id of the stale refund transaction to remove.
+    #[pause(except(roles(Role::DAO)))]
+    pub fn remove_refund_pending_tx_id(&mut self, tx_id: String) {
+        self.internal_remove_refund_pending_tx_id(tx_id);
+    }
 }

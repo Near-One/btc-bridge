@@ -355,6 +355,61 @@ async fn test_zcash_refund_transparent() {
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
 }
 
+/// `execute_refund` keeps the refund request (marking it `executed`) instead of
+/// consuming it, so it can be re-run to re-create the transaction (e.g. after a
+/// consensus branch change). Re-running with unchanged conditions rebuilds the
+/// identical transaction, which is rejected as a duplicate ("pending info already
+/// exist") — crucially NOT "Refund request not found". The request is removed
+/// only when the refund is finalized in `verify_refund_finalize`.
+#[tokio::test]
+#[cfg(feature = "zcash")]
+async fn test_zcash_execute_refund_twice() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+
+    let refund_taddr = "tmD67UTsZ4iBbhCae4D43k1x8fhFNhwd4Jn";
+    let key = deposit_and_request_refund(&context, refund_taddr, 150_000).await;
+
+    // First execute_refund succeeds and creates the refund pending info.
+    check!(print "execute_refund #1" context.execute_refund("root", &key, None));
+    assert_eq!(
+        context.get_btc_pending_infos_paged().await.unwrap().len(),
+        1,
+        "first execute_refund creates exactly one pending info"
+    );
+
+    // The refund request is NOT consumed — it is kept (executed = true) so the
+    // refund transaction can be re-created later.
+    let requests: HashMap<String, near_sdk::serde_json::Value> = context
+        .bridge_contract
+        .call("get_refund_requests_paged")
+        .args_json(json!({}))
+        .view()
+        .await
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(
+        requests.len(),
+        1,
+        "refund request is kept (not consumed) after execute_refund"
+    );
+
+    // Re-running no longer fails with "Refund request not found" (the request is
+    // kept). With the default pending-sign limit of 1, the second attempt is now
+    // gated by capacity instead — proving the request survived the first call.
+    check!(
+        context.execute_refund("root", &key, None),
+        "Too many pending sign transactions"
+    );
+
+    // State unchanged: still one pending info and one (kept) refund request.
+    assert_eq!(
+        context.get_btc_pending_infos_paged().await.unwrap().len(),
+        1
+    );
+}
+
 /// DAO rejects a refund request; execution afterwards fails.
 #[tokio::test]
 #[cfg(feature = "zcash")]
