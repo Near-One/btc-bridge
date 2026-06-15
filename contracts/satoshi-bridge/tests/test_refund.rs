@@ -1455,7 +1455,11 @@ async fn test_refund_execute_twice_same_tx() {
     // root (DAO) fast-tracks the pre-authorized refund address (timelock 0).
     check!(print "execute_refund #1" context.execute_refund("root", &key));
     let pending1 = context.get_btc_pending_infos_paged().await.unwrap();
-    assert_eq!(pending1.len(), 1, "first execute_refund creates one pending tx");
+    assert_eq!(
+        pending1.len(),
+        1,
+        "first execute_refund creates one pending tx"
+    );
     let id1 = pending1.keys().next().unwrap().clone();
 
     // Second call rebuilds the identical refund tx (same id) and is rejected.
@@ -1471,7 +1475,10 @@ async fn test_refund_execute_twice_same_tx() {
         1,
         "same txid => the second execute_refund adds no new pending tx"
     );
-    assert!(pending2.contains_key(&id1), "the single pending tx id is unchanged");
+    assert!(
+        pending2.contains_key(&id1),
+        "the single pending tx id is unchanged"
+    );
 }
 
 /// A *different* account cannot duplicate or hijack a refund that is already being

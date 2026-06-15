@@ -293,7 +293,11 @@ async fn test_btc_bridge_upgrade_from_v0_8_4_refund_migration() {
         .unwrap()
         .json()
         .unwrap();
-    assert_eq!(before.len(), 1, "old contract should store one refund request");
+    assert_eq!(
+        before.len(),
+        1,
+        "old contract should store one refund request"
+    );
     let key = before.keys().next().unwrap().clone();
     // The deployed v0.8.4 layout has no `executed` field.
     assert!(
@@ -326,7 +330,10 @@ async fn test_btc_bridge_upgrade_from_v0_8_4_refund_migration() {
     assert_eq!(req.refund_address, refund_btc_address);
     assert_eq!(req.amount, 100_000);
     assert_eq!(req.vout, 0);
-    assert_eq!(req.tx_bytes.0, tx_bytes, "deposit tx bytes must be preserved");
+    assert_eq!(
+        req.tx_bytes.0, tx_bytes,
+        "deposit tx bytes must be preserved"
+    );
     assert!(
         !req.deposit_msg_json.is_empty(),
         "deposit_msg_json must be preserved"

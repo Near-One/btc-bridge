@@ -1,9 +1,9 @@
+#[cfg(not(feature = "zcash"))]
+use crate::VRefundRequest;
 use crate::{
     env, near, AccountId, BridgeFee, Config, ContractData, HashMap, HashSet, IterableMap,
     IterableSet, LazyOption, LookupSet, PublicKey, StorageKey, VAccount, VBTCPendingInfo, VUTXO,
 };
-#[cfg(not(feature = "zcash"))]
-use crate::VRefundRequest;
 
 #[near(serializers = [borsh])]
 pub struct ContractDataV0 {
