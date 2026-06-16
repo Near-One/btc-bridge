@@ -1318,15 +1318,13 @@ impl UpgradeContext {
 
         self.root
             .call(self.previous_satoshi_bridge_contract.id(), "up_deploy_code")
-            .args_json(
-                json!({"hash": staged_code_hash,
-                "function_call_args": Some(near_plugins::upgradable::FunctionCallArgs{
-                    function_name: "migrate_state".to_string(),
-                    arguments: vec![],
-                    amount: NearToken::from_near(0),
-                    gas: Gas::from_tgas(20)
-                })}),
-            )
+            .args_json(json!({"hash": staged_code_hash,
+            "function_call_args": Some(near_plugins::upgradable::FunctionCallArgs{
+                function_name: "migrate_state".to_string(),
+                arguments: vec![],
+                amount: NearToken::from_near(0),
+                gas: Gas::from_tgas(20)
+            })}))
             .max_gas()
             .transact()
             .await
