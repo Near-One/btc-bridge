@@ -7,7 +7,6 @@ use bitcoin::hex::Case;
 use bitcoin::{OutPoint, TxOut};
 use near_contract_standards::fungible_token::metadata::FungibleTokenMetadata;
 use near_sdk::{
-    base64::{self, Engine},
     json_types::{Base64VecU8, U128},
     serde_json::{json, Value},
     AccountId, Gas, NearToken,
@@ -1304,7 +1303,7 @@ impl UpgradeContext {
             .await
             .unwrap();
 
-        let staged_code_hash: near_sdk::CryptoHash = self
+        let staged_code_hash: String = self
             .root
             .call(
                 self.previous_satoshi_bridge_contract.id(),
@@ -1313,14 +1312,14 @@ impl UpgradeContext {
             .view()
             .await
             .unwrap()
-            .json::<Option<near_sdk::CryptoHash>>()
+            .json::<Option<String>>()
             .unwrap()
             .unwrap();
 
         self.root
             .call(self.previous_satoshi_bridge_contract.id(), "up_deploy_code")
             .args_json(
-                json!({"hash":  base64::engine::general_purpose::STANDARD.encode(staged_code_hash),
+                json!({"hash": staged_code_hash,
                 "function_call_args": Some(near_plugins::upgradable::FunctionCallArgs{
                     function_name: "migrate_state".to_string(),
                     arguments: vec![],
