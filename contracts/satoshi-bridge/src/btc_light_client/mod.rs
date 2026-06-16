@@ -12,6 +12,7 @@ pub mod withdraw;
 
 pub const GAS_FOR_VERIFY_TRANSACTION_INCLUSION: Gas = Gas::from_tgas(10);
 pub const GAS_FOR_GET_LAST_BLOCK_HEIGHT: Gas = Gas::from_tgas(3);
+
 #[near(serializers = [borsh])]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct H256(pub [u8; 32]);
