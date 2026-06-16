@@ -1294,16 +1294,19 @@ impl UpgradeContext {
     }
 
     pub async fn upgrade_satoshi_bridge(&self, wasm_path: &str) -> Result<ExecutionFinalResult> {
+        let wasm_bytes = std::fs::read(wasm_path).unwrap();
+
+        // New near-plugins (≥0.5.2): up_stage_code reads raw bytes via env::input().
         let _ = self
             .root
             .call(self.previous_satoshi_bridge_contract.id(), "up_stage_code")
-            .args_borsh(std::fs::read(wasm_path).unwrap())
+            .args(wasm_bytes.clone())
             .max_gas()
             .transact()
             .await
             .unwrap();
 
-        let staged_code_hash: String = self
+        let raw_hash_opt = self
             .root
             .call(
                 self.previous_satoshi_bridge_contract.id(),
@@ -1312,9 +1315,48 @@ impl UpgradeContext {
             .view()
             .await
             .unwrap()
-            .json::<Option<String>>()
-            .unwrap()
+            .json::<Option<Value>>()
             .unwrap();
+
+        // Old near-plugins (≤git@6149e03): up_stage_code takes `#[serializer(borsh)] code: Vec<u8>`.
+        // Passing raw bytes causes borsh deserialization to fail silently → None returned above.
+        // Re-stage with borsh encoding for those contracts.
+        let raw_hash = match raw_hash_opt {
+            Some(v) => v,
+            None => {
+                let _ = self
+                    .root
+                    .call(self.previous_satoshi_bridge_contract.id(), "up_stage_code")
+                    .args_borsh(wasm_bytes)
+                    .max_gas()
+                    .transact()
+                    .await
+                    .unwrap();
+                self.root
+                    .call(
+                        self.previous_satoshi_bridge_contract.id(),
+                        "up_staged_code_hash",
+                    )
+                    .view()
+                    .await
+                    .unwrap()
+                    .json::<Option<Value>>()
+                    .unwrap()
+                    .unwrap()
+            }
+        };
+
+        // Old near-plugins returns [u8;32] array; up_deploy_code expects base64(hash).
+        // New near-plugins returns base58 String; up_deploy_code expects that string as-is.
+        let staged_code_hash: String = match raw_hash {
+            Value::String(s) => s,
+            Value::Array(bytes) => {
+                use near_sdk::base64::Engine as _;
+                let bytes: Vec<u8> = bytes.iter().map(|v| v.as_u64().unwrap() as u8).collect();
+                near_sdk::base64::engine::general_purpose::STANDARD.encode(&bytes)
+            }
+            other => panic!("unexpected up_staged_code_hash format: {other:?}"),
+        };
 
         self.root
             .call(self.previous_satoshi_bridge_contract.id(), "up_deploy_code")
