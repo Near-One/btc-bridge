@@ -218,6 +218,7 @@ impl Contract {
         contract.acl_init_super_admin(env::predecessor_account_id());
         contract.acl_grant_role(Role::DAO.into(), env::predecessor_account_id());
         contract.acl_grant_role(Role::PauseManager.into(), env::predecessor_account_id());
+        contract.acl_grant_role(Role::UnpauseManager.into(), env::predecessor_account_id());
 
         contract.internal_set_account(
             &env::predecessor_account_id(),

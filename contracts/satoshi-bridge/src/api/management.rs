@@ -70,10 +70,8 @@ impl Contract {
             .acl_revoke_role(Role::PauseManager.into(), account_id.clone())
             .unwrap();
         require!(is_success, "acl_revoke_role PauseManager failed");
-        let is_success = self
-            .acl_revoke_role(Role::UnpauseManager.into(), account_id.clone())
-            .unwrap();
-        require!(is_success, "acl_revoke_role UnpauseManager failed");
+        // Accounts created before UnpauseManager existed may not hold this role; tolerate that.
+        self.acl_revoke_role(Role::UnpauseManager.into(), account_id.clone());
         let is_success = self.acl_revoke_super_admin(account_id.clone()).unwrap();
         require!(is_success, "acl_revoke_super_admin failed");
     }
