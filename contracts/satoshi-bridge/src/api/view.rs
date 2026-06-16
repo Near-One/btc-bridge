@@ -14,6 +14,7 @@ pub struct Metadata {
     pub daos: Vec<AccountId>,
     pub operators: Vec<AccountId>,
     pub pause_managers: Vec<AccountId>,
+    pub unpause_managers: Vec<AccountId>,
     pub pa_all_paused: Option<HashSet<String>>,
     pub relayer_white_list: Vec<AccountId>,
     pub extra_msg_relayer_white_list: Vec<AccountId>,
@@ -44,6 +45,11 @@ impl Contract {
             operators: self.acl_get_grantees(Role::Operator.into(), 0, u64::from(u32::MAX)),
             pause_managers: self.acl_get_grantees(
                 Role::PauseManager.into(),
+                0,
+                u64::from(u32::MAX),
+            ),
+            unpause_managers: self.acl_get_grantees(
+                Role::UnpauseManager.into(),
                 0,
                 u64::from(u32::MAX),
             ),

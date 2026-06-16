@@ -45,6 +45,10 @@ impl Contract {
             .acl_grant_role(Role::PauseManager.into(), account_id.clone())
             .unwrap();
         require!(is_success, "acl_grant_role PauseManager failed");
+        let is_success = self
+            .acl_grant_role(Role::UnpauseManager.into(), account_id.clone())
+            .unwrap();
+        require!(is_success, "acl_grant_role UnpauseManager failed");
         if !self.check_account_exists(&account_id) {
             self.internal_set_account(&account_id, Account::new(&account_id));
         }
@@ -66,6 +70,10 @@ impl Contract {
             .acl_revoke_role(Role::PauseManager.into(), account_id.clone())
             .unwrap();
         require!(is_success, "acl_revoke_role PauseManager failed");
+        let is_success = self
+            .acl_revoke_role(Role::UnpauseManager.into(), account_id.clone())
+            .unwrap();
+        require!(is_success, "acl_revoke_role UnpauseManager failed");
         let is_success = self.acl_revoke_super_admin(account_id.clone()).unwrap();
         require!(is_success, "acl_revoke_super_admin failed");
     }
