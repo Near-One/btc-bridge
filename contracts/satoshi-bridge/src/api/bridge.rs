@@ -506,7 +506,7 @@ impl Contract {
 
     /// Reject a pending refund request.
     /// - DAO or Operator can reject any request.
-    /// - Anyone can reject a request if the UTXO has already been verified via `verify_deposit`.
+    /// - Anyone can reject a request if the UTXO has already been verified via `verify_deposit`
     ///
     /// # Arguments
     ///
@@ -515,10 +515,22 @@ impl Contract {
         let caller = env::predecessor_account_id();
         let is_privileged = self.acl_has_role(Role::DAO.into(), caller.clone())
             || self.acl_has_role(Role::Operator.into(), caller);
-        let is_already_deposited = self
+        // `execute_refund` also inserts the UTXO into `verified_deposit_utxo` (to block a
+        // later deposit) while keeping the request with `executed == true`. That membership
+        // must NOT open the permissionless reject path, otherwise anyone could cancel an
+        // in-flight refund — so only treat the UTXO as "already deposited" when the request
+        // was not executed by us, i.e. a real `verify_deposit` finalized it.
+        let executed = self
             .data()
-            .verified_deposit_utxo
-            .contains(&utxo_storage_key);
+            .refund_requests
+            .get(&utxo_storage_key)
+            .map(|r| RefundRequest::from(r).executed)
+            .unwrap_or(false);
+        let is_already_deposited = !executed
+            && self
+                .data()
+                .verified_deposit_utxo
+                .contains(&utxo_storage_key);
         require!(
             is_privileged || is_already_deposited,
             "Only DAO/Operator can reject, or UTXO must be already verified via deposit"

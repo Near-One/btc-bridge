@@ -1720,3 +1720,76 @@ async fn test_request_refund_input_capacity() {
         "tx_bytes too large for refund request"
     );
 }
+
+/// After `execute_refund` the UTXO is also inserted into `verified_deposit_utxo` (to
+/// block a later deposit) while the request is kept with `executed == true`. That must
+/// NOT let a non-privileged account reject the in-flight refund via the "already
+/// deposited" path — only DAO/Operator can. Regression test for that access check.
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_reject_refund_blocked_after_execute() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: Some(TARGET_ADDRESS.to_string()),
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "d5d5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f22",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 100_000)],
+    );
+    let vout: u32 = 0;
+    let key = utxo_storage_key(&tx_bytes, vout);
+
+    // Use the success-asserting `check!` form (not `print`, which only logs) so a
+    // silent failure here would actually fail the test.
+    check!(context.request_refund(
+        "alice",
+        deposit_msg.clone(),
+        TARGET_ADDRESS,
+        tx_bytes.clone(),
+        vout,
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+        1,
+        vec![],
+        None
+    ));
+
+    context
+        .get_account_by_name("root")
+        .call(context.bridge_contract.id(), "update_config")
+        .args_json(json!({"update": {"refund_timelock_sec": 200}}))
+        .deposit(near_sdk::NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+    worker.fast_forward(4000).await.unwrap();
+
+    // Execute the refund — this inserts the UTXO into verified_deposit_utxo and keeps
+    // the request with executed == true. Must actually succeed for the test to be meaningful.
+    check!(context.execute_refund("alice", &key));
+
+    // A non-privileged account must NOT be able to reject the now in-flight refund.
+    check!(
+        context.reject_refund("bob", &key),
+        "Only DAO/Operator can reject, or UTXO must be already verified via deposit"
+    );
+
+    // DAO can still reject it.
+    check!(context.reject_refund("root", &key));
+}
