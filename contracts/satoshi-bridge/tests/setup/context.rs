@@ -1406,6 +1406,7 @@ impl Context {
                 },
                 "gas_fee": gas_fee,
             }))
+            .deposit(self.required_balance_for_request_refund().await?)
             .max_gas()
             .transact()
             .await
@@ -1434,6 +1435,16 @@ impl Context {
             .json::<NearToken>()
     }
 
+    pub async fn required_balance_for_request_refund(&self) -> Result<NearToken> {
+        self.bridge_contract
+            .call("required_balance_for_request_refund")
+            .args_json(json!({}))
+            .view()
+            .await
+            .unwrap()
+            .json::<NearToken>()
+    }
+
     pub async fn required_balance_for_safe_deposit(&self) -> Result<NearToken> {
         self.bridge_contract
             .call("required_balance_for_safe_deposit")
@@ -1450,13 +1461,14 @@ impl Context {
         user: &str,
         utxo_storage_key: &str,
     ) -> Result<ExecutionFinalResult> {
+        let deposit = self.required_balance_for_execute_refund().await?;
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "execute_refund")
             .args_json(json!({
                 "utxo_storage_key": utxo_storage_key,
                 "chain_specific_data": null,
             }))
-            .deposit(NearToken::from_millinear(100))
+            .deposit(deposit)
             .max_gas()
             .transact()
             .await
@@ -1472,13 +1484,14 @@ impl Context {
         utxo_storage_key: &str,
         chain_specific_data: Option<satoshi_bridge::zcash_utils::types::ChainSpecificData>,
     ) -> Result<ExecutionFinalResult> {
+        let deposit = self.required_balance_for_execute_refund().await?;
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "execute_refund")
             .args_json(json!({
                 "utxo_storage_key": utxo_storage_key,
                 "chain_specific_data": chain_specific_data,
             }))
-            .deposit(NearToken::from_millinear(100))
+            .deposit(deposit)
             .max_gas()
             .transact()
             .await

@@ -184,6 +184,13 @@ async fn test_zcash_refund_shielded_to_unified_address() {
 
     // Execute the refund from a DAO account (pre-authorized refund address →
     // timelock bypassed), supplying the Orchard bundle for the shielded payout.
+    let storage_before = context
+        .bridge_contract
+        .view_account()
+        .await
+        .unwrap()
+        .storage_usage;
+
     check!(
         print "execute_refund"
         context.execute_refund(
@@ -194,6 +201,34 @@ async fn test_zcash_refund_shielded_to_unified_address() {
                 expiry_height: 0,
             }),
         )
+    );
+
+    // The shielded (Orchard) refund is the heaviest execute_refund case by stored
+    // bytes; confirm required_balance_for_execute_refund still covers it.
+    let storage_after = context
+        .bridge_contract
+        .view_account()
+        .await
+        .unwrap()
+        .storage_usage;
+    let storage_used = storage_after - storage_before;
+    let cost_per_byte = 10u128.pow(19); // 0.00001 NEAR per byte
+    let storage_cost_yocto = storage_used as u128 * cost_per_byte;
+    println!(
+        "==> Storage used by shielded execute_refund: {} bytes ({:.4} NEAR)",
+        storage_used,
+        storage_cost_yocto as f64 / 1e24
+    );
+    let required_balance = context.required_balance_for_execute_refund().await.unwrap();
+    println!(
+        "==> required_balance_for_execute_refund: {:.4} NEAR",
+        required_balance.as_yoctonear() as f64 / 1e24
+    );
+    assert!(
+        required_balance.as_yoctonear() >= storage_cost_yocto,
+        "required_balance_for_execute_refund ({}) is less than actual shielded storage cost ({})",
+        required_balance.as_yoctonear(),
+        storage_cost_yocto,
     );
 
     // A refund BTCPendingInfo now exists in pending_sign.

@@ -472,6 +472,7 @@ impl Contract {
     /// * `gas_fee` - Optional custom gas fee. Only DAO or Operator can set this.
     ///   If `None`, the default `config.max_btc_gas_fee` is used during `execute_refund`.
     #[allow(clippy::too_many_arguments)]
+    #[payable]
     #[pause(except(roles(Role::DAO)))]
     pub fn request_refund(
         &mut self,

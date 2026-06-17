@@ -132,6 +132,10 @@ impl Contract {
         proof: TxInclusionProof,
         gas_fee: Option<u128>,
     ) -> Promise {
+        require!(
+            env::attached_deposit() >= self.required_balance_for_request_refund(),
+            "Insufficient deposit for storage"
+        );
         if let Some(msg_refund_address) = &deposit_msg.refund_address {
             require!(
                 msg_refund_address == &refund_address,

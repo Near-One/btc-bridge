@@ -314,10 +314,17 @@ impl Contract {
     }
 
     pub fn required_balance_for_execute_refund(&self) -> NearToken {
-        // execute_refund now keeps the refund request (so it can be re-run) in addition
-        // to adding a BTCPendingInfo, so it stores ~1.2 KB (the request is no longer
-        // freed to offset the pending info — both hold the deposit tx bytes). At
-        // 0.00001 NEAR/byte we use 0.02 NEAR as a safe margin.
-        NearToken::from_millinear(20)
+        // Measured real storage: ~0.012 NEAR (Bitcoin) up to ~0.134 NEAR (Zcash shielded,
+        // whose pending info embeds the Orchard bundle). The deposit is NOT refunded, so
+        // 1 NEAR covers the heaviest case and acts as an anti-spam fee on this
+        // permissionless entrypoint — refunds are a rare, abnormal event anyway.
+        NearToken::from_near(1)
+    }
+
+    pub fn required_balance_for_request_refund(&self) -> NearToken {
+        // request_refund stores a RefundRequest (deposit tx bytes + msg). The deposit is
+        // NOT refunded, so like execute_refund it doubles as an anti-spam fee on this
+        // permissionless entrypoint — refunds are a rare, abnormal event anyway.
+        NearToken::from_near(1)
     }
 }
