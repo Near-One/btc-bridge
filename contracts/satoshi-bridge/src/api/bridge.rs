@@ -577,6 +577,7 @@ impl Contract {
     /// # Arguments
     ///
     /// * `tx_id` - Pending id of the stale refund transaction to remove.
+    #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn remove_refund_pending_tx_id(&mut self, tx_id: String) {
         self.internal_remove_refund_pending_tx_id(tx_id);
