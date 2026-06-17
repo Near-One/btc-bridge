@@ -456,6 +456,9 @@ impl Contract {
     /// The BTC transaction is verified through the Light Client to prove the deposit exists.
     /// After the timelock period, anyone can call `execute_refund` to initiate the return.
     ///
+    /// Requires an attached deposit of at least `required_balance_for_request_refund()`.
+    /// The deposit is NOT refunded — it covers request storage and acts as an anti-spam fee.
+    ///
     /// # Arguments
     ///
     /// * `deposit_msg` - The original deposit message. If `deposit_msg.refund_address` is set,

@@ -322,9 +322,13 @@ impl Contract {
     }
 
     pub fn required_balance_for_request_refund(&self) -> NearToken {
-        // request_refund stores a RefundRequest (deposit tx bytes + msg). The deposit is
-        // NOT refunded, so like execute_refund it doubles as an anti-spam fee on this
-        // permissionless entrypoint — refunds are a rare, abnormal event anyway.
-        NearToken::from_near(1)
+        // request_refund stores a RefundRequest holding the deposit tx_bytes verbatim, so
+        // storage grows ~1:1 with tx size (measured: storage ≈ tx_bytes + ~442 bytes). A
+        // normal deposit (1-2 inputs, ~500 bytes) costs ~0.005 NEAR, but tx_bytes is capped
+        // at MAX_REQUEST_REFUND_TX_BYTES (200 KB) — at that worst case storage is ~2 NEAR.
+        // We size the deposit to cover that worst case; for normal deposits the bulk of it
+        // is an anti-spam fee on this permissionless entrypoint (the deposit is NOT refunded).
+        // Refunds are a rare, abnormal event anyway.
+        NearToken::from_near(2)
     }
 }

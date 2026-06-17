@@ -14,6 +14,17 @@ use crate::utils::{generate_utxo_storage_key, nano_to_sec};
 pub(crate) const GAS_FOR_REQUEST_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
 pub(crate) const GAS_FOR_VERIFY_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
 
+/// Upper bound on the deposit `tx_bytes` accepted by `request_refund`.
+///
+/// The RefundRequest stores `tx_bytes` verbatim (no truncation — `execute_refund`
+/// later decodes them to rebuild the refund tx), so storage grows ~1:1 with tx size:
+/// at this cap a request stores ~200 KB ≈ 2 NEAR, which `required_balance_for_request_refund`
+/// is sized to cover. The cap also sits safely below the hard gas ceiling: decoding +
+/// borsh-storing the tx happens in `request_refund_callback` (only 20 Tgas), which runs
+/// out of gas around ~250 KB regardless of the attached deposit. 200 KB is ~1350 signed
+/// P2PKH inputs — far above any real deposit (1-2 inputs), incl. large consolidations.
+pub(crate) const MAX_REQUEST_REFUND_TX_BYTES: usize = 200_000;
+
 /// Stored refund request. `deposit_msg` is kept as JSON string
 /// because `DepositMsg` does not implement Borsh serialization.
 #[near(serializers = [borsh, json])]
@@ -135,6 +146,10 @@ impl Contract {
         require!(
             env::attached_deposit() >= self.required_balance_for_request_refund(),
             "Insufficient deposit for storage"
+        );
+        require!(
+            tx_bytes.0.len() <= MAX_REQUEST_REFUND_TX_BYTES,
+            "tx_bytes too large for refund request"
         );
         if let Some(msg_refund_address) = &deposit_msg.refund_address {
             require!(
