@@ -151,6 +151,7 @@ pub enum VersionedContractData {
     V2(ContractDataV2),
     V3(ContractDataV3),
     V4(ContractDataV4),
+    V5(ContractDataV5),
     Current(ContractData),
 }
 

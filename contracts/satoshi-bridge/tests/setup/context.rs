@@ -1263,6 +1263,18 @@ impl UpgradeContext {
             .await
             .unwrap()
             .unwrap();
+        // Initialize the mock chain-signatures contract before syncing, otherwise
+        // its `public_key()` panics (uninitialized) and the bridge's sync callback
+        // silently leaves `chain_signatures_root_public_key` unset.
+        chain_signatures_contract
+            .call("new")
+            .args_json(json!({
+                "public_key": "secp256k1:4NfTiv3UsGahebgTaHyD9vF8KYKMBnfd6kh94mK6xv8fGBiJB8TBtFMP5WWXz6B89Ac1fbpzPwAvoyQebemHFwx3",
+            }))
+            .transact()
+            .await
+            .unwrap()
+            .unwrap();
         root.call(
             previous_satoshi_bridge_contract.id(),
             "sync_chain_signatures_root_public_key",
@@ -1394,14 +1406,38 @@ impl Context {
                 },
                 "gas_fee": gas_fee,
             }))
+            .deposit(self.required_balance_for_request_refund().await?)
             .max_gas()
             .transact()
             .await
     }
 
+    /// Test-only: drive the mock light client's reported block height, which
+    /// determines the Zcash consensus `branch_id` used when building a tx.
+    pub async fn set_light_client_block_height(&self, height: u32) {
+        self.root
+            .call(self.btc_light_client_contract.id(), "set_last_block_height")
+            .args_json(json!({ "height": height }))
+            .max_gas()
+            .transact()
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
     pub async fn required_balance_for_execute_refund(&self) -> Result<NearToken> {
         self.bridge_contract
             .call("required_balance_for_execute_refund")
+            .args_json(json!({}))
+            .view()
+            .await
+            .unwrap()
+            .json::<NearToken>()
+    }
+
+    pub async fn required_balance_for_request_refund(&self) -> Result<NearToken> {
+        self.bridge_contract
+            .call("required_balance_for_request_refund")
             .args_json(json!({}))
             .view()
             .await
@@ -1425,13 +1461,14 @@ impl Context {
         user: &str,
         utxo_storage_key: &str,
     ) -> Result<ExecutionFinalResult> {
+        let deposit = self.required_balance_for_execute_refund().await?;
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "execute_refund")
             .args_json(json!({
                 "utxo_storage_key": utxo_storage_key,
                 "chain_specific_data": null,
             }))
-            .deposit(NearToken::from_millinear(100))
+            .deposit(deposit)
             .max_gas()
             .transact()
             .await
@@ -1447,13 +1484,14 @@ impl Context {
         utxo_storage_key: &str,
         chain_specific_data: Option<satoshi_bridge::zcash_utils::types::ChainSpecificData>,
     ) -> Result<ExecutionFinalResult> {
+        let deposit = self.required_balance_for_execute_refund().await?;
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "execute_refund")
             .args_json(json!({
                 "utxo_storage_key": utxo_storage_key,
                 "chain_specific_data": chain_specific_data,
             }))
-            .deposit(NearToken::from_millinear(100))
+            .deposit(deposit)
             .max_gas()
             .transact()
             .await
