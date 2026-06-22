@@ -145,6 +145,128 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
     println!("✅ Withdrawal with Orchard bundle completed successfully");
 }
 
+/// Regression: an Orchard withdrawal whose recipient is a *shielded-only* unified address
+/// (Orchard receiver, NO transparent receiver) must succeed. Previously `check_withdraw_psbt`
+/// eagerly derived the recipient's transparent scriptPubKey to classify the transparent change
+/// output, panicking with "Failed to get script pubkey: No receiver found in address" for a UA
+/// that has no transparent receiver. The other Orchard tests masked this because their fixture
+/// UA also carries a transparent (P2PKH) receiver.
+#[tokio::test]
+#[cfg(feature = "zcash")]
+async fn test_orchard_withdrawal_to_shielded_only_ua() {
+    std::env::set_var("TEST_CHAIN", "ZcashTestnet");
+
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, None).await;
+
+    check!(context.set_deposit_bridge_fee(10000, 0, 9000));
+    check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
+
+    let config = context.get_bridge_config().await.unwrap();
+    assert_eq!(format!("{:?}", config.chain), "ZcashTestnet");
+
+    // Deposit for alice.
+    let alice_btc_deposit_address = context
+        .get_user_deposit_address(DepositMsg {
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
+            post_actions: None,
+            extra_msg: None,
+            safe_deposit: None,
+            refund_address: None,
+        })
+        .await
+        .unwrap();
+
+    let zcash_tx_bytes = setup::utils::generate_transaction_bytes(
+        vec![(
+            "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
+            1,
+            None,
+        )],
+        vec![
+            ("1MgiBKohM2poApYamQadp21vJrNyh5T19G", 90000),
+            (alice_btc_deposit_address.as_str(), 500000),
+        ],
+    );
+
+    check!(context.verify_deposit(
+        "relayer",
+        DepositMsg {
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
+            post_actions: None,
+            extra_msg: None,
+            safe_deposit: None,
+            refund_address: None,
+        },
+        zcash_tx_bytes,
+        1,
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+        1,
+        vec![]
+    ));
+
+    let utxos_keys = context
+        .get_utxos_paged()
+        .await
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<String>>();
+    assert!(!utxos_keys.is_empty(), "Should have UTXOs after deposit");
+    let first_utxo = utxos_keys[0].split('@').collect::<Vec<_>>();
+
+    let utxo_value = 500000u128;
+    let withdraw_amount = 200000u128;
+    let btc_gas_fee = 10000u128;
+    let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
+    let orchard_amount = (withdraw_amount - withdraw_fee - btc_gas_fee) as u64;
+    let change_amount = utxo_value - orchard_amount as u128 - btc_gas_fee;
+
+    // Reuse the cached bundle for this amount; we only need its bundle bytes. The Orchard
+    // receiver is derived from the same default key, so the shielded-only UA below is the
+    // bundle's recipient.
+    let (_ua_with_transparent, bundle_hex) = setup::orchard::get_or_gen_bundle(orchard_amount);
+    let recipient_ua = setup::orchard::orchard_only_ua_with_key("testnet", None);
+
+    // The recipient must be a shielded-only UA: no transparent receiver, hence no scriptPubKey.
+    assert!(
+        Address::parse(&recipient_ua, Chain::ZcashTestnet)
+            .expect("valid unified address")
+            .script_pubkey()
+            .is_err(),
+        "fixture must be a shielded-only UA (no transparent receiver)"
+    );
+
+    let withdraw_change_address = context.get_change_address().await.unwrap();
+    let change_script_pubkey = Address::parse(&withdraw_change_address, Chain::ZcashTestnet)
+        .expect("Invalid change address")
+        .script_pubkey()
+        .expect("Failed to get script pubkey");
+
+    // Orchard withdrawal with a transparent change output back to the bridge.
+    check!(context.do_withdraw(
+        "alice",
+        "bridge",
+        withdraw_amount,
+        TokenReceiverMessage::Withdraw {
+            target_btc_address: recipient_ua.clone(),
+            input: vec![OutPoint {
+                txid: first_utxo[0].parse().unwrap(),
+                vout: first_utxo[1].parse().unwrap(),
+            }],
+            output: vec![TxOut {
+                value: Amount::from_sat(change_amount as u64),
+                script_pubkey: change_script_pubkey,
+            }],
+            max_gas_fee: None,
+            chain_specific_data: Some(ChainSpecificData {
+                orchard_bundle_bytes: hex::decode(&bundle_hex).unwrap().into(),
+                expiry_height: 10000,
+            }),
+        }
+    ));
+}
+
 #[tokio::test]
 #[cfg(feature = "zcash")]
 async fn test_orchard_withdrawal_amount_mismatch() {

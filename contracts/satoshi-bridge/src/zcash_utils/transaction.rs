@@ -1,9 +1,9 @@
 use crate::network;
 use bitcoin::hashes::Hash;
 use bitcoin::{absolute, ScriptBuf, TxOut, Txid};
-use zcash_primitives::consensus::{BlockHeight, BranchId};
 use zcash_primitives::transaction::{Transaction as ZCashTransaction, TransactionData, TxVersion};
-use zcash_transparent::builder::TransparentBuilder;
+use zcash_protocol::consensus::{BlockHeight, BranchId};
+use zcash_transparent::builder::{SpendInfo, TransparentBuilder, TransparentInputInfo};
 use zcash_transparent::bundle::Authorized;
 
 pub struct TransparentUnauthorized;
@@ -28,8 +28,10 @@ impl Transaction {
         outputs
             .into_iter()
             .map(|o| bitcoin::TxOut {
-                value: bitcoin::Amount::from_sat(o.value.into_u64()),
-                script_pubkey: ScriptBuf::from(bitcoin::Script::from_bytes(&o.script_pubkey.0)),
+                value: bitcoin::Amount::from_sat(o.value().into_u64()),
+                script_pubkey: ScriptBuf::from(bitcoin::Script::from_bytes(
+                    &o.script_pubkey().0 .0,
+                )),
             })
             .collect()
     }
@@ -46,12 +48,9 @@ impl Transaction {
         Ok(buf)
     }
 
-    pub fn decode(data: &[u8], chain: &network::Chain) -> Result<Self, std::io::Error> {
+    pub fn decode(data: &[u8], _chain: &network::Chain) -> Result<Self, std::io::Error> {
         let mut cursor = std::io::Cursor::new(data);
-        let branch_id = match chain {
-            network::Chain::ZcashTestnet => BranchId::Nu6_1,
-            _ => BranchId::Nu6,
-        };
+        let branch_id = BranchId::Nu6_2;
         let tx = ZCashTransaction::read(&mut cursor, branch_id)?;
         Ok(Self { inner_tx: tx })
     }
@@ -65,19 +64,21 @@ impl Transaction {
         let mut builder = zcash_transparent::builder::TransparentBuilder::empty();
 
         for index in 0..vin.len() {
-            builder
-                .add_input(
-                    public_keys[index].inner,
-                    vin[index].prevout.clone(),
-                    input[index].clone(),
-                )
-                .unwrap();
+            let input_info = TransparentInputInfo::from_parts(
+                vin[index].prevout().clone(),
+                input[index].clone(),
+                SpendInfo::P2pkh {
+                    pubkey: public_keys[index].inner,
+                },
+            )
+            .unwrap();
+            builder.add_input(input_info);
         }
 
         for output in vout {
-            let key = output.script_pubkey.0[3..23].try_into().unwrap();
+            let key = output.script_pubkey().0 .0[3..23].try_into().unwrap();
             let to = zcash_transparent::address::TransparentAddress::PublicKeyHash(key);
-            builder.add_output(&to, output.value).unwrap();
+            builder.add_output(&to, output.value()).unwrap();
         }
 
         builder

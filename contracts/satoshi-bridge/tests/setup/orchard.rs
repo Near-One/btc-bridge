@@ -90,6 +90,29 @@ pub fn gen_ua_and_orchard_bundle_hex(amount: u64, network: &str) -> (String, Str
     gen_ua_and_orchard_bundle_hex_with_key(amount, network, None)
 }
 
+/// Produce a Unified Address containing ONLY an Orchard receiver (no transparent receiver),
+/// derived from `spending_key_bytes` (default `[7u8; 32]`). This reproduces a shielded-only
+/// recipient like the ones privacy wallets emit. It is cheap (derives the address only, no
+/// Halo2 proof), and the Orchard receiver matches the bundle produced by
+/// `gen_ua_and_orchard_bundle_hex*` for the same key, so a cached bundle can be reused as the
+/// payment.
+pub fn orchard_only_ua_with_key(network: &str, spending_key_bytes: Option<[u8; 32]>) -> String {
+    let sk_bytes = spending_key_bytes.unwrap_or([7u8; 32]);
+    let sk = SpendingKey::from_bytes(sk_bytes).expect("spending key");
+    let fvk = FullViewingKey::from(&sk);
+    let recipient = fvk.address_at(0u32, Scope::External);
+    let orchard_raw = recipient.to_raw_address_bytes();
+
+    let ua = zcash_address::unified::Address::try_from_items(vec![Receiver::Orchard(orchard_raw)])
+        .expect("UA from orchard receiver");
+
+    let network_type = match network {
+        "main" | "mainnet" => zcash_protocol::consensus::NetworkType::Main,
+        _ => zcash_protocol::consensus::NetworkType::Test,
+    };
+    ZcashAddress::from_unified(network_type, ua).encode()
+}
+
 /// Get or generate a cached Orchard bundle for the given amount.
 /// Caches to a local file to avoid expensive regeneration.
 pub fn get_or_gen_bundle(amount: u64) -> (String, String) {

@@ -58,7 +58,55 @@ impl ProofArgs {
                 .into_iter()
                 .map(|v| {
                     v.parse()
-                        .unwrap_or_else(|_| env::panic_str("Invalid merkle_proof: {v:?}"))
+                        .unwrap_or_else(|_| env::panic_str(&format!("Invalid merkle_proof: {v:?}")))
+                })
+                .collect(),
+            confirmations,
+        }
+    }
+}
+
+#[near(serializers = [borsh])]
+pub struct ProofArgsV2 {
+    pub tx_id: H256,
+    pub tx_block_blockhash: H256,
+    pub tx_index: u64,
+    pub merkle_proof: Vec<H256>,
+    pub coinbase_tx_id: H256,
+    pub coinbase_merkle_proof: Vec<H256>,
+    pub confirmations: u64,
+}
+
+impl ProofArgsV2 {
+    pub fn new(
+        tx_id: String,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+        coinbase_tx_id: String,
+        coinbase_merkle_proof: Vec<String>,
+        confirmations: u64,
+    ) -> Self {
+        ProofArgsV2 {
+            tx_id: tx_id.parse().expect("Invalid tx_id"),
+            tx_block_blockhash: tx_block_blockhash
+                .parse()
+                .expect("Invalid tx_block_blockhash"),
+            tx_index,
+            merkle_proof: merkle_proof
+                .into_iter()
+                .map(|v| {
+                    v.parse()
+                        .unwrap_or_else(|_| env::panic_str(&format!("Invalid merkle_proof: {v:?}")))
+                })
+                .collect(),
+            coinbase_tx_id: coinbase_tx_id.parse().expect("Invalid coinbase_tx_id"),
+            coinbase_merkle_proof: coinbase_merkle_proof
+                .into_iter()
+                .map(|v| {
+                    v.parse().unwrap_or_else(|_| {
+                        env::panic_str(&format!("Invalid coinbase_merkle_proof: {v:?}"))
+                    })
                 })
                 .collect(),
             confirmations,
@@ -143,6 +191,53 @@ impl TxInclusionProof {
     }
 }
 
+/// Same as `TxInclusionProof` but carries the coinbase merkle proof so the LC can
+/// validate the block's merkle root (SPV hardening, mirrors `verify_transaction_inclusion_v2`).
+#[near(serializers = [borsh])]
+pub struct TxInclusionProofV2 {
+    pub tx_id: H256,
+    pub tx_block_blockhash: H256,
+    pub tx_index: u64,
+    pub merkle_proof: Vec<H256>,
+    pub coinbase_tx_id: H256,
+    pub coinbase_merkle_proof: Vec<H256>,
+}
+
+impl TxInclusionProofV2 {
+    pub fn new(
+        tx_id: String,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+        coinbase_tx_id: String,
+        coinbase_merkle_proof: Vec<String>,
+    ) -> Self {
+        TxInclusionProofV2 {
+            tx_id: tx_id.parse().expect("Invalid tx_id"),
+            tx_block_blockhash: tx_block_blockhash
+                .parse()
+                .expect("Invalid tx_block_blockhash"),
+            tx_index,
+            merkle_proof: merkle_proof
+                .into_iter()
+                .map(|v| {
+                    v.parse()
+                        .unwrap_or_else(|_| env::panic_str(&format!("Invalid merkle_proof: {v:?}")))
+                })
+                .collect(),
+            coinbase_tx_id: coinbase_tx_id.parse().expect("Invalid coinbase_tx_id"),
+            coinbase_merkle_proof: coinbase_merkle_proof
+                .into_iter()
+                .map(|v| {
+                    v.parse().unwrap_or_else(|_| {
+                        env::panic_str(&format!("Invalid coinbase_merkle_proof: {v:?}"))
+                    })
+                })
+                .collect(),
+        }
+    }
+}
+
 /// SPV inclusion result with heights. Mirrors `btc-types::contract_args::TxInclusionInfo`
 /// from Near-One/btc-light-client-contract#140.
 #[near(serializers = [borsh, json])]
@@ -159,6 +254,11 @@ pub trait BtcLightClient {
         &self,
         #[serializer(borsh)] args: TxInclusionProof,
     ) -> Option<TxInclusionInfo>;
+    fn verify_transaction_inclusion_with_heights_v2(
+        &self,
+        #[serializer(borsh)] args: TxInclusionProofV2,
+    ) -> Option<TxInclusionInfo>;
+    fn verify_transaction_inclusion_v2(&self, #[serializer(borsh)] args: ProofArgsV2) -> bool;
     fn get_last_block_height(&self) -> u32;
 }
 
@@ -170,17 +270,30 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
+        coinbase_proof: Option<(String, Vec<String>)>,
         confirmations: u64,
     ) -> Promise {
-        ext_btc_light_client::ext(btc_light_client_account_id)
-            .with_static_gas(GAS_FOR_VERIFY_TRANSACTION_INCLUSION)
-            .verify_transaction_inclusion(ProofArgs::new(
-                tx_id.clone(),
+        let ext = ext_btc_light_client::ext(btc_light_client_account_id)
+            .with_static_gas(GAS_FOR_VERIFY_TRANSACTION_INCLUSION);
+        if let Some((coinbase_tx_id, coinbase_merkle_proof)) = coinbase_proof {
+            ext.verify_transaction_inclusion_v2(ProofArgsV2::new(
+                tx_id,
+                tx_block_blockhash,
+                tx_index,
+                merkle_proof,
+                coinbase_tx_id,
+                coinbase_merkle_proof,
+                confirmations,
+            ))
+        } else {
+            ext.verify_transaction_inclusion(ProofArgs::new(
+                tx_id,
                 tx_block_blockhash,
                 tx_index,
                 merkle_proof,
                 confirmations,
             ))
+        }
     }
 
     /// Untrusted-path variant: requests SPV proof + heights in one call. The
@@ -193,15 +306,27 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
+        coinbase_proof: Option<(String, Vec<String>)>,
     ) -> Promise {
-        ext_btc_light_client::ext(btc_light_client_account_id)
-            .with_static_gas(GAS_FOR_VERIFY_TRANSACTION_INCLUSION)
-            .verify_transaction_inclusion_with_heights(TxInclusionProof::new(
+        let ext = ext_btc_light_client::ext(btc_light_client_account_id)
+            .with_static_gas(GAS_FOR_VERIFY_TRANSACTION_INCLUSION);
+        if let Some((coinbase_tx_id, coinbase_merkle_proof)) = coinbase_proof {
+            ext.verify_transaction_inclusion_with_heights_v2(TxInclusionProofV2::new(
+                tx_id,
+                tx_block_blockhash,
+                tx_index,
+                merkle_proof,
+                coinbase_tx_id,
+                coinbase_merkle_proof,
+            ))
+        } else {
+            ext.verify_transaction_inclusion_with_heights(TxInclusionProof::new(
                 tx_id,
                 tx_block_blockhash,
                 tx_index,
                 merkle_proof,
             ))
+        }
     }
 
     pub fn get_last_block_height_promise(&self) -> Promise {

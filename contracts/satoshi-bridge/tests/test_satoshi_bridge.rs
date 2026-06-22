@@ -1588,50 +1588,57 @@ async fn test_utxo_passive_management() {
     );
     check!(context.set_passive_management_limit(0, u32::MAX));
     let total_change = 500000 + 60000 - (withdraw_amount - withdraw_fee) as u64;
+    let make_withdraw_msg = || TokenReceiverMessage::Withdraw {
+        target_btc_address: TARGET_ADDRESS.to_string(),
+        input: vec![
+            OutPoint {
+                txid: utxo500000[0].parse().unwrap(),
+                vout: utxo500000[1].parse().unwrap(),
+            },
+            OutPoint {
+                txid: utxo60000[0].parse().unwrap(),
+                vout: utxo60000[1].parse().unwrap(),
+            },
+        ],
+        output: vec![
+            TxOut {
+                value: Amount::from_sat((withdraw_amount - btc_gas_fee - withdraw_fee) as u64),
+                script_pubkey: Address::parse(TARGET_ADDRESS, get_chain())
+                    .expect("Invalid btc address")
+                    .script_pubkey()
+                    .expect("Failed to get script pubkey"),
+            },
+            TxOut {
+                value: Amount::from_sat(total_change),
+                script_pubkey: Address::parse(withdraw_change_address.as_str(), get_chain())
+                    .expect("Invalid btc address")
+                    .script_pubkey()
+                    .expect("Failed to get script pubkey"),
+            },
+        ],
+        max_gas_fee: None,
+        chain_specific_data: None,
+    };
+
+    // Without the UnrestrictedRelayer role the `change < smallest input` rule still fires
+    // (here change = 360_000 + change_fee_adjustment, smallest input = 60_000).
+    check!(context.bridge_acl_revoke_role(
+        "root",
+        "UnrestrictedRelayer",
+        &context.get_account_by_name("alice").sdk_id()
+    ));
     check!(
-        context.do_withdraw(
-            "alice",
-            "bridge",
-            withdraw_amount,
-            TokenReceiverMessage::Withdraw {
-                target_btc_address: TARGET_ADDRESS.to_string(),
-                input: vec![
-                    OutPoint {
-                        txid: utxo500000[0].parse().unwrap(),
-                        vout: utxo500000[1].parse().unwrap(),
-                    },
-                    OutPoint {
-                        txid: utxo60000[0].parse().unwrap(),
-                        vout: utxo60000[1].parse().unwrap(),
-                    }
-                ],
-                output: vec![
-                    TxOut {
-                        value: Amount::from_sat(
-                            (withdraw_amount - btc_gas_fee - withdraw_fee) as u64
-                        ),
-                        script_pubkey: Address::parse(TARGET_ADDRESS, get_chain())
-                            .expect("Invalid btc address")
-                            .script_pubkey()
-                            .expect("Failed to get script pubkey")
-                    },
-                    TxOut {
-                        value: Amount::from_sat(total_change),
-                        script_pubkey: Address::parse(
-                            withdraw_change_address.as_str(),
-                            get_chain()
-                        )
-                        .expect("Invalid btc address")
-                        .script_pubkey()
-                        .expect("Failed to get script pubkey")
-                    }
-                ],
-                max_gas_fee: None,
-                chain_specific_data: None,
-            }
-        ),
-        "The change amount must be less than all inputs"
+        context.do_withdraw("alice", "bridge", withdraw_amount, make_withdraw_msg()),
+        "The change amount must be less than the smallest input"
     );
+
+    // Granting UnrestrictedRelayer back bypasses the rule and the same PSBT succeeds.
+    check!(context.bridge_acl_grant_role(
+        "root",
+        "UnrestrictedRelayer",
+        &context.get_account_by_name("alice").sdk_id()
+    ));
+    check!(context.do_withdraw("alice", "bridge", withdraw_amount, make_withdraw_msg()));
 }
 
 #[tokio::test]
@@ -2765,6 +2772,205 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
     );
 }
 
+/// Helper: builds a `TxInclusionProof` JSON value for v2 methods.
+fn mock_proof() -> near_sdk::serde_json::Value {
+    near_sdk::serde_json::json!({
+        "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
+        "tx_index": 1u64,
+        "merkle_proof": Vec::<String>::new(),
+        "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
+        "coinbase_merkle_proof": Vec::<String>::new(),
+    })
+}
+
+#[tokio::test]
+async fn test_verify_deposit_v2() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let alice_btc_deposit_address = context
+        .get_user_deposit_address(DepositMsg {
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
+            post_actions: None,
+            extra_msg: None,
+            safe_deposit: None,
+            refund_address: None,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+
+    // verify_deposit_v2: proof is a nested JSON object
+    check!(printr "verify_deposit_v2" context.verify_deposit_v2(
+        "relayer",
+        DepositMsg {
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
+            post_actions: None,
+            extra_msg: None,
+            safe_deposit: None,
+            refund_address: None,
+        },
+        generate_transaction_bytes(
+            vec![(
+                "e1e1069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f50",
+                1,
+                None,
+            )],
+            vec![
+                (alice_btc_deposit_address.as_str(), 50000),
+                (TARGET_ADDRESS, 50000)
+            ],
+        ),
+        0,
+        mock_proof()
+    ));
+
+    assert!(context.ft_balance_of("alice").await.unwrap().0 > 0);
+    assert_eq!(context.get_utxos_paged().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn test_safe_verify_deposit_v2() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
+        refund_address: None,
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+
+    // Register alice for nBTC storage (required for safe_verify_deposit)
+    check!(context.storage_deposit("nbtc", "alice"));
+
+    // verify_deposit_v2 dispatches to the safe flow because deposit_msg.safe_deposit is Some.
+    check!(printr "verify_deposit_v2 (safe)" context.verify_deposit_v2(
+        "relayer",
+        deposit_msg,
+        generate_transaction_bytes(
+            vec![(
+                "f2f2069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f60",
+                1,
+                None,
+            )],
+            vec![
+                (deposit_address.as_str(), 50000),
+                (TARGET_ADDRESS, 50000)
+            ],
+        ),
+        0,
+        mock_proof()
+    ));
+
+    assert!(context.ft_balance_of("alice").await.unwrap().0 > 0);
+}
+
+#[tokio::test]
+async fn test_verify_withdraw_v2() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let withdraw_change_address = context.get_change_address().await.unwrap();
+    let alice_btc_deposit_address = context
+        .get_user_deposit_address(DepositMsg {
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
+            post_actions: None,
+            extra_msg: None,
+            safe_deposit: None,
+            refund_address: None,
+        })
+        .await
+        .unwrap();
+
+    // 1. Deposit via v1 to get UTXOs and nBTC
+    check!(context.verify_deposit(
+        "relayer",
+        DepositMsg {
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
+            post_actions: None,
+            extra_msg: None,
+            safe_deposit: None,
+            refund_address: None,
+        },
+        generate_transaction_bytes(
+            vec![(
+                "a3a3069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f70",
+                1,
+                None,
+            )],
+            vec![
+                (alice_btc_deposit_address.as_str(), 500000),
+                (TARGET_ADDRESS, 500000)
+            ],
+        ),
+        0,
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+        1,
+        vec![]
+    ));
+    assert!(context.ft_balance_of("alice").await.unwrap().0 > 0);
+
+    check!(context.storage_deposit("nbtc", "bridge"));
+
+    // 2. Withdraw
+    let utxos_keys = context
+        .get_utxos_paged()
+        .await
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<String>>();
+    let first_utxo = utxos_keys[0].split('@').collect::<Vec<_>>();
+    // withdraw_fee = 50000, gas_fee = 25000
+    // user_output = 110000 - 50000 - 25000 = 35000
+    // change = 500000 - 35000 - 25000 = 440000
+    check!(print context.do_withdraw("alice", "bridge", 110000, TokenReceiverMessage::Withdraw {
+        target_btc_address: TARGET_ADDRESS.to_string(),
+        input: vec![OutPoint {
+            txid: first_utxo[0].parse().unwrap(),
+            vout: first_utxo[1].parse().unwrap(),
+        }],
+        output: vec![TxOut {
+            value: Amount::from_sat(35000),
+            script_pubkey: Address::parse(TARGET_ADDRESS, get_chain())
+                .expect("Invalid btc address")
+                .script_pubkey().expect("Failed to get script pubkey")
+        }, TxOut {
+            value: Amount::from_sat(440000),
+            script_pubkey: Address::parse(withdraw_change_address.as_str(), get_chain())
+                .expect("Invalid btc address")
+                .script_pubkey().expect("Failed to get script pubkey")
+        }],
+        max_gas_fee: None,
+        chain_specific_data: None,
+    }));
+
+    // 3. Sign
+    let pending = context.get_btc_pending_infos_paged().await.unwrap();
+    let keys = pending.keys().cloned().collect::<Vec<_>>();
+    check!(print context.sign_btc_transaction("relayer", &keys[0], 0, 0));
+
+    // 4. Verify withdraw via v2 — nested proof
+    check!(print "verify_withdraw_v2" context.verify_withdraw_v2(
+        "relayer",
+        &keys[0],
+        mock_proof()
+    ));
+
+    // Pending info should be cleared
+    assert!(context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .is_empty());
+}
+
 // Regression test for the safe_mint fix.
 // When safe_verify_deposit is called with an unregistered recipient, safe_mint
 // must deposit the amount to the bridge before returning U128(0) so that
@@ -3079,6 +3285,19 @@ async fn test_verify_deposit_post_action_to_bridge_is_rejected() {
         .await
         .unwrap()
         .is_empty());
+}
+
+#[tokio::test]
+async fn test_verify_active_utxo_management_v2() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    // verify_active_utxo_management_v2 with a non-existent tx_id must be rejected:
+    // internal_unwrap_btc_pending_info panics before any proof verification.
+    check!(
+        context.verify_active_utxo_management_v2("relayer", "non_existent_tx_id", mock_proof()),
+        "BTC pending info not exist"
+    );
 }
 
 // safe_mint (in nbtc) must reject account_id == bridge_id. Otherwise the

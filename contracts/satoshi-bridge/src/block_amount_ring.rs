@@ -102,8 +102,8 @@ impl BlockAmountRing {
         let new_cap_u64 = u64::try_from(new_capacity).expect("capacity fits u64");
         let mut new_cells: Vec<Option<BlockAmountCell>> = vec![None; new_capacity];
         for entry in self.cells.iter().flatten() {
-            let i = usize::try_from(entry.block_height % new_cap_u64)
-                .expect("slot index fits usize");
+            let i =
+                usize::try_from(entry.block_height % new_cap_u64).expect("slot index fits usize");
             let replace = match &new_cells[i] {
                 Some(existing) => entry.block_height > existing.block_height,
                 None => true,

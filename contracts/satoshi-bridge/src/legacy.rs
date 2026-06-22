@@ -70,7 +70,6 @@ impl From<ContractDataV0> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
-            #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
             block_bridge_amounts: BlockAmountRing::new(ring_capacity),
         }
@@ -413,7 +412,6 @@ impl From<ContractDataV1> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
-            #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
             block_bridge_amounts: BlockAmountRing::new(ring_capacity),
         }
@@ -487,7 +485,6 @@ impl From<ContractDataV2> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
-            #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
             block_bridge_amounts: BlockAmountRing::new(ring_capacity),
         }
@@ -665,7 +662,6 @@ impl From<ContractDataV3> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
-            #[cfg(not(feature = "zcash"))]
             refund_requests: IterableMap::new(StorageKey::RefundRequests),
             block_bridge_amounts: BlockAmountRing::new(ring_capacity),
         }
@@ -855,8 +851,105 @@ impl From<ContractDataV4> for ContractData {
             acc_claimed_protocol_fee,
             cur_reserved_protocol_fee,
             acc_protocol_fee_for_gas,
+            // Same versioned map, same storage prefix — old `VRefundRequest::V0`
+            // entries are upgraded lazily to `Current` (adding `executed`) on read.
             #[cfg(not(feature = "zcash"))]
             refund_requests,
+            // Zcash V4 had no refund_requests; initialize an empty map on upgrade.
+            #[cfg(feature = "zcash")]
+            refund_requests: IterableMap::new(StorageKey::RefundRequests),
+            block_bridge_amounts: BlockAmountRing::new(ring_capacity),
+        }
+    }
+}
+
+// Snapshot of the deployed (Bitcoin v0.8.x) `ContractData`, which was the enum's
+// `Current` variant (discriminant 5) at deploy time. Structurally identical to the
+// current `ContractData`: `config` is already the current `Config`, and
+// `refund_requests` is the same versioned `VRefundRequest` map. It exists only to
+// occupy discriminant 5; old `VRefundRequest::V0` entries upgrade lazily on read.
+#[near(serializers = [borsh])]
+pub struct ContractDataV5 {
+    pub config: LazyOption<Config>,
+    pub accounts: IterableMap<AccountId, VAccount>,
+    pub utxos: IterableMap<String, VUTXO>,
+    pub unavailable_utxos: IterableMap<String, VUTXO>,
+    pub verified_deposit_utxo: LookupSet<String>,
+    pub btc_pending_infos: IterableMap<String, VBTCPendingInfo>,
+    pub rbf_txs: IterableMap<String, HashSet<String>>,
+    pub relayer_white_list: IterableSet<AccountId>,
+    pub extra_msg_relayer_white_list: IterableSet<AccountId>,
+    pub post_action_receiver_id_white_list: IterableSet<AccountId>,
+    pub post_action_msg_templates: IterableMap<AccountId, HashSet<String>>,
+    pub pending_tx_limits: IterableMap<AccountId, u32>,
+    pub lost_found: IterableMap<AccountId, u128>,
+    pub acc_collected_protocol_fee: u128,
+    pub cur_available_protocol_fee: u128,
+    pub acc_claimed_protocol_fee: u128,
+    pub cur_reserved_protocol_fee: u128,
+    pub acc_protocol_fee_for_gas: u128,
+    #[cfg(not(feature = "zcash"))]
+    pub refund_requests: IterableMap<String, VRefundRequest>,
+}
+
+impl From<ContractDataV5> for ContractData {
+    fn from(c: ContractDataV5) -> Self {
+        let ContractDataV5 {
+            config,
+            accounts,
+            utxos,
+            unavailable_utxos,
+            verified_deposit_utxo,
+            btc_pending_infos,
+            rbf_txs,
+            relayer_white_list,
+            extra_msg_relayer_white_list,
+            post_action_receiver_id_white_list,
+            post_action_msg_templates,
+            pending_tx_limits,
+            lost_found,
+            acc_collected_protocol_fee,
+            cur_available_protocol_fee,
+            acc_claimed_protocol_fee,
+            cur_reserved_protocol_fee,
+            acc_protocol_fee_for_gas,
+            #[cfg(not(feature = "zcash"))]
+            refund_requests,
+        } = c;
+
+        let ring_capacity = BlockAmountRing::capacity_for(
+            config
+                .get()
+                .as_ref()
+                .expect("ContractDataV5: config missing"),
+        );
+
+        Self {
+            // `config` is already the current `Config` (with `unsafe_refund_timelock_sec`).
+            config,
+            accounts,
+            utxos,
+            unavailable_utxos,
+            verified_deposit_utxo,
+            btc_pending_infos,
+            rbf_txs,
+            relayer_white_list,
+            extra_msg_relayer_white_list,
+            post_action_receiver_id_white_list,
+            post_action_msg_templates,
+            pending_tx_limits,
+            lost_found,
+            acc_collected_protocol_fee,
+            cur_available_protocol_fee,
+            acc_claimed_protocol_fee,
+            cur_reserved_protocol_fee,
+            acc_protocol_fee_for_gas,
+            // Same versioned map, same storage prefix — old `VRefundRequest::V0`
+            // entries are upgraded lazily to `Current` (adding `executed`) on read.
+            #[cfg(not(feature = "zcash"))]
+            refund_requests,
+            #[cfg(feature = "zcash")]
+            refund_requests: IterableMap::new(StorageKey::RefundRequests),
             block_bridge_amounts: BlockAmountRing::new(ring_capacity),
         }
     }

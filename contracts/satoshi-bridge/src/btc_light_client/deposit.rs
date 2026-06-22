@@ -8,11 +8,12 @@ use near_sdk::serde_json::Value;
 use crate::{
     btc_light_client::TxInclusionInfo,
     burn::GAS_FOR_BURN_CALL,
-    env, ext_nbtc,
+    deposit_msg::get_deposit_path,
+    env, ext_nbtc, generate_utxo_storage_key,
     mint::{GAS_FOR_MINT_CALL, GAS_FOR_MINT_CALL_BACK},
     near, require, serde_json, AccountId, Contract, ContractExt, DepositMsg, Event, Gas, NearToken,
-    PendingUTXOInfo, PostAction, Promise, PromiseOrValue, SafeDepositMsg,
-    MAX_FT_TRANSFER_CALL_RESULT, MAX_INCLUSION_INFO_RESULT, U128,
+    PendingUTXOInfo, PostAction, Promise, PromiseOrValue, SafeDepositMsg, WrappedTransaction,
+    MAX_FT_TRANSFER_CALL_RESULT, MAX_INCLUSION_INFO_RESULT, U128, UTXO,
 };
 
 pub const GAS_FOR_VERIFY_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(130);
@@ -25,6 +26,7 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
+        coinbase_proof: Option<(String, Vec<String>)>,
         pending_utxo_info: PendingUTXOInfo,
         deposit_msg: DepositMsg,
     ) -> Promise {
@@ -44,6 +46,7 @@ impl Contract {
             tx_block_blockhash,
             tx_index,
             merkle_proof,
+            coinbase_proof,
         );
 
         if deposit_amount < config.min_deposit_amount {
@@ -80,13 +83,13 @@ impl Contract {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn internal_safe_verify_deposit(
         &mut self,
         deposit_amount: u128,
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
+        coinbase_proof: Option<(String, Vec<String>)>,
         pending_utxo_info: PendingUTXOInfo,
         recipient_id: AccountId,
         deposit_msg: SafeDepositMsg,
@@ -99,6 +102,7 @@ impl Contract {
             tx_block_blockhash,
             tx_index,
             merkle_proof,
+            coinbase_proof,
         );
 
         if deposit_amount < config.min_deposit_amount {
@@ -148,6 +152,128 @@ impl Contract {
             u128::from(pending_utxo_info.utxo.balance),
             confirmations_delta,
         );
+    }
+
+    pub(crate) fn internal_verify_deposit_entry(
+        &mut self,
+        deposit_msg: DepositMsg,
+        tx_bytes: Vec<u8>,
+        vout: usize,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+        coinbase_proof: Option<(String, Vec<String>)>,
+    ) -> Promise {
+        require!(
+            deposit_msg.safe_deposit.is_none(),
+            "safe_deposit not supported in verify_deposit"
+        );
+        let path = get_deposit_path(&deposit_msg);
+        let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
+            .expect("Deserialization tx_bytes failed");
+        let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
+        require!(deposit_amount > 0, "Invalid deposit_amount");
+        let deposit_address = self.generate_utxo_chain_address(&path);
+        let deposit_address_script_pubkey = deposit_address
+            .script_pubkey()
+            .expect("Invalid deposit address");
+        require!(
+            deposit_address_script_pubkey == transaction.output()[vout].script_pubkey,
+            "Invalid deposit tx_bytes"
+        );
+
+        let utxo = UTXO {
+            path,
+            tx_bytes,
+            vout,
+            balance: transaction.output()[vout].value.to_sat(),
+        };
+        let tx_id = transaction.compute_txid().to_string();
+        let utxo_storage_key = generate_utxo_storage_key(
+            tx_id.clone(),
+            u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
+        );
+        self.internal_verify_deposit(
+            deposit_amount,
+            tx_block_blockhash,
+            tx_index,
+            merkle_proof,
+            coinbase_proof,
+            PendingUTXOInfo {
+                tx_id,
+                utxo_storage_key,
+                utxo,
+            },
+            deposit_msg,
+        )
+    }
+
+    pub(crate) fn internal_safe_verify_deposit_entry(
+        &mut self,
+        deposit_msg: DepositMsg,
+        tx_bytes: Vec<u8>,
+        vout: usize,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+        coinbase_proof: Option<(String, Vec<String>)>,
+    ) -> Promise {
+        require!(
+            env::attached_deposit() >= self.required_balance_for_safe_deposit(),
+            "Insufficient deposit for storage"
+        );
+
+        let path = get_deposit_path(&deposit_msg);
+        let safe_deposit_msg = deposit_msg
+            .safe_deposit
+            .unwrap_or_else(|| env::panic_str("safe_deposit is required in safe_verify_deposit"));
+
+        let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
+            .expect("Deserialization tx_bytes failed");
+        let deposit_amount = transaction.output()[vout].value.to_sat().into();
+        require!(deposit_amount > 0, "Invalid deposit_amount");
+        let deposit_address = self.generate_utxo_chain_address(&path);
+        let deposit_address_script_pubkey = deposit_address
+            .script_pubkey()
+            .expect("Invalid deposit address");
+        require!(
+            deposit_address_script_pubkey == transaction.output()[vout].script_pubkey,
+            "Invalid deposit tx_bytes"
+        );
+
+        let tx_bytes = if tx_bytes.len() > 10000 {
+            env::log_str("tx_bytes length exceeds 10000, truncating to 300 bytes");
+            vec![0u8; 300]
+        } else {
+            tx_bytes
+        };
+
+        let utxo = UTXO {
+            path,
+            tx_bytes,
+            vout,
+            balance: transaction.output()[vout].value.to_sat(),
+        };
+        let tx_id = transaction.compute_txid().to_string();
+        let utxo_storage_key = generate_utxo_storage_key(
+            tx_id.clone(),
+            u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
+        );
+
+        self.internal_safe_verify_deposit(
+            deposit_amount,
+            tx_block_blockhash,
+            tx_index,
+            merkle_proof,
+            coinbase_proof,
+            PendingUTXOInfo {
+                tx_id,
+                utxo_storage_key,
+                utxo,
+            },
+            deposit_msg.recipient_id,
+            safe_deposit_msg,
+        )
     }
 }
 

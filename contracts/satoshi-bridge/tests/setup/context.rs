@@ -8,7 +8,7 @@ use bitcoin::{OutPoint, TxOut};
 use near_contract_standards::fungible_token::metadata::FungibleTokenMetadata;
 use near_sdk::{
     base64::{self, Engine},
-    json_types::U128,
+    json_types::{Base64VecU8, U128},
     serde_json::{json, Value},
     AccountId, Gas, NearToken,
 };
@@ -518,6 +518,23 @@ impl Context {
             .await
     }
 
+    pub async fn bridge_acl_revoke_role(
+        &self,
+        caller: &str,
+        role: &str,
+        account_id: &AccountId,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(caller)
+            .call(self.bridge_contract.id(), "acl_revoke_role")
+            .args_json(json!({
+                "role": role,
+                "account_id": account_id
+            }))
+            .max_gas()
+            .transact()
+            .await
+    }
+
     pub async fn bridge_add_super_admin(
         &self,
         caller: &str,
@@ -910,6 +927,71 @@ impl Context {
             .await
     }
 
+    pub async fn verify_deposit_v2(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        tx_bytes: Vec<u8>,
+        vout: u32,
+        proof: Value,
+    ) -> Result<ExecutionFinalResult> {
+        // Safe deposits require an attached storage deposit; standard deposits attach nothing.
+        let deposit = if deposit_msg.safe_deposit.is_some() {
+            self.required_balance_for_safe_deposit().await.unwrap()
+        } else {
+            NearToken::from_yoctonear(0)
+        };
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "verify_deposit_v2")
+            .args_json(json!({
+                "deposit_msg": deposit_msg,
+                "tx_bytes": Base64VecU8(tx_bytes),
+                "vout": vout,
+                "proof": proof,
+            }))
+            .deposit(deposit)
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn verify_withdraw_v2(
+        &self,
+        user: &str,
+        tx_id: &str,
+        proof: Value,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "verify_withdraw_v2")
+            .args_json(json!({
+                "tx_id": tx_id,
+                "proof": proof,
+            }))
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    pub async fn verify_active_utxo_management_v2(
+        &self,
+        user: &str,
+        tx_id: &str,
+        proof: Value,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(
+                self.bridge_contract.id(),
+                "verify_active_utxo_management_v2",
+            )
+            .args_json(json!({
+                "tx_id": tx_id,
+                "proof": proof,
+            }))
+            .max_gas()
+            .transact()
+            .await
+    }
+
     pub async fn clear_invalid_pending_verify_rbf(
         &self,
         user: &str,
@@ -1181,6 +1263,18 @@ impl UpgradeContext {
             .await
             .unwrap()
             .unwrap();
+        // Initialize the mock chain-signatures contract before syncing, otherwise
+        // its `public_key()` panics (uninitialized) and the bridge's sync callback
+        // silently leaves `chain_signatures_root_public_key` unset.
+        chain_signatures_contract
+            .call("new")
+            .args_json(json!({
+                "public_key": "secp256k1:4NfTiv3UsGahebgTaHyD9vF8KYKMBnfd6kh94mK6xv8fGBiJB8TBtFMP5WWXz6B89Ac1fbpzPwAvoyQebemHFwx3",
+            }))
+            .transact()
+            .await
+            .unwrap()
+            .unwrap();
         root.call(
             previous_satoshi_bridge_contract.id(),
             "sync_chain_signatures_root_public_key",
@@ -1301,16 +1395,34 @@ impl Context {
             .args_json(json!({
                 "deposit_msg": deposit_msg,
                 "refund_address": refund_address,
-                "tx_bytes": tx_bytes,
+                "tx_bytes": Base64VecU8(tx_bytes),
                 "vout": vout,
-                "tx_block_blockhash": tx_block_blockhash,
-                "tx_index": tx_index,
-                "merkle_proof": merkle_proof,
+                "proof": {
+                    "tx_block_blockhash": tx_block_blockhash,
+                    "tx_index": tx_index,
+                    "merkle_proof": merkle_proof,
+                    "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
+                    "coinbase_merkle_proof": Vec::<String>::new(),
+                },
                 "gas_fee": gas_fee,
             }))
+            .deposit(self.required_balance_for_request_refund().await?)
             .max_gas()
             .transact()
             .await
+    }
+
+    /// Test-only: drive the mock light client's reported block height, which
+    /// determines the Zcash consensus `branch_id` used when building a tx.
+    pub async fn set_light_client_block_height(&self, height: u32) {
+        self.root
+            .call(self.btc_light_client_contract.id(), "set_last_block_height")
+            .args_json(json!({ "height": height }))
+            .max_gas()
+            .transact()
+            .await
+            .unwrap()
+            .unwrap();
     }
 
     pub async fn required_balance_for_execute_refund(&self) -> Result<NearToken> {
@@ -1323,17 +1435,63 @@ impl Context {
             .json::<NearToken>()
     }
 
+    pub async fn required_balance_for_request_refund(&self) -> Result<NearToken> {
+        self.bridge_contract
+            .call("required_balance_for_request_refund")
+            .args_json(json!({}))
+            .view()
+            .await
+            .unwrap()
+            .json::<NearToken>()
+    }
+
+    pub async fn required_balance_for_safe_deposit(&self) -> Result<NearToken> {
+        self.bridge_contract
+            .call("required_balance_for_safe_deposit")
+            .args_json(json!({}))
+            .view()
+            .await
+            .unwrap()
+            .json::<NearToken>()
+    }
+
+    #[cfg(not(feature = "zcash"))]
     pub async fn execute_refund(
         &self,
         user: &str,
         utxo_storage_key: &str,
     ) -> Result<ExecutionFinalResult> {
+        let deposit = self.required_balance_for_execute_refund().await?;
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "execute_refund")
             .args_json(json!({
                 "utxo_storage_key": utxo_storage_key,
+                "chain_specific_data": null,
             }))
-            .deposit(NearToken::from_millinear(100))
+            .deposit(deposit)
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    /// Zcash `execute_refund` takes `chain_specific_data`: pass `Some` with an
+    /// Orchard bundle for a shielded refund (to a unified address), or `None`
+    /// for a transparent refund.
+    #[cfg(feature = "zcash")]
+    pub async fn execute_refund(
+        &self,
+        user: &str,
+        utxo_storage_key: &str,
+        chain_specific_data: Option<satoshi_bridge::zcash_utils::types::ChainSpecificData>,
+    ) -> Result<ExecutionFinalResult> {
+        let deposit = self.required_balance_for_execute_refund().await?;
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "execute_refund")
+            .args_json(json!({
+                "utxo_storage_key": utxo_storage_key,
+                "chain_specific_data": chain_specific_data,
+            }))
+            .deposit(deposit)
             .max_gas()
             .transact()
             .await
@@ -1366,9 +1524,13 @@ impl Context {
             .call(self.bridge_contract.id(), "verify_refund_finalize")
             .args_json(json!({
                 "tx_id": tx_id,
-                "tx_block_blockhash": tx_block_blockhash,
-                "tx_index": tx_index,
-                "merkle_proof": merkle_proof,
+                "proof": {
+                    "tx_block_blockhash": tx_block_blockhash,
+                    "tx_index": tx_index,
+                    "merkle_proof": merkle_proof,
+                    "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
+                    "coinbase_merkle_proof": Vec::<String>::new(),
+                },
             }))
             .max_gas()
             .transact()
