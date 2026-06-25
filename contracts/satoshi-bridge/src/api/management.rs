@@ -281,13 +281,13 @@ impl Contract {
     #[access_control_any(roles(Role::DAO))]
     pub fn set_confirmations_strategy(&mut self, range_upper_bound: U128, confirmations: u8) {
         assert_one_yocto();
-        require!(
-            (2..=1000).contains(&confirmations),
-            "The number of confirmations must be between 2 and 1000, including both 2 and 1000."
-        );
-        self.internal_mut_config()
+
+        let mut config = self.internal_mut_config();
+        config
             .confirmations_strategy
             .insert(range_upper_bound.0.to_string(), confirmations);
+
+        config.assert_valid()
     }
 
     #[payable]
