@@ -282,8 +282,8 @@ impl Contract {
     pub fn set_confirmations_strategy(&mut self, range_upper_bound: U128, confirmations: u8) {
         assert_one_yocto();
         require!(
-            (2..=10).contains(&confirmations),
-            "The number of confirmations must be between 2 and 10, including both 2 and 10."
+            (2..=1000).contains(&confirmations),
+            "The number of confirmations must be between 2 and 1000, including both 2 and 1000."
         );
         self.internal_mut_config()
             .confirmations_strategy
