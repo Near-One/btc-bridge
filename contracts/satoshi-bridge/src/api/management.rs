@@ -282,7 +282,7 @@ impl Contract {
     pub fn set_confirmations_strategy(&mut self, range_upper_bound: U128, confirmations: u8) {
         assert_one_yocto();
 
-        let mut config = self.internal_mut_config();
+        let config = self.internal_mut_config();
         config
             .confirmations_strategy
             .insert(range_upper_bound.0.to_string(), confirmations);
