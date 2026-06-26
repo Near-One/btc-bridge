@@ -375,6 +375,48 @@ mod tests {
         assert_eq!(config_after.min_change_amount, 500);
     }
 
+    #[test]
+    fn test_set_confirmations_strategy_updates_config() {
+        let mut unit_env = init_unit_env();
+        testing_env!(unit_env
+            .context
+            .predecessor_account_id(owner_id())
+            .attached_deposit(NearToken::from_yoctonear(1))
+            .build());
+
+        let range_upper_bound = U128(20_000_000);
+        let confirmations = 6u8;
+
+        unit_env
+            .contract
+            .set_confirmations_strategy(range_upper_bound, confirmations);
+
+        assert_eq!(
+            unit_env
+                .contract
+                .internal_config()
+                .confirmations_strategy
+                .get(&range_upper_bound.0.to_string()),
+            Some(&confirmations),
+            "confirmations_strategy must be updated with the new entry"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid confirmations_strategy")]
+    fn test_set_confirmations_strategy_over_100_panics() {
+        let mut unit_env = init_unit_env();
+        testing_env!(unit_env
+            .context
+            .predecessor_account_id(owner_id())
+            .attached_deposit(NearToken::from_yoctonear(1))
+            .build());
+
+        unit_env
+            .contract
+            .set_confirmations_strategy(U128(20_000_000), 101);
+    }
+
     // Regression: a Zcash unified address with no transparent receiver (shielded-only,
     // e.g. Sapling+Orchard) has no scriptPubKey. `string_to_script_pubkey` panics on it
     // ("Failed to get script pubkey: No receiver found in address"), which is what broke
