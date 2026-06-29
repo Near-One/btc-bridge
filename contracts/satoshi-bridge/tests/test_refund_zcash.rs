@@ -105,11 +105,11 @@ async fn deposit_and_request_refund(
 /// refunded to a unified address via an Orchard bundle.
 ///
 /// deposit (150000) ──request_refund(refund_address = UA)──▶ refund request
-///   ──execute_refund(Orchard bundle, 100000)──▶ refund BTCPendingInfo
+///   ──execute_refund(Orchard bundle, 140000)──▶ refund BTCPendingInfo
 ///   ──sign──▶ pending_verify ──verify_refund_finalize──▶ cleaned up
 ///
-/// gas_fee defaults to config.max_btc_gas_fee (50000), so the Orchard output is
-/// 150000 - 50000 = 100000 (a cached bundle amount).
+/// With no explicit gas_fee, the default is the ZIP-317 minimum (10000), so the
+/// Orchard output must be 150000 - 10000 = 140000.
 #[tokio::test]
 #[cfg(feature = "zcash")]
 async fn test_zcash_refund_shielded_to_unified_address() {
@@ -119,8 +119,8 @@ async fn test_zcash_refund_shielded_to_unified_address() {
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
 
     let deposit_amount: u64 = 150_000;
-    let gas_fee: u64 = 50_000; // config.max_btc_gas_fee default
-    let refund_amount: u64 = deposit_amount - gas_fee; // 100000, cached bundle
+    let gas_fee: u64 = 10_000; // default = ZIP-317 minimum
+    let refund_amount: u64 = deposit_amount - gas_fee; // 140000
 
     // Unified address (Orchard + P2PKH receivers) + Orchard bundle paying `refund_amount`.
     let (recipient_ua, bundle_hex) = setup::orchard::get_or_gen_bundle(refund_amount);

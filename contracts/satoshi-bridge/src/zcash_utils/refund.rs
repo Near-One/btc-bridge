@@ -59,6 +59,22 @@ fn shielded_refund_min_fee() -> u128 {
     zip317_min_fee(1, vec![], EXPECTED_ACTIONS_NUMBER).into_u64() as u128
 }
 
+#[cfg(test)]
+mod refund_gas_fee_tests {
+    use super::{shielded_refund_min_fee, transparent_refund_min_fee};
+
+    #[test]
+    fn refund_gas_fee_components() {
+        // 1 input, 1 P2PKH output, 0 Orchard actions:
+        // logical = max(ceil(150/150), ceil(34/34)) = 1 → 5000 * max(2, 1) = 10000.
+        assert_eq!(transparent_refund_min_fee(), 10_000);
+
+        // 1 input, 0 transparent outputs, EXPECTED_ACTIONS_NUMBER Orchard actions:
+        // logical = 1 + EXPECTED_ACTIONS_NUMBER → 5000 * max(2, logical).
+        assert_eq!(shielded_refund_min_fee(), 10_000);
+    }
+}
+
 #[near]
 impl Contract {
     #[private]
