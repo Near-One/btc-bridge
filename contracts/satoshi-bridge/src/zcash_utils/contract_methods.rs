@@ -189,19 +189,6 @@ impl Contract {
         expiry_height
     }
 
-    pub(crate) fn get_refund_gas_fee(&self, refund_address: &str) -> u128 {
-        let probe = PsbtWrapper::new(
-            vec![OutPoint::null()],
-            vec![self.build_refund_output(refund_address, 0)],
-            None,
-            0,
-            0,
-            None,
-            self.internal_config(),
-        );
-        probe.get_min_fee().into_u64() as u128
-    }
-
     pub(crate) fn check_psbt_chain_specific(
         &self,
         psbt: &PsbtWrapper,

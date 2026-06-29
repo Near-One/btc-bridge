@@ -5,6 +5,12 @@ use crate::{Contract, RefundExecutionInputs};
 use near_sdk::PromiseOrValue;
 
 impl Contract {
+    /// Default refund gas fee when the caller does not specify one. On Bitcoin the
+    /// fee rate is unknown ahead of time, so we charge the configured maximum.
+    pub(crate) fn get_refund_gas_fee(&self) -> u128 {
+        self.internal_config().max_btc_gas_fee
+    }
+
     /// Execute an approved refund request (Bitcoin). Builds the refund PSBT
     /// synchronously. The caller chooses `timelock_sec` (pass `0` to bypass).
     /// `chain_specific_data` is unused on Bitcoin (kept for a uniform API with

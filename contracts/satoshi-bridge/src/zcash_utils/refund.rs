@@ -1,9 +1,11 @@
 #![allow(clippy::too_many_arguments)]
 
-use crate::psbt_wrapper::PsbtWrapper;
+use crate::psbt_wrapper::{zip317_min_fee, PsbtWrapper};
+use crate::zcash_utils::orchard_policy::EXPECTED_ACTIONS_NUMBER;
 use crate::zcash_utils::types::ChainSpecificData;
 use crate::*;
 use near_sdk::{near, require, AccountId};
+use zcash_primitives::transaction::fees::zip317::P2PKH_STANDARD_OUTPUT_SIZE;
 
 pub(crate) const GAS_FOR_EXECUTE_REFUND_CALLBACK: Gas = Gas::from_tgas(60);
 
@@ -11,6 +13,13 @@ pub(crate) const GAS_FOR_EXECUTE_REFUND_CALLBACK: Gas = Gas::from_tgas(60);
 pub(crate) const REFUND_EXPIRY_HEIGHT: u32 = 0;
 
 impl Contract {
+    /// Default refund gas fee when the caller does not specify one. A refund spends
+    /// one input and is either transparent (one P2PKH output) or shielded (one
+    /// Orchard action); charge the larger ZIP-317 minimum so either form is covered.
+    pub(crate) fn get_refund_gas_fee(&self) -> u128 {
+        transparent_refund_min_fee().max(shielded_refund_min_fee())
+    }
+
     /// Execute an approved refund request (Zcash). Building a Zcash transaction
     /// requires the current block height (for the consensus `branch_id`), so this
     /// fetches it asynchronously and finishes in `execute_refund_callback`.
@@ -36,6 +45,18 @@ impl Contract {
             ),
         )
     }
+}
+
+
+/// ZIP-317 minimum for a transparent refund: one input, one standard P2PKH output.
+fn transparent_refund_min_fee() -> u128 {
+    zip317_min_fee(1, vec![P2PKH_STANDARD_OUTPUT_SIZE], 0).into_u64() as u128
+}
+
+/// ZIP-317 minimum for a shielded refund: one input, no transparent output, and the
+/// fixed `EXPECTED_ACTIONS_NUMBER` Orchard actions.
+fn shielded_refund_min_fee() -> u128 {
+    zip317_min_fee(1, vec![], EXPECTED_ACTIONS_NUMBER).into_u64() as u128
 }
 
 #[near]
