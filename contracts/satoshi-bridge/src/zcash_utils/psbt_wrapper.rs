@@ -538,7 +538,7 @@ pub(crate) fn zip317_min_fee(
             orchard_action_count,
         )
         .unwrap()
-    }
+}
 
 fn get_branch_id(current_height: u32, config: &Config) -> BranchId {
     config.chain.get_branch_id(current_height)

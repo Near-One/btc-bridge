@@ -47,7 +47,6 @@ impl Contract {
     }
 }
 
-
 /// ZIP-317 minimum for a transparent refund: one input, one standard P2PKH output.
 fn transparent_refund_min_fee() -> u128 {
     zip317_min_fee(1, vec![P2PKH_STANDARD_OUTPUT_SIZE], 0).into_u64() as u128
