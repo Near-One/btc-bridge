@@ -45,6 +45,10 @@ macro_rules! define_rbf_method {
 }
 
 impl Contract {
+    pub(crate) fn get_refund_gas_fee(&self, _refund_address: &str) -> u128 {
+        self.internal_config().max_btc_gas_fee
+    }
+
     pub(crate) fn check_psbt_chain_specific(
         &self,
         _psbt: &PsbtWrapper,
