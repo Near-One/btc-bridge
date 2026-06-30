@@ -109,6 +109,7 @@ pub enum Role {
     UnrestrictedRelayer,
     RelayerManager,
     RefundOperator,
+    MigrationOperator,
 }
 
 /// Transaction inclusion proof with coinbase verification (v2).

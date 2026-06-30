@@ -3,6 +3,7 @@
 
 target
 neardev
+.env
 
 # OS X
 .DS_Store

@@ -12,6 +12,7 @@ use crate::{
 
 pub const GAS_FOR_VERIFY_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(130);
 pub const GAS_FOR_UNAVAILABLE_UTXO_CALL_BACK: Gas = Gas::from_tgas(20);
+pub const GAS_FOR_VERIFY_MIGRATE_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(20);
 
 impl Contract {
     pub(crate) fn internal_verify_deposit(
@@ -234,6 +235,65 @@ impl Contract {
             safe_deposit_msg,
         )
     }
+
+    /// Verify a transaction whose `vout` output pays the bridge's own change
+    /// address and register it as an available UTXO. Used during a token
+    /// migration to import change UTXOs without minting any tokens.
+    pub(crate) fn internal_verify_migrate_deposit_entry(
+        &mut self,
+        tx_bytes: Vec<u8>,
+        vout: usize,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+        coinbase_proof: Option<(String, Vec<String>)>,
+    ) -> Promise {
+        let config = self.internal_config();
+        let transaction = WrappedTransaction::decode(&tx_bytes, &config.chain)
+            .expect("Deserialization tx_bytes failed");
+        let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
+        require!(deposit_amount > 0, "Invalid deposit_amount");
+
+        // The output must pay the bridge's own change address.
+        require!(
+            transaction.output()[vout].script_pubkey == config.get_change_script_pubkey(),
+            "Output is not on the change address"
+        );
+
+        // Change UTXOs are derived from the bridge's own account id (see
+        // `sync_root_public_key_callback`), so the UTXO path is the contract account.
+        let utxo = UTXO {
+            path: env::current_account_id().to_string(),
+            tx_bytes,
+            vout,
+            balance: transaction.output()[vout].value.to_sat(),
+        };
+        let tx_id = transaction.compute_txid().to_string();
+        let utxo_storage_key = generate_utxo_storage_key(
+            tx_id.clone(),
+            u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
+        );
+
+        let confirmations = self.get_confirmations(config, deposit_amount);
+        self.verify_transaction_inclusion_promise(
+            config.btc_light_client_account_id.clone(),
+            tx_id.clone(),
+            tx_block_blockhash,
+            tx_index,
+            merkle_proof,
+            coinbase_proof,
+            confirmations,
+        )
+        .then(
+            Self::ext(env::current_account_id())
+                .with_static_gas(GAS_FOR_VERIFY_MIGRATE_DEPOSIT_CALL_BACK)
+                .verify_migrate_deposit_callback(PendingUTXOInfo {
+                    tx_id,
+                    utxo_storage_key,
+                    utxo,
+                }),
+        )
+    }
 }
 
 #[near]
@@ -264,6 +324,35 @@ impl Contract {
             recipient_id: &recipient_id,
             utxo_storage_key: &pending_utxo_info.utxo_storage_key,
             amount: deposit_amount.into(),
+        }
+        .emit();
+        PromiseOrValue::Value(true)
+    }
+
+    #[private]
+    pub fn verify_migrate_deposit_callback(
+        &mut self,
+        pending_utxo_info: PendingUTXOInfo,
+    ) -> PromiseOrValue<bool> {
+        let result_bytes = env::promise_result_checked(0, MAX_BOOL_RESULT)
+            .expect("Call verify_transaction_inclusion failed");
+        let is_valid = serde_json::from_slice::<bool>(&result_bytes)
+            .expect("verify_transaction_inclusion return not bool");
+        require!(is_valid, "verify_transaction_inclusion return false");
+        require!(
+            self.data_mut()
+                .verified_deposit_utxo
+                .insert(pending_utxo_info.utxo_storage_key.clone()),
+            "Already deposit utxo"
+        );
+        // No minting during migration — just register the change UTXO as available.
+        self.internal_set_utxo(
+            &pending_utxo_info.utxo_storage_key,
+            pending_utxo_info.utxo.clone(),
+        );
+        Event::UtxoAdded {
+            utxo_storage_keys: vec![pending_utxo_info.utxo_storage_key],
+            balances: Some(vec![U128(pending_utxo_info.utxo.balance.into())]),
         }
         .emit();
         PromiseOrValue::Value(true)
