@@ -82,9 +82,13 @@ impl Transaction {
                 zcash_transparent::address::TransparentAddress::ScriptHash(
                     script_bytes[2..22].try_into().unwrap(),
                 )
-            } else {
+            } else if script.is_p2pkh() {
                 zcash_transparent::address::TransparentAddress::PublicKeyHash(
                     script_bytes[3..23].try_into().unwrap(),
+                )
+            } else {
+                near_sdk::env::panic_str(
+                    "ERR_UNSUPPORTED_OUTPUT_SCRIPT: only P2PKH and P2SH transparent outputs are supported",
                 )
             };
             builder.add_output(&to, output.value()).unwrap();
@@ -156,5 +160,17 @@ mod tests {
                 .unwrap();
             assert_eq!(bundle.vout[0].script_pubkey().0 .0, script);
         }
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_UNSUPPORTED_OUTPUT_SCRIPT")]
+    fn transparent_builder_rejects_non_transparent_output_script() {
+        let mut witness_script = vec![0x00, 0x14];
+        witness_script.extend_from_slice(&[0x33u8; 20]);
+        let vout = vec![ZcashTxOut::new(
+            Zatoshis::from_u64(50_000).unwrap(),
+            Script(Code(witness_script)),
+        )];
+        let _ = Transaction::get_transparent_builder(&[], &vout, &[], &[]).build();
     }
 }
