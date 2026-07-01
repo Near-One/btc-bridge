@@ -168,20 +168,6 @@ impl Contract {
         )
     }
 
-    /// Import a change UTXO during a token migration.
-    ///
-    /// Verifies that the `vout` output of `tx_bytes` pays the bridge's own change address
-    /// and, once the transaction inclusion is confirmed by the Light Client, registers it as
-    /// an available UTXO. Unlike `verify_deposit`, this mints **no** tokens and charges no fee —
-    /// it only brings an existing change output under the bridge's UTXO management.
-    ///
-    /// Callable only by `MigrationOperator` (or `DAO`).
-    ///
-    /// # Arguments
-    ///
-    /// * `tx_bytes` - Confirmed transaction bytes.
-    /// * `vout` - Index of the output paying the change address.
-    /// * `proof` - Transaction inclusion proof with coinbase verification.
     #[access_control_any(roles(Role::MigrationOperator, Role::DAO))]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_migrate_deposit(
@@ -198,6 +184,18 @@ impl Contract {
             proof.merkle_proof,
             Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
         )
+    }
+
+    #[payable]
+    #[access_control_any(roles(Role::MigrationOperator, Role::DAO))]
+    #[pause(except(roles(Role::DAO)))]
+    pub fn migrate_to_new_token(
+        &mut self,
+        new_token: AccountId,
+        accounts: Vec<AccountId>,
+    ) -> Promise {
+        assert_one_yocto();
+        self.internal_migrate_to_new_token(new_token, accounts)
     }
 
     /// Verify that the user's withdrawal has been successful, and burn the corresponding amount of tokens.

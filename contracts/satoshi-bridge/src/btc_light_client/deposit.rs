@@ -236,9 +236,6 @@ impl Contract {
         )
     }
 
-    /// Verify a transaction whose `vout` output pays the bridge's own change
-    /// address and register it as an available UTXO. Used during a token
-    /// migration to import change UTXOs without minting any tokens.
     pub(crate) fn internal_verify_migrate_deposit_entry(
         &mut self,
         tx_bytes: Vec<u8>,
@@ -254,14 +251,11 @@ impl Contract {
         let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
         require!(deposit_amount > 0, "Invalid deposit_amount");
 
-        // The output must pay the bridge's own change address.
         require!(
             transaction.output()[vout].script_pubkey == config.get_change_script_pubkey(),
             "Output is not on the change address"
         );
 
-        // Change UTXOs are derived from the bridge's own account id (see
-        // `sync_root_public_key_callback`), so the UTXO path is the contract account.
         let utxo = UTXO {
             path: env::current_account_id().to_string(),
             tx_bytes,
@@ -345,7 +339,6 @@ impl Contract {
                 .insert(pending_utxo_info.utxo_storage_key.clone()),
             "Already deposit utxo"
         );
-        // No minting during migration — just register the change UTXO as available.
         self.internal_set_utxo(
             &pending_utxo_info.utxo_storage_key,
             pending_utxo_info.utxo.clone(),

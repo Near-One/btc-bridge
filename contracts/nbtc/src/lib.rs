@@ -142,6 +142,37 @@ impl Contract {
         }
     }
 
+    pub fn migration_burn(&mut self, accounts: Vec<AccountId>) -> Vec<(AccountId, U128)> {
+        self.assert_bridge();
+        let mut burned = Vec::new();
+        for account_id in accounts {
+            let balance = self.token.accounts.get(&account_id).unwrap_or(0);
+            if balance == 0 {
+                continue;
+            }
+            self.token.internal_withdraw(&account_id, balance);
+            near_contract_standards::fungible_token::events::FtBurn {
+                owner_id: &account_id,
+                amount: U128(balance),
+                memo: Some("migration"),
+            }
+            .emit();
+            burned.push((account_id, U128(balance)));
+        }
+        require!(
+            self.token.total_supply == 0,
+            "Migration incomplete: total supply is not zero"
+        );
+        burned
+    }
+
+    pub fn migration_mint(&mut self, entries: Vec<(AccountId, U128)>) {
+        self.assert_bridge();
+        for (account_id, amount) in entries {
+            self.mint_inner(&account_id, amount);
+        }
+    }
+
     pub fn burn(
         &mut self,
         burn_account_id: AccountId,

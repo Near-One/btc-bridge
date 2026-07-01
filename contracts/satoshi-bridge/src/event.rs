@@ -108,6 +108,16 @@ pub enum Event<'a> {
         amount: U128,
         refund_address: String,
     },
+    TokenMigrated {
+        new_token: &'a AccountId,
+        accounts: usize,
+        total_amount: U128,
+    },
+    TokenMigrationRolledBack {
+        new_token: &'a AccountId,
+        accounts: usize,
+        total_amount: U128,
+    },
 }
 
 impl Event<'_> {
