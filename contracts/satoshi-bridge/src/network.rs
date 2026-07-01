@@ -107,6 +107,26 @@ impl zcash_address::TryFromAddress for Address {
         })
     }
 
+    fn try_from_transparent_p2sh(
+        net: zcash_protocol::consensus::NetworkType,
+        data: [u8; 20],
+    ) -> Result<Self, ConversionError<Self::Error>> {
+        let chain = match net {
+            zcash_protocol::consensus::NetworkType::Main => Chain::ZcashMainnet,
+            zcash_protocol::consensus::NetworkType::Test => Chain::ZcashTestnet,
+            zcash_protocol::consensus::NetworkType::Regtest => {
+                return Err("Regtest network not supported".to_string().into());
+            }
+        };
+
+        Ok(Self::P2sh {
+            hash: ScriptHash::from_slice(&data[..]).map_err(|e| {
+                ConversionError::<Self::Error>::from(format!("Invalid script hash: {e}"))
+            })?,
+            chain,
+        })
+    }
+
     fn try_from_unified(
         net: zcash_protocol::consensus::NetworkType,
         data: zcash_address::unified::Address,
@@ -444,6 +464,26 @@ mod tests {
             let address_from_script = Address::from_script(&script_pubkey, chain).unwrap();
             let display_address = address_from_script.to_string();
             assert_eq!(display_address, address);
+        }
+    }
+
+    #[test]
+    fn test_parse_zcash_p2sh_address() {
+        for (address, chain) in [
+            ("t3JZe8uVCra9T1mot8DC99s7GVsDKFy2Xa2", Chain::ZcashMainnet),
+            ("t26YqBabLj2kpZUPd3xCBhVHucMSV83GWSw", Chain::ZcashTestnet),
+        ] {
+            let parse_address = Address::parse(address, chain.clone()).unwrap();
+            assert!(
+                matches!(parse_address, Address::P2sh { .. }),
+                "expected P2sh, got {parse_address:?}"
+            );
+
+            let script_pubkey = parse_address.script_pubkey().unwrap();
+            assert!(script_pubkey.is_p2sh(), "expected a P2SH scriptPubKey");
+
+            let address_from_script = Address::from_script(&script_pubkey, chain).unwrap();
+            assert_eq!(address_from_script.to_string(), address);
         }
     }
 

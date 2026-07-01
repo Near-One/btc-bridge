@@ -390,6 +390,49 @@ async fn test_zcash_refund_transparent() {
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
 }
 
+#[tokio::test]
+#[cfg(feature = "zcash")]
+async fn test_zcash_refund_transparent_p2sh() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+
+    let refund_p2sh_addr = "t26YqBabLj2kpZUPd3xCBhVHucMSV83GWSw";
+    let key = deposit_and_request_refund(&context, refund_p2sh_addr, 150_000).await;
+
+    check!(
+        print "execute_refund (transparent P2SH)"
+        context.execute_refund("root", &key, None)
+    );
+
+    let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
+    assert_eq!(pending_infos.len(), 1);
+    let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
+    let pending_values = pending_infos.values().cloned().collect::<Vec<_>>();
+    pending_values[0].assert_pending_sign();
+
+    check!(context.sign_btc_transaction("alice", &pending_keys[0], 0, 0));
+
+    let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
+    let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
+    let pending_values = pending_infos.values().cloned().collect::<Vec<_>>();
+    pending_values[0].assert_pending_verify();
+
+    check!(context.verify_refund_finalize(
+        "relayer",
+        &pending_keys[0],
+        BLOCKHASH.to_string(),
+        1,
+        vec![],
+    ));
+
+    assert!(context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+}
+
 /// `execute_refund` keeps the refund request (marking it `executed`) instead of
 /// consuming it, so it can be re-run to re-create the transaction (e.g. after a
 /// consensus branch change). Re-running with unchanged conditions rebuilds the
