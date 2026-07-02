@@ -240,6 +240,10 @@ impl Contract {
         env!("CARGO_PKG_VERSION").to_owned()
     }
 
+    pub fn bridge_id(&self) -> AccountId {
+        self.bridge_id.clone()
+    }
+
     #[private]
     #[init(ignore_state)]
     pub fn migrate(bridge_id: AccountId) -> Self {

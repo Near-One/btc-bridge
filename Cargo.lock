@@ -3024,6 +3024,8 @@ dependencies = [
  "near-contract-standards",
  "near-plugins",
  "near-sdk",
+ "near-workspaces",
+ "tokio",
 ]
 
 [[package]]
