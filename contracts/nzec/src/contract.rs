@@ -13,7 +13,7 @@ use near_sdk::{
     assert_one_yocto,
     borsh::{BorshDeserialize, BorshSerialize},
     env,
-    json_types::U128,
+    json_types::{U128, Base64VecU8},
     near, require,
     store::Lazy,
     AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, Promise, PromiseOrValue, PublicKey,
@@ -108,10 +108,41 @@ impl Contract {
 
 #[near]
 impl Contract {
-    #[only(self, owner)]
+    #[only(owner)]
     #[payable]
-    pub fn set_metadata(&mut self, metadata: FungibleTokenMetadata) {
+    pub fn set_metadata(
+        &mut self,
+        name: Option<String>,
+        symbol: Option<String>,
+        reference: Option<String>,
+        reference_hash: Option<Base64VecU8>,
+        decimals: Option<u8>,
+        icon: Option<String>,
+    ) {
         assert_one_yocto();
+
+        let mut metadata = self.ft_metadata();
+        if let Some(name) = name {
+            metadata.name = name;
+        }
+        if let Some(symbol) = symbol {
+            metadata.symbol = symbol;
+        }
+        if let Some(reference) = reference {
+            metadata.reference = Some(reference);
+        }
+        if let Some(reference_hash) = reference_hash {
+            metadata.reference_hash = Some(reference_hash);
+        }
+        if let Some(decimals) = decimals {
+            // Decimals can't be changed if it's already set.
+            require!(metadata.decimals == 0, "decimals already set");
+            metadata.decimals = decimals;
+        }
+        if let Some(icon) = icon {
+            metadata.icon = Some(icon);
+        }
+
         metadata.assert_valid();
         self.metadata.set(metadata);
     }
@@ -255,7 +286,7 @@ impl Contract {
     fn assert_bridge(&self) {
         require!(self.bridge_id == env::predecessor_account_id(), "Not Allow");
     }
-    
+
     fn mint_inner(&mut self, account_id: &AccountId, amount: U128) {
         if self.token.accounts.get(account_id).is_none() {
             self.token.internal_register_account(account_id);
