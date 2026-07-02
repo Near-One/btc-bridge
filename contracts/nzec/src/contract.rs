@@ -1,29 +1,53 @@
 use near_contract_standards::{
     fungible_token::{
-        FungibleToken, FungibleTokenCore, FungibleTokenResolver,
         events::{FtBurn, FtMint},
-        metadata::{FT_METADATA_SPEC, FungibleTokenMetadata, FungibleTokenMetadataProvider},
+        metadata::{FungibleTokenMetadata, FungibleTokenMetadataProvider, FT_METADATA_SPEC},
+        receiver::ext_ft_receiver,
+        resolver::ext_ft_resolver,
+        FungibleToken, FungibleTokenCore, FungibleTokenResolver,
     },
     storage_management::{StorageBalance, StorageBalanceBounds, StorageManagement},
 };
-use near_plugins::{Ownable, events::AsEvent, only, ownable::OwnershipTransferred};
+use near_plugins::{events::AsEvent, only, ownable::OwnershipTransferred, Ownable};
 use near_sdk::{
-    AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, Promise, PromiseOrValue, PublicKey,
     assert_one_yocto,
     borsh::{BorshDeserialize, BorshSerialize},
-    env, json_types::U128, near, require, store::Lazy,
+    env,
+    json_types::U128,
+    near, require,
+    store::Lazy,
+    AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, Promise, PromiseOrValue, PublicKey,
 };
 
 use crate::WITHDRAW_MEMO_PREFIX;
 
+const GAS_FOR_RESOLVE_TRANSFER: Gas = Gas::from_tgas(5);
+const GAS_FOR_FT_TRANSFER_CALL: Gas = Gas::from_tgas(30);
+
 const OUTER_UPGRADE_GAS: Gas = Gas::from_tgas(15);
 const NO_DEPOSIT: NearToken = NearToken::from_yoctonear(0);
+
+#[derive(BorshSerialize, BorshStorageKey)]
+#[borsh(crate = "::near_sdk::borsh")]
+enum Prefix {
+    FungibleToken,
+    Metadata,
+}
 
 #[derive(BorshDeserialize)]
 #[borsh(crate = "::near_sdk::borsh")]
 pub struct ContractV0 {
     token: FungibleToken,
     metadata: Lazy<FungibleTokenMetadata>,
+}
+
+#[near(serializers = [json])]
+pub struct PostAction {
+    pub receiver_id: AccountId,
+    pub amount: U128,
+    pub memo: Option<String>,
+    pub msg: String,
+    pub gas: Option<Gas>,
 }
 
 #[near(
@@ -227,11 +251,65 @@ impl Contract {
     }
 }
 
-#[derive(BorshSerialize, BorshStorageKey)]
-#[borsh(crate = "::near_sdk::borsh")]
-enum Prefix {
-    FungibleToken,
-    Metadata,
+#[near]
+impl Contract {
+    #[private]
+    pub fn handle_post_actions(&mut self, sender_id: AccountId, post_actions: Vec<PostAction>) {
+        for post_action in post_actions {
+            let PostAction {
+                receiver_id,
+                amount,
+                memo,
+                msg,
+                gas,
+            } = post_action;
+            if let Some(gas) = gas {
+                Self::ext(env::current_account_id())
+                    .with_static_gas(gas)
+                    .handle_post_action(sender_id.clone(), receiver_id, amount, memo, msg)
+                    .detach();
+            } else {
+                Self::ext(env::current_account_id())
+                    .handle_post_action(sender_id.clone(), receiver_id, amount, memo, msg)
+                    .detach();
+            }
+        }
+    }
+
+    #[private]
+    pub fn handle_post_action(
+        &mut self,
+        sender_id: AccountId,
+        receiver_id: AccountId,
+        amount: U128,
+        memo: Option<String>,
+        msg: String,
+    ) {
+        require!(
+            env::prepaid_gas() > GAS_FOR_FT_TRANSFER_CALL,
+            "More gas is required"
+        );
+        require!(
+            receiver_id != self.bridge_id,
+            "handle_post_action: receiver_id must not be the bridge"
+        );
+        let amount = amount.into();
+        self.token
+            .internal_transfer(&sender_id, &receiver_id, amount, memo);
+        let receiver_gas = env::prepaid_gas()
+            .checked_sub(GAS_FOR_FT_TRANSFER_CALL)
+            .unwrap_or_else(|| env::panic_str("Prepaid gas overflow"));
+        // Initiating receiver's call and the callback
+        ext_ft_receiver::ext(receiver_id.clone())
+            .with_static_gas(receiver_gas)
+            .ft_on_transfer(sender_id.clone(), amount.into(), msg)
+            .then(
+                ext_ft_resolver::ext(env::current_account_id())
+                    .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
+                    .ft_resolve_transfer(sender_id, receiver_id, amount.into()),
+            )
+            .detach();
+    }
 }
 
 #[near]
@@ -261,11 +339,11 @@ impl Contract {
         // Receive the code directly from the input to avoid the
         // GAS overhead of deserializing parameters
         let code = env::input().unwrap_or_else(|| env::panic_str("ERR_NO_INPUT"));
-        
+
         // Deploy the contract code.
         let promise_id = env::promise_batch_create(&env::current_account_id());
         env::promise_batch_action_deploy_contract(promise_id, &code);
-        
+
         // Call promise to migrate the state.
         // Batched together to fail upgrade if migration fails.
         env::promise_batch_action_function_call(
