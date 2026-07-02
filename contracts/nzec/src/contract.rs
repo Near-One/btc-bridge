@@ -251,6 +251,25 @@ impl Contract {
     }
 }
 
+impl Contract {
+    fn assert_bridge(&self) {
+        require!(self.bridge_id == env::predecessor_account_id(), "Not Allow");
+    }
+    
+    fn mint_inner(&mut self, account_id: &AccountId, amount: U128) {
+        if self.token.accounts.get(account_id).is_none() {
+            self.token.internal_register_account(account_id);
+        }
+        self.token.internal_deposit(account_id, amount.into());
+        near_contract_standards::fungible_token::events::FtMint {
+            owner_id: account_id,
+            amount,
+            memo: None,
+        }
+        .emit();
+    }
+}
+
 #[near]
 impl Contract {
     #[private]
