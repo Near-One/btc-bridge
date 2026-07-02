@@ -13,8 +13,8 @@ use near_sdk::{
     assert_one_yocto,
     borsh::{BorshDeserialize, BorshSerialize},
     env,
-    json_types::{U128, Base64VecU8},
-    near, require,
+    json_types::{Base64VecU8, U128},
+    log, near, require,
     store::Lazy,
     AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, Promise, PromiseOrValue, PublicKey,
 };
@@ -154,6 +154,92 @@ impl Contract {
         self.metadata.set(metadata);
     }
 
+    #[payable]
+    pub fn safe_mint(
+        &mut self,
+        account_id: AccountId,
+        amount: U128,
+        msg: Option<String>,
+    ) -> PromiseOrValue<U128> {
+        self.assert_bridge();
+        require!(
+            account_id != self.bridge_id,
+            "safe_mint: account_id must not be the bridge"
+        );
+        self.token.internal_deposit(&self.bridge_id, amount.into());
+
+        if self.token.accounts.get(&account_id).is_none() {
+            return PromiseOrValue::Value(U128(0));
+        }
+
+        if let Some(msg) = msg {
+            self.ft_transfer_call(account_id, amount, None, msg)
+        } else {
+            self.ft_transfer(account_id, amount, None);
+            PromiseOrValue::Value(amount)
+        }
+    }
+
+    pub fn mint(
+        &mut self,
+        mint_account_id: AccountId,
+        mint_amount: U128,
+        protocol_fee: U128,
+        relayer_account_id: AccountId,
+        relayer_fee: U128,
+        post_actions: Option<Vec<PostAction>>,
+    ) {
+        self.assert_bridge();
+        self.mint_inner(&mint_account_id, mint_amount);
+        if protocol_fee.0 > 0 {
+            self.mint_inner(&self.bridge_id.clone(), protocol_fee);
+        }
+        if relayer_fee.0 > 0 {
+            self.mint_inner(&relayer_account_id, relayer_fee);
+        }
+        if let Some(post_actions) = post_actions {
+            Self::ext(env::current_account_id())
+                .handle_post_actions(mint_account_id, post_actions)
+                .detach();
+        }
+    }
+
+    pub fn migration_mint(&mut self, entries: Vec<(AccountId, U128)>) {
+        self.assert_bridge();
+        for (account_id, amount) in entries {
+            self.mint_inner(&account_id, amount);
+        }
+    }
+
+    pub fn burn(
+        &mut self,
+        burn_account_id: AccountId,
+        burn_amount: U128,
+        relayer_account_id: AccountId,
+        relayer_fee: U128,
+    ) {
+        self.assert_bridge();
+        self.token
+            .internal_withdraw(&self.bridge_id, burn_amount.into());
+        if relayer_fee.0 > 0 {
+            if self.token.accounts.get(&relayer_account_id).is_none() {
+                self.token.internal_register_account(&relayer_account_id);
+            }
+            self.token.internal_transfer(
+                &self.bridge_id,
+                &relayer_account_id,
+                relayer_fee.into(),
+                None,
+            );
+        }
+        near_contract_standards::fungible_token::events::FtBurn {
+            owner_id: &burn_account_id,
+            amount: burn_amount,
+            memo: None,
+        }
+        .emit();
+    }
+
     #[only(self, owner)]
     #[payable]
     pub fn ft_deposit(&mut self, owner_id: AccountId, amount: U128, memo: Option<String>) {
@@ -215,15 +301,19 @@ impl FungibleTokenResolver for Contract {
         receiver_id: AccountId,
         amount: U128,
     ) -> U128 {
-        self.token
-            .ft_resolve_transfer(sender_id, receiver_id, amount)
+        let (used_amount, burned_amount) =
+            self.token
+                .internal_ft_resolve_transfer(&sender_id, receiver_id, amount);
+        if burned_amount > 0 {
+            log!("Account @{} burned {}", sender_id, burned_amount);
+        }
+        used_amount.into()
     }
 }
 
 #[near]
 impl StorageManagement for Contract {
     #[payable]
-    #[cfg_attr(feature = "no-registration", only(self, owner))]
     fn storage_deposit(
         &mut self,
         account_id: Option<AccountId>,
@@ -239,7 +329,13 @@ impl StorageManagement for Contract {
 
     #[payable]
     fn storage_unregister(&mut self, force: Option<bool>) -> bool {
-        self.token.storage_unregister(force)
+        #[allow(unused_variables)]
+        if let Some((account_id, balance)) = self.token.internal_storage_unregister(force) {
+            log!("Closed @{} with {}", account_id, balance);
+            true
+        } else {
+            false
+        }
     }
 
     fn storage_balance_bounds(&self) -> StorageBalanceBounds {
