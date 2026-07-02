@@ -68,28 +68,35 @@ pub struct Contract {
 #[near]
 impl Contract {
     #[init]
-    #[allow(dead_code, clippy::use_self)]
     pub fn new(
-        bridge_id: AccountId,
         owner_id: Option<AccountId>,
-        metadata: Option<FungibleTokenMetadata>,
+        bridge_id: AccountId,
+        name: String,
+        symbol: String,
+        icon: Option<String>,
+        decimals: u8,
     ) -> Self {
-        let metadata = metadata.unwrap_or_else(|| FungibleTokenMetadata {
-            spec: FT_METADATA_SPEC.to_string(),
-            name: String::new(),
-            symbol: String::new(),
-            icon: None,
-            reference: None,
-            reference_hash: None,
-            decimals: 0,
-        });
-        metadata.assert_valid();
-
-        let contract = Self {
+        require!(!env::state_exists(), "Already initialized");
+        let mut contract = Self {
             bridge_id,
             token: FungibleToken::new(Prefix::FungibleToken),
-            metadata: Lazy::new(Prefix::Metadata, metadata),
+            metadata: Lazy::new(
+                Prefix::Metadata,
+                FungibleTokenMetadata {
+                    spec: FT_METADATA_SPEC.to_string(),
+                    name,
+                    symbol,
+                    icon,
+                    reference: None,
+                    reference_hash: None,
+                    decimals,
+                },
+            ),
         };
+
+        contract
+            .token
+            .internal_register_account(&contract.bridge_id);
 
         let owner = owner_id.unwrap_or_else(env::predecessor_account_id);
         // Ownable::owner_set requires it to be a promise
