@@ -8,11 +8,23 @@ use near_contract_standards::{
 };
 use near_plugins::{Ownable, events::AsEvent, only, ownable::OwnershipTransferred};
 use near_sdk::{
-    AccountId, BorshStorageKey, NearToken, PanicOnDefault, Promise, PromiseOrValue, PublicKey,
-    assert_one_yocto, borsh::BorshSerialize, env, json_types::U128, near, require, store::Lazy,
+    AccountId, BorshStorageKey, Gas, NearToken, PanicOnDefault, Promise, PromiseOrValue, PublicKey,
+    assert_one_yocto,
+    borsh::{BorshDeserialize, BorshSerialize},
+    env, json_types::U128, near, require, store::Lazy,
 };
 
-use crate::{PoaFungibleToken, WITHDRAW_MEMO_PREFIX};
+use crate::WITHDRAW_MEMO_PREFIX;
+
+const OUTER_UPGRADE_GAS: Gas = Gas::from_tgas(15);
+const NO_DEPOSIT: NearToken = NearToken::from_yoctonear(0);
+
+#[derive(BorshDeserialize)]
+#[borsh(crate = "::near_sdk::borsh")]
+pub struct ContractV0 {
+    token: FungibleToken,
+    metadata: Lazy<FungibleTokenMetadata>,
+}
 
 #[near(
     contract_state,
@@ -24,6 +36,7 @@ use crate::{PoaFungibleToken, WITHDRAW_MEMO_PREFIX};
 )]
 #[derive(Ownable, PanicOnDefault)]
 pub struct Contract {
+    bridge_id: AccountId,
     token: FungibleToken,
     metadata: Lazy<FungibleTokenMetadata>,
 }
@@ -32,7 +45,11 @@ pub struct Contract {
 impl Contract {
     #[init]
     #[allow(dead_code, clippy::use_self)]
-    pub fn new(owner_id: Option<AccountId>, metadata: Option<FungibleTokenMetadata>) -> Self {
+    pub fn new(
+        bridge_id: AccountId,
+        owner_id: Option<AccountId>,
+        metadata: Option<FungibleTokenMetadata>,
+    ) -> Self {
         let metadata = metadata.unwrap_or_else(|| FungibleTokenMetadata {
             spec: FT_METADATA_SPEC.to_string(),
             name: String::new(),
@@ -45,6 +62,7 @@ impl Contract {
         metadata.assert_valid();
 
         let contract = Self {
+            bridge_id,
             token: FungibleToken::new(Prefix::FungibleToken),
             metadata: Lazy::new(Prefix::Metadata, metadata),
         };
@@ -224,8 +242,14 @@ impl Contract {
 
     #[private]
     #[init(ignore_state)]
-    pub fn migrate() -> Self {
-        env::state_read().unwrap_or_else(|| env::panic_str("ERR_FAILED_TO_READ_STATE"))
+    pub fn migrate(bridge_id: AccountId) -> Self {
+        let old: ContractV0 =
+            env::state_read().unwrap_or_else(|| env::panic_str("ERR_FAILED_TO_READ_STATE"));
+        Self {
+            bridge_id,
+            token: old.token,
+            metadata: old.metadata,
+        }
     }
 
     #[only(owner)]

@@ -55,7 +55,13 @@ mock-btc-light-client: contracts/mock-btc-light-client
 
 nbtc: contracts/nbtc
 	$(call local_build_wasm,nbtc,nbtc)
-	
+
+nzec: contracts/nzec
+	@mkdir -p res
+	@rustup target add wasm32-unknown-unknown
+	@cargo near build non-reproducible-wasm --manifest-path ./contracts/nzec/Cargo.toml --locked --no-abi --features contract
+	@cp target/near/nzec/nzec.wasm ./res/nzec.wasm
+
 define local_build_wasm
 	$(eval PACKAGE_NAME := $(1))
 	$(eval WASM_NAME := $(2))
