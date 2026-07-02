@@ -65,10 +65,10 @@ impl Contract {
 }
 
 #[near]
-impl PoaFungibleToken for Contract {
+impl Contract {
     #[only(self, owner)]
     #[payable]
-    fn set_metadata(&mut self, metadata: FungibleTokenMetadata) {
+    pub fn set_metadata(&mut self, metadata: FungibleTokenMetadata) {
         assert_one_yocto();
         metadata.assert_valid();
         self.metadata.set(metadata);
@@ -76,7 +76,7 @@ impl PoaFungibleToken for Contract {
 
     #[only(self, owner)]
     #[payable]
-    fn ft_deposit(&mut self, owner_id: AccountId, amount: U128, memo: Option<String>) {
+    pub fn ft_deposit(&mut self, owner_id: AccountId, amount: U128, memo: Option<String>) {
         self.token.storage_deposit(Some(owner_id.clone()), None);
         self.token.internal_deposit(&owner_id, amount.into());
         FtMint {
@@ -214,4 +214,41 @@ impl Contract {
 enum Prefix {
     FungibleToken,
     Metadata,
+}
+
+#[near]
+impl Contract {
+    pub fn version(&self) -> String {
+        env!("CARGO_PKG_VERSION").to_owned()
+    }
+
+    #[private]
+    #[init(ignore_state)]
+    pub fn migrate() -> Self {
+        env::state_read().unwrap_or_else(|| env::panic_str("ERR_FAILED_TO_READ_STATE"))
+    }
+
+    #[only(owner)]
+    pub fn upgrade_and_migrate(&self) {
+        // Receive the code directly from the input to avoid the
+        // GAS overhead of deserializing parameters
+        let code = env::input().unwrap_or_else(|| env::panic_str("ERR_NO_INPUT"));
+        
+        // Deploy the contract code.
+        let promise_id = env::promise_batch_create(&env::current_account_id());
+        env::promise_batch_action_deploy_contract(promise_id, &code);
+        
+        // Call promise to migrate the state.
+        // Batched together to fail upgrade if migration fails.
+        env::promise_batch_action_function_call(
+            promise_id,
+            "migrate",
+            b"",
+            NO_DEPOSIT,
+            env::prepaid_gas()
+                .saturating_sub(env::used_gas())
+                .saturating_sub(OUTER_UPGRADE_GAS),
+        );
+        env::promise_return(promise_id);
+    }
 }
