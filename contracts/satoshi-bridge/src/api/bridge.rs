@@ -456,6 +456,9 @@ impl Contract {
     /// The BTC transaction is verified through the Light Client to prove the deposit exists.
     /// After the timelock period, anyone can call `execute_refund` to initiate the return.
     ///
+    /// Requires an attached deposit of at least `required_balance_for_request_refund()`.
+    /// The deposit is NOT refunded — it covers request storage and acts as an anti-spam fee.
+    ///
     /// # Arguments
     ///
     /// * `deposit_msg` - The original deposit message. If `deposit_msg.refund_address` is set,
@@ -472,6 +475,7 @@ impl Contract {
     /// * `gas_fee` - Optional custom gas fee. Only DAO or Operator can set this.
     ///   If `None`, the default `config.max_btc_gas_fee` is used during `execute_refund`.
     #[allow(clippy::too_many_arguments)]
+    #[payable]
     #[pause(except(roles(Role::DAO)))]
     pub fn request_refund(
         &mut self,
@@ -502,7 +506,7 @@ impl Contract {
 
     /// Reject a pending refund request.
     /// - DAO or Operator can reject any request.
-    /// - Anyone can reject a request if the UTXO has already been verified via `verify_deposit`.
+    /// - Anyone can reject a request if the UTXO has already been verified via `verify_deposit`
     ///
     /// # Arguments
     ///
@@ -511,10 +515,22 @@ impl Contract {
         let caller = env::predecessor_account_id();
         let is_privileged = self.acl_has_role(Role::DAO.into(), caller.clone())
             || self.acl_has_role(Role::Operator.into(), caller);
-        let is_already_deposited = self
+        // `execute_refund` also inserts the UTXO into `verified_deposit_utxo` (to block a
+        // later deposit) while keeping the request with `executed == true`. That membership
+        // must NOT open the permissionless reject path, otherwise anyone could cancel an
+        // in-flight refund — so only treat the UTXO as "already deposited" when the request
+        // was not executed by us, i.e. a real `verify_deposit` finalized it.
+        let executed = self
             .data()
-            .verified_deposit_utxo
-            .contains(&utxo_storage_key);
+            .refund_requests
+            .get(&utxo_storage_key)
+            .map(|r| RefundRequest::from(r).executed)
+            .unwrap_or(false);
+        let is_already_deposited = !executed
+            && self
+                .data()
+                .verified_deposit_utxo
+                .contains(&utxo_storage_key);
         require!(
             is_privileged || is_already_deposited,
             "Only DAO/Operator can reject, or UTXO must be already verified via deposit"
@@ -563,5 +579,19 @@ impl Contract {
             "Missing tx_bytes_with_sign"
         );
         self.internal_verify_refund_finalize(tx_id, proof, btc_pending_info)
+    }
+
+    /// Remove a leftover refund pending transaction whose refund request is gone
+    /// (the refund was already finalized via another candidate, or rejected). Such
+    /// a transaction can never confirm, so this only cleans up stale state — it is
+    /// rejected while the refund request still exists.
+    ///
+    /// # Arguments
+    ///
+    /// * `tx_id` - Pending id of the stale refund transaction to remove.
+    #[trusted_relayer]
+    #[pause(except(roles(Role::DAO)))]
+    pub fn remove_refund_pending_tx_id(&mut self, tx_id: String) {
+        self.internal_remove_refund_pending_tx_id(tx_id);
     }
 }

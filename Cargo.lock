@@ -2729,7 +2729,7 @@ dependencies = [
 
 [[package]]
 name = "mock-btc-light-client"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "hex",
  "near-sdk",
@@ -4434,7 +4434,7 @@ dependencies = [
 
 [[package]]
 name = "satoshi-bridge"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "bitcoin",
  "bs58 0.5.1",

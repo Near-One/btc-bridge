@@ -82,9 +82,21 @@ impl Serialize for H256 {
     }
 }
 
-#[derive(Default)]
 #[near(contract_state)]
-pub struct Contract {}
+pub struct Contract {
+    last_block_height: u32,
+}
+
+impl Default for Contract {
+    fn default() -> Self {
+        // A reasonable mock block height for Zcash testnet (before any NU
+        // activation). Tests that need a specific consensus branch override it
+        // via `set_last_block_height`.
+        Self {
+            last_block_height: 1000,
+        }
+    }
+}
 
 #[near]
 impl Contract {
@@ -99,7 +111,12 @@ impl Contract {
     }
 
     pub fn get_last_block_height(&self) -> u32 {
-        // Return a reasonable mock block height for Zcash testnet
-        1000
+        self.last_block_height
+    }
+
+    /// Test-only: set the height returned by `get_last_block_height`, so a test
+    /// can drive the Zcash consensus `branch_id` derived from it.
+    pub fn set_last_block_height(&mut self, height: u32) {
+        self.last_block_height = height;
     }
 }

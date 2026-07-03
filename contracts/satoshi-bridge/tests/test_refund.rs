@@ -1391,3 +1391,405 @@ async fn test_refund_operator_skips_timelock() {
         context.execute_refund("alice", &key)
     );
 }
+
+/// Calling `execute_refund` twice on Bitcoin. Unlike Zcash, Bitcoin has no
+/// consensus `branch_id`, so the refund transaction is byte-for-byte identical
+/// and its txid (= pending id) is the same. The second call therefore tries to
+/// insert an already-existing `BTCPendingInfo` and is rejected — there is only
+/// ever one refund transaction.
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_refund_execute_twice_same_tx() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let refund_btc_address = TARGET_ADDRESS;
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: Some(refund_btc_address.to_string()),
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "a2a5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f19",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 100_000)],
+    );
+    let vout: u32 = 0;
+
+    check!(context.request_refund(
+        "alice",
+        deposit_msg.clone(),
+        TARGET_ADDRESS,
+        tx_bytes.clone(),
+        vout,
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+        1,
+        vec![],
+        None
+    ));
+    let key = utxo_storage_key(&tx_bytes, vout);
+
+    // Allow two pending refund txs so the second call is not blocked by capacity
+    // (we want to observe the same-txid behaviour, not the pending limit).
+    let root_id = context.get_account_by_name("root").id().clone();
+    context
+        .get_account_by_name("root")
+        .call(context.bridge_contract.id(), "set_pending_tx_limit")
+        .args_json(json!({ "account_id": root_id, "max_pending": 2 }))
+        .deposit(near_sdk::NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+
+    // root (DAO) fast-tracks the pre-authorized refund address (timelock 0).
+    check!(print "execute_refund #1" context.execute_refund("root", &key));
+    let pending1 = context.get_btc_pending_infos_paged().await.unwrap();
+    assert_eq!(
+        pending1.len(),
+        1,
+        "first execute_refund creates one pending tx"
+    );
+    let id1 = pending1.keys().next().unwrap().clone();
+
+    // Second call rebuilds the identical refund tx (same id) and is rejected.
+    check!(
+        context.execute_refund("root", &key),
+        "pending info already exist"
+    );
+
+    // Still exactly one refund transaction, with the same id as before.
+    let pending2 = context.get_btc_pending_infos_paged().await.unwrap();
+    assert_eq!(
+        pending2.len(),
+        1,
+        "same txid => the second execute_refund adds no new pending tx"
+    );
+    assert!(
+        pending2.contains_key(&id1),
+        "the single pending tx id is unchanged"
+    );
+}
+
+/// A *different* account cannot duplicate or hijack a refund that is already being
+/// executed. Two protections apply on Bitcoin:
+///   1. a non-privileged account is still gated by the timelock;
+///   2. once past the timelock it rebuilds the identical tx (same id), so the
+///      insert is rejected — the pending tx stays owned by the original caller.
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_refund_execute_twice_different_account() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let refund_btc_address = TARGET_ADDRESS;
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: Some(refund_btc_address.to_string()),
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "a2a5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f19",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 100_000)],
+    );
+    let vout: u32 = 0;
+
+    check!(context.request_refund(
+        "alice",
+        deposit_msg.clone(),
+        TARGET_ADDRESS,
+        tx_bytes.clone(),
+        vout,
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+        1,
+        vec![],
+        None
+    ));
+    let key = utxo_storage_key(&tx_bytes, vout);
+
+    // Short timelock so we can fast-forward past it deterministically.
+    context
+        .get_account_by_name("root")
+        .call(context.bridge_contract.id(), "update_config")
+        .args_json(json!({"update": {"refund_timelock_sec": 200}}))
+        .deposit(near_sdk::NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+
+    // root (DAO) fast-tracks the pre-authorized address (timelock 0).
+    check!(print "execute_refund #1 (root)" context.execute_refund("root", &key));
+    let pending1 = context.get_btc_pending_infos_paged().await.unwrap();
+    assert_eq!(pending1.len(), 1);
+    let id1 = pending1.keys().next().unwrap().clone();
+
+    // (1) A non-privileged different account (bob) is still gated by the timelock.
+    check!(
+        context.execute_refund("bob", &key),
+        "Refund timelock has not passed yet"
+    );
+
+    // (2) After the timelock, bob's call reaches the finalize step but rebuilds the
+    // identical tx (same id) and is rejected — no duplicate, no hijack.
+    worker.fast_forward(4000).await.unwrap();
+    check!(
+        context.execute_refund("bob", &key),
+        "pending info already exist"
+    );
+
+    let pending2 = context.get_btc_pending_infos_paged().await.unwrap();
+    assert_eq!(
+        pending2.len(),
+        1,
+        "a different account cannot create a second refund tx"
+    );
+    assert!(
+        pending2.contains_key(&id1),
+        "the original refund pending tx is unchanged"
+    );
+}
+
+/// Express the `request_refund` limits in terms of real signed P2PKH inputs: how
+/// much storage each costs and how many fit under the `MAX_REQUEST_REFUND_TX_BYTES`
+/// (200 KB) cap. Builds transactions with realistic ~148-byte inputs (36-byte outpoint
+/// + 1-byte script length + 107-byte scriptSig + 4-byte sequence), measures the
+/// on-chain storage each request adds, asserts the 2 NEAR deposit covers the worst
+/// case near the cap, and asserts a tx with too many inputs is rejected.
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_request_refund_input_capacity() {
+    use bitcoin::{
+        absolute::LockTime, consensus::serialize, transaction::Version, Address, Amount, OutPoint,
+        ScriptBuf, Sequence, Transaction, TxIn, TxOut, Witness,
+    };
+    use std::str::FromStr;
+
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: Some(TARGET_ADDRESS.to_string()),
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    let deposit_spk = Address::from_str(&deposit_address)
+        .unwrap()
+        .assume_checked()
+        .script_pubkey();
+
+    let required = context.required_balance_for_request_refund().await.unwrap();
+    let cost_per_byte = 10u128.pow(19); // 0.00001 NEAR per byte
+    println!(
+        "==> required_balance_for_request_refund: {:.4} NEAR",
+        required.as_yoctonear() as f64 / 1e24
+    );
+
+    // Build a tx with `n` realistic signed P2PKH inputs (107-byte scriptSig) paying
+    // the deposit address. `seed` keeps each tx (and its UTXO key) distinct.
+    let build_tx = |n: usize, seed: u64| -> Vec<u8> {
+        let txid = format!("{seed:064x}").parse().unwrap();
+        let input: Vec<TxIn> = (0..n)
+            .map(|i| TxIn {
+                previous_output: OutPoint {
+                    txid,
+                    vout: i as u32,
+                },
+                script_sig: ScriptBuf::from_bytes(vec![0u8; 107]),
+                sequence: Sequence(0xffff_fffd),
+                witness: Witness::new(),
+            })
+            .collect();
+        serialize(&Transaction {
+            version: Version::TWO,
+            lock_time: LockTime::ZERO,
+            input,
+            output: vec![TxOut {
+                value: Amount::from_sat(100_000),
+                script_pubkey: deposit_spk.clone(),
+            }],
+        })
+    };
+
+    let mut bytes_per_input = 0.0;
+    for n in [1usize, 200, 700, 1_340] {
+        let tx_bytes = build_tx(n, n as u64);
+        bytes_per_input = tx_bytes.len() as f64 / n as f64;
+
+        let storage_before = context
+            .bridge_contract
+            .view_account()
+            .await
+            .unwrap()
+            .storage_usage;
+
+        context
+            .request_refund(
+                "alice",
+                deposit_msg.clone(),
+                TARGET_ADDRESS,
+                tx_bytes.clone(),
+                0,
+                "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+                1,
+                vec![],
+                None,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        let storage_used = context
+            .bridge_contract
+            .view_account()
+            .await
+            .unwrap()
+            .storage_usage
+            - storage_before;
+        let storage_cost_yocto = storage_used as u128 * cost_per_byte;
+        println!(
+            "==> {n} inputs -> tx_bytes={} ({:.0} B/input), storage={} B ({:.4} NEAR)",
+            tx_bytes.len(),
+            tx_bytes.len() as f64 / n as f64,
+            storage_used,
+            storage_cost_yocto as f64 / 1e24,
+        );
+        // The 2 NEAR deposit must cover real storage for every accepted (<= cap) tx.
+        assert!(
+            required.as_yoctonear() >= storage_cost_yocto,
+            "deposit ({}) does not cover storage ({}) for {n} inputs",
+            required.as_yoctonear(),
+            storage_cost_yocto,
+        );
+    }
+
+    // A signed P2PKH input is ~148 bytes, so the 200 KB cap admits ~1350 of them.
+    assert!(
+        (140.0..=155.0).contains(&bytes_per_input),
+        "unexpected per-input size: {bytes_per_input:.1} B"
+    );
+    let inputs_at_cap = 200_000.0 / bytes_per_input;
+    println!("==> inputs that fit under the 200 KB cap: ~{inputs_at_cap:.0}");
+    assert!(
+        (1_300.0..=1_400.0).contains(&inputs_at_cap),
+        "unexpected input capacity: {inputs_at_cap:.0}"
+    );
+
+    // A tx with too many inputs (over the 200 KB cap) is rejected outright.
+    let big_tx = build_tx(1_400, 999_999);
+    assert!(big_tx.len() > 200_000, "test tx should exceed the cap");
+    check!(
+        context.request_refund(
+            "alice",
+            deposit_msg.clone(),
+            TARGET_ADDRESS,
+            big_tx,
+            0,
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![],
+            None
+        ),
+        "tx_bytes too large for refund request"
+    );
+}
+
+/// After `execute_refund` the UTXO is also inserted into `verified_deposit_utxo` (to
+/// block a later deposit) while the request is kept with `executed == true`. That must
+/// NOT let a non-privileged account reject the in-flight refund via the "already
+/// deposited" path — only DAO/Operator can. Regression test for that access check.
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_reject_refund_blocked_after_execute() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: Some(TARGET_ADDRESS.to_string()),
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "d5d5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f22",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 100_000)],
+    );
+    let vout: u32 = 0;
+    let key = utxo_storage_key(&tx_bytes, vout);
+
+    // Use the success-asserting `check!` form (not `print`, which only logs) so a
+    // silent failure here would actually fail the test.
+    check!(context.request_refund(
+        "alice",
+        deposit_msg.clone(),
+        TARGET_ADDRESS,
+        tx_bytes.clone(),
+        vout,
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+        1,
+        vec![],
+        None
+    ));
+
+    context
+        .get_account_by_name("root")
+        .call(context.bridge_contract.id(), "update_config")
+        .args_json(json!({"update": {"refund_timelock_sec": 200}}))
+        .deposit(near_sdk::NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+    worker.fast_forward(4000).await.unwrap();
+
+    // Execute the refund — this inserts the UTXO into verified_deposit_utxo and keeps
+    // the request with executed == true. Must actually succeed for the test to be meaningful.
+    check!(context.execute_refund("alice", &key));
+
+    // A non-privileged account must NOT be able to reject the now in-flight refund.
+    check!(
+        context.reject_refund("bob", &key),
+        "Only DAO/Operator can reject, or UTXO must be already verified via deposit"
+    );
+
+    // DAO can still reject it.
+    check!(context.reject_refund("root", &key));
+}
