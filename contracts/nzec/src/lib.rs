@@ -2,8 +2,6 @@ use near_contract_standards::{
     fungible_token::{
         events::{FtBurn, FtMint},
         metadata::{FungibleTokenMetadata, FungibleTokenMetadataProvider, FT_METADATA_SPEC},
-        receiver::ext_ft_receiver,
-        resolver::ext_ft_resolver,
         FungibleToken, FungibleTokenCore, FungibleTokenResolver,
     },
     storage_management::{StorageBalance, StorageBalanceBounds, StorageManagement},
@@ -21,9 +19,6 @@ use near_sdk::{
 
 pub const WITHDRAW_MEMO_PREFIX: &str = "WITHDRAW_TO:";
 
-const GAS_FOR_RESOLVE_TRANSFER: Gas = Gas::from_tgas(5);
-const GAS_FOR_FT_TRANSFER_CALL: Gas = Gas::from_tgas(30);
-
 const OUTER_UPGRADE_GAS: Gas = Gas::from_tgas(15);
 const NO_DEPOSIT: NearToken = NearToken::from_yoctonear(0);
 
@@ -39,15 +34,6 @@ enum Prefix {
 pub struct ContractV0 {
     token: FungibleToken,
     metadata: Lazy<FungibleTokenMetadata>,
-}
-
-#[near(serializers = [json])]
-pub struct PostAction {
-    pub receiver_id: AccountId,
-    pub amount: U128,
-    pub memo: Option<String>,
-    pub msg: String,
-    pub gas: Option<Gas>,
 }
 
 #[near(
@@ -177,30 +163,6 @@ impl Contract {
         } else {
             self.ft_transfer(account_id, amount, None);
             PromiseOrValue::Value(amount)
-        }
-    }
-
-    pub fn mint(
-        &mut self,
-        mint_account_id: AccountId,
-        mint_amount: U128,
-        protocol_fee: U128,
-        relayer_account_id: AccountId,
-        relayer_fee: U128,
-        post_actions: Option<Vec<PostAction>>,
-    ) {
-        self.assert_bridge();
-        self.mint_inner(&mint_account_id, mint_amount);
-        if protocol_fee.0 > 0 {
-            self.mint_inner(&self.bridge_id.clone(), protocol_fee);
-        }
-        if relayer_fee.0 > 0 {
-            self.mint_inner(&relayer_account_id, relayer_fee);
-        }
-        if let Some(post_actions) = post_actions {
-            Self::ext(env::current_account_id())
-                .handle_post_actions(mint_account_id, post_actions)
-                .detach();
         }
     }
 
@@ -401,67 +363,6 @@ impl Contract {
             memo: None,
         }
         .emit();
-    }
-}
-
-#[near]
-impl Contract {
-    #[private]
-    pub fn handle_post_actions(&mut self, sender_id: AccountId, post_actions: Vec<PostAction>) {
-        for post_action in post_actions {
-            let PostAction {
-                receiver_id,
-                amount,
-                memo,
-                msg,
-                gas,
-            } = post_action;
-            if let Some(gas) = gas {
-                Self::ext(env::current_account_id())
-                    .with_static_gas(gas)
-                    .handle_post_action(sender_id.clone(), receiver_id, amount, memo, msg)
-                    .detach();
-            } else {
-                Self::ext(env::current_account_id())
-                    .handle_post_action(sender_id.clone(), receiver_id, amount, memo, msg)
-                    .detach();
-            }
-        }
-    }
-
-    #[private]
-    pub fn handle_post_action(
-        &mut self,
-        sender_id: AccountId,
-        receiver_id: AccountId,
-        amount: U128,
-        memo: Option<String>,
-        msg: String,
-    ) {
-        require!(
-            env::prepaid_gas() > GAS_FOR_FT_TRANSFER_CALL,
-            "More gas is required"
-        );
-        require!(
-            receiver_id != self.bridge_id,
-            "handle_post_action: receiver_id must not be the bridge"
-        );
-        let amount = amount.into();
-        self.token
-            .internal_transfer(&sender_id, &receiver_id, amount, memo);
-        let receiver_gas = env::prepaid_gas()
-            .checked_sub(GAS_FOR_FT_TRANSFER_CALL)
-            .unwrap_or_else(|| env::panic_str("Prepaid gas overflow"));
-        // Initiating receiver's call and the callback
-        ext_ft_receiver::ext(receiver_id.clone())
-            .with_static_gas(receiver_gas)
-            .ft_on_transfer(sender_id.clone(), amount.into(), msg)
-            .then(
-                ext_ft_resolver::ext(env::current_account_id())
-                    .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
-                    .ft_resolve_transfer(sender_id, receiver_id, amount.into()),
-            )
-            .detach();
     }
 }
 
