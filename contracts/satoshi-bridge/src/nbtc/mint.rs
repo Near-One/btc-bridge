@@ -7,6 +7,12 @@ pub const GAS_FOR_MINT_CALL: Gas = Gas::from_tgas(90);
 pub const GAS_FOR_MINT_CALL_BACK: Gas = Gas::from_tgas(10);
 
 impl Contract {
+    /// Mint via the nBTC token's standard `mint` (the fee-charging deposit flow).
+    ///
+    /// NOTE: the nZec (Zcash) token does not implement `mint` (only `safe_mint`),
+    /// so this path is unavailable on Zcash — Zcash deposits must go through the
+    /// safe deposit flow (`internal_safe_verify_deposit_entry`, which uses
+    /// `safe_mint`).
     pub fn internal_mint_promise(
         &self,
         recipient_id: AccountId,

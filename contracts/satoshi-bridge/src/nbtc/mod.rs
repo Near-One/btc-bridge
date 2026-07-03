@@ -6,6 +6,11 @@ pub mod mint;
 
 #[ext_contract(ext_nbtc)]
 pub trait NBtc {
+    /// Standard mint used by the fee-charging deposit flow.
+    ///
+    /// NOTE: the nZec (Zcash) token implements only `safe_mint`, not `mint`, so
+    /// on Zcash this call fails. Zcash deposits must therefore use the safe
+    /// deposit flow (which mints via `safe_mint`).
     fn mint(
         &mut self,
         mint_account_id: AccountId,

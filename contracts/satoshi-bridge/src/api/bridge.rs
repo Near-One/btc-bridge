@@ -23,6 +23,10 @@ impl Contract {
     /// # Returns
     ///
     /// bool - Whether nBTC minting was successful.
+    ///
+    /// NOTE: this standard flow mints via the token's `mint` and is unusable on
+    /// Zcash — the nZec token only implements `safe_mint`. On Zcash use the safe
+    /// deposit flow instead.
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     #[deprecated(note = "use verify_deposit_v2")]
@@ -57,6 +61,10 @@ impl Contract {
     /// * `None` — standard deposit: charges the deposit fee, pays the user's storage, and
     ///   routes mint failures to lost & found.
     ///
+    /// On Zcash only the `Some(..)` (safe deposit) branch is usable: the nZec
+    /// token implements only `safe_mint`, so the `None` (standard) branch cannot
+    /// mint.
+    ///
     /// # Arguments
     ///
     /// * `deposit_msg` - Information used to generate the deposit address path.
@@ -89,6 +97,10 @@ impl Contract {
                 coinbase_proof,
             )
         } else {
+            // Standard (fee-charging) deposit — mints via the token's `mint`.
+            // NOTE: unavailable on Zcash, where the nZec token only implements
+            // `safe_mint`; on Zcash callers must set `deposit_msg.safe_deposit`
+            // to take the safe branch above.
             self.internal_verify_deposit_entry(
                 deposit_msg,
                 tx_bytes.0,
