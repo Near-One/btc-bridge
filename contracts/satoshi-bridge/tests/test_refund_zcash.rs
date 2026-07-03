@@ -391,9 +391,7 @@ async fn test_zcash_refund_transparent() {
 }
 
 /// Transparent refund to a TEX address (ZIP-320), exercised on both Zcash
-/// networks: the testnet HRP (`textest1…`) and the mainnet HRP (`tex1…`). Both
-/// strings encode the same 20-byte P2PKH hash, so the two cases differ only by
-/// network.
+/// networks: the testnet HRP (`textest1…`) and the mainnet HRP (`tex1…`). 
 #[tokio::test]
 #[cfg(feature = "zcash")]
 async fn test_zcash_refund_transparent_tex_address() {
@@ -403,7 +401,7 @@ async fn test_zcash_refund_transparent_tex_address() {
             "ZcashTestnet",
             "textest1qyqszqgpqyqszqgpqyqszqgpqyqszqgpfcjgfy",
         ),
-        ("ZcashMainnet", "tex1qyqszqgpqyqszqgpqyqszqgpqyqszqgpskd7vl"),
+        ("ZcashMainnet", "tex1s2rt77ggv6q989lr49rkgzmh5slsksa9khdgte"),
     ];
 
     for (chain, refund_tex) in cases {
