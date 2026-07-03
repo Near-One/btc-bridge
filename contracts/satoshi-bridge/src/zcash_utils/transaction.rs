@@ -76,8 +76,21 @@ impl Transaction {
         }
 
         for output in vout {
-            let key = output.script_pubkey().0 .0[3..23].try_into().unwrap();
-            let to = zcash_transparent::address::TransparentAddress::PublicKeyHash(key);
+            let script_bytes = &output.script_pubkey().0 .0;
+            let script = bitcoin::Script::from_bytes(script_bytes);
+            let to = if script.is_p2sh() {
+                zcash_transparent::address::TransparentAddress::ScriptHash(
+                    script_bytes[2..22].try_into().unwrap(),
+                )
+            } else if script.is_p2pkh() {
+                zcash_transparent::address::TransparentAddress::PublicKeyHash(
+                    script_bytes[3..23].try_into().unwrap(),
+                )
+            } else {
+                near_sdk::env::panic_str(
+                    "ERR_UNSUPPORTED_OUTPUT_SCRIPT: only P2PKH and P2SH transparent outputs are supported",
+                )
+            };
             builder.add_output(&to, output.value()).unwrap();
         }
 
@@ -109,5 +122,55 @@ impl Transaction {
             None,
             None,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use zcash_protocol::value::Zatoshis;
+    use zcash_script::script::Code;
+    use zcash_transparent::address::Script;
+    use zcash_transparent::bundle::TxOut as ZcashTxOut;
+
+    fn p2sh_script() -> Vec<u8> {
+        let mut s = vec![0xa9, 0x14];
+        s.extend_from_slice(&[0x11u8; 20]);
+        s.push(0x87);
+        s
+    }
+
+    fn p2pkh_script() -> Vec<u8> {
+        let mut s = vec![0x76, 0xa9, 0x14];
+        s.extend_from_slice(&[0x22u8; 20]);
+        s.push(0x88);
+        s.push(0xac);
+        s
+    }
+
+    #[test]
+    fn transparent_builder_preserves_output_script_pubkey() {
+        for script in [p2sh_script(), p2pkh_script()] {
+            let vout = vec![ZcashTxOut::new(
+                Zatoshis::from_u64(50_000).unwrap(),
+                Script(Code(script.clone())),
+            )];
+            let bundle = Transaction::get_transparent_builder(&[], &vout, &[], &[])
+                .build()
+                .unwrap();
+            assert_eq!(bundle.vout[0].script_pubkey().0 .0, script);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "ERR_UNSUPPORTED_OUTPUT_SCRIPT")]
+    fn transparent_builder_rejects_non_transparent_output_script() {
+        let mut witness_script = vec![0x00, 0x14];
+        witness_script.extend_from_slice(&[0x33u8; 20]);
+        let vout = vec![ZcashTxOut::new(
+            Zatoshis::from_u64(50_000).unwrap(),
+            Script(Code(witness_script)),
+        )];
+        let _ = Transaction::get_transparent_builder(&[], &vout, &[], &[]).build();
     }
 }
