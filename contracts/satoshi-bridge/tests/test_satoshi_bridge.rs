@@ -23,6 +23,20 @@ fn get_chain() -> Chain {
     }
 }
 
+/// `safe_deposit` field for a user deposit: `Some` on Zcash (only safe deposits
+/// can be minted there — the nZec token implements only `safe_mint`), `None` on
+/// Bitcoin (standard deposit).
+#[cfg(feature = "zcash")]
+fn user_safe_deposit() -> Option<satoshi_bridge::SafeDepositMsg> {
+    Some(satoshi_bridge::SafeDepositMsg {
+        msg: String::new(),
+    })
+}
+#[cfg(not(feature = "zcash"))]
+fn user_safe_deposit() -> Option<satoshi_bridge::SafeDepositMsg> {
+    None
+}
+
 #[tokio::test]
 async fn test_role() {
     let worker = near_workspaces::sandbox().await.unwrap();
@@ -113,7 +127,7 @@ async fn test_base() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         })
         .await
@@ -123,19 +137,19 @@ async fn test_base() {
             recipient_id: context.get_account_by_name("bob").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         })
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
-    check!(printr "alice 10000" context.verify_deposit(
+    check!(printr "alice 10000" context.deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -178,13 +192,13 @@ async fn test_base() {
             .cur_available_protocol_fee,
         0
     );
-    check!(printr "alice 50000" context.verify_deposit(
+    check!(printr "alice 50000" context.deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -228,13 +242,13 @@ async fn test_base() {
         0
     );
     check!(
-        context.verify_deposit(
+        context.deposit_v2(
             "relayer",
             DepositMsg {
                 recipient_id: context.get_account_by_name("alice").sdk_id(),
                 post_actions: None,
                 extra_msg: None,
-                safe_deposit: None,
+                safe_deposit: user_safe_deposit(),
                 refund_address: None,
             },
             generate_transaction_bytes(
@@ -262,13 +276,13 @@ async fn test_base() {
         context.get_unavailable_utxos_paged().await.unwrap().len(),
         1
     );
-    check!(context.verify_deposit(
+    check!(context.deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("bob").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -475,7 +489,10 @@ async fn test_base() {
     );
 }
 
+// Deposit-fee behaviour: safe deposits (the only kind on Zcash) charge no fee,
+// so this fee test only applies to the Bitcoin (standard-deposit) build.
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_fix_bridge_fee_and_relayer() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -488,19 +505,19 @@ async fn test_fix_bridge_fee_and_relayer() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         })
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
-    check!(printr "alice 500000" context.verify_deposit(
+    check!(printr "alice 500000" context.deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -617,7 +634,9 @@ async fn test_fix_bridge_fee_and_relayer() {
     assert_eq!(context.ft_balance_of("root").await.unwrap().0, 9000 + 18000);
 }
 
+// Deposit-fee behaviour: not applicable to Zcash (safe deposits are fee-free).
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_ratio_bridge_fee_and_relayer() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -630,19 +649,19 @@ async fn test_ratio_bridge_fee_and_relayer() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         })
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
-    check!(printr "alice 500000" context.verify_deposit(
+    check!(printr "alice 500000" context.deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -762,7 +781,9 @@ async fn test_ratio_bridge_fee_and_relayer() {
     );
 }
 
+// Sets a nonzero deposit fee, which safe deposits (Zcash) never charge — Bitcoin only.
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_directly_withdraw() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -775,19 +796,19 @@ async fn test_directly_withdraw() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         })
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
-    check!(printr "alice 500000" context.verify_deposit(
+    check!(printr "alice 500000" context.deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -888,7 +909,10 @@ async fn test_directly_withdraw() {
     );
 }
 
+// Sets a nonzero deposit fee (asserts fee-adjusted balances); safe deposits
+// (Zcash) charge no deposit fee, so this runs on the Bitcoin build only.
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_one_click() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -906,14 +930,14 @@ async fn test_one_click() {
                 gas: Some(Gas::from_tgas(100)),
             }]),
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         };
         let alice_btc_deposit_address = context
             .get_user_deposit_address(deposit_msg.clone())
             .await
             .unwrap();
-        check!(printr "alice 50000" context.verify_deposit(
+        check!(printr "alice 50000" context.deposit_v2(
             "relayer",
             deposit_msg,
             generate_transaction_bytes(
@@ -967,14 +991,14 @@ async fn test_one_click() {
                 gas: Some(Gas::from_tgas(100)),
             }]),
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         };
         let alice_btc_deposit_address = context
             .get_user_deposit_address(deposit_msg.clone())
             .await
             .unwrap();
-        check!(printr "alice 50000" context.verify_deposit(
+        check!(printr "alice 50000" context.deposit_v2(
             "relayer",
             deposit_msg,
             generate_transaction_bytes(
@@ -1025,14 +1049,14 @@ async fn test_one_click() {
                 gas: Some(Gas::from_tgas(101)),
             }]),
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         };
         let alice_btc_deposit_address = context
             .get_user_deposit_address(deposit_msg.clone())
             .await
             .unwrap();
-        check!(printr "alice 50000" context.verify_deposit(
+        check!(printr "alice 50000" context.deposit_v2(
             "relayer",
             deposit_msg,
             generate_transaction_bytes(
@@ -1092,14 +1116,14 @@ async fn test_one_click() {
                 },
             ]),
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         };
         let alice_btc_deposit_address = context
             .get_user_deposit_address(deposit_msg.clone())
             .await
             .unwrap();
-        check!(printr "alice 50000" context.verify_deposit(
+        check!(printr "alice 50000" context.deposit_v2(
             "relayer",
             deposit_msg,
             generate_transaction_bytes(
@@ -1166,14 +1190,14 @@ async fn test_one_click() {
                 },
             ]),
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         };
         let alice_btc_deposit_address = context
             .get_user_deposit_address(deposit_msg.clone())
             .await
             .unwrap();
-        check!(printr "alice 50000" context.verify_deposit(
+        check!(printr "alice 50000" context.deposit_v2(
             "relayer",
             deposit_msg,
             generate_transaction_bytes(
@@ -1224,14 +1248,14 @@ async fn test_one_click() {
                 gas: None,
             }]),
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         };
         let alice_btc_deposit_address = context
             .get_user_deposit_address(deposit_msg.clone())
             .await
             .unwrap();
-        check!(printr "alice 50000" context.verify_deposit(
+        check!(printr "alice 50000" context.deposit_v2(
             "relayer",
             deposit_msg,
             generate_transaction_bytes(
@@ -1291,14 +1315,14 @@ async fn test_one_click() {
                 },
             ]),
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         };
         let alice_btc_deposit_address = context
             .get_user_deposit_address(deposit_msg.clone())
             .await
             .unwrap();
-        check!(printr "alice 50000" context.verify_deposit(
+        check!(printr "alice 50000" context.deposit_v2(
             "relayer",
             deposit_msg,
             generate_transaction_bytes(
@@ -1359,14 +1383,14 @@ async fn test_one_click() {
                 },
             ]),
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         };
         let alice_btc_deposit_address = context
             .get_user_deposit_address(deposit_msg.clone())
             .await
             .unwrap();
-        check!(printr "alice 50000" context.verify_deposit(
+        check!(printr "alice 50000" context.deposit_v2(
             "relayer",
             deposit_msg,
             generate_transaction_bytes(
@@ -1422,20 +1446,20 @@ async fn test_utxo_passive_management() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         })
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
 
-    check!(printr "alice 500000" context.verify_deposit(
+    check!(printr "alice 500000" context.deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -1454,13 +1478,13 @@ async fn test_utxo_passive_management() {
         1,
         vec![]
     ));
-    check!(printr "alice 60000" context.verify_deposit(
+    check!(printr "alice 60000" context.deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -1641,7 +1665,9 @@ async fn test_utxo_passive_management() {
     check!(context.do_withdraw("alice", "bridge", withdraw_amount, make_withdraw_msg()));
 }
 
+// Nonzero deposit fee in setup → fee-adjusted assertions; Bitcoin build only.
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_cancel_withdraw() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -1654,19 +1680,19 @@ async fn test_cancel_withdraw() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         })
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
-    check!(printr "alice 500000" context.verify_deposit(
+    check!(printr "alice 500000" context.deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -1878,7 +1904,9 @@ async fn test_cancel_withdraw() {
     );
 }
 
+// Nonzero deposit fee in setup → fee-adjusted assertions; Bitcoin build only.
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_cancel_withdraw2() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -1891,19 +1919,19 @@ async fn test_cancel_withdraw2() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         })
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
-    check!(printr "alice 500000" context.verify_deposit(
+    check!(printr "alice 500000" context.deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -2064,7 +2092,9 @@ async fn test_cancel_withdraw2() {
         .is_empty());
 }
 
+// Nonzero deposit fee in setup → fee-adjusted assertions; Bitcoin build only.
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_utxo_active_management() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -2077,20 +2107,20 @@ async fn test_utxo_active_management() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         })
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
 
-    check!(printr "alice 500000" context.verify_deposit(
+    check!(printr "alice 500000" context.deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -2109,13 +2139,13 @@ async fn test_utxo_active_management() {
         1,
         vec![]
     ));
-    check!(printr "alice 60000" context.verify_deposit(
+    check!(printr "alice 60000" context.deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -2436,7 +2466,9 @@ async fn test_utxo_active_management() {
     );
 }
 
+// Nonzero deposit fee in setup → fee-adjusted assertions; Bitcoin build only.
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_utxo_active_management2() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -2449,20 +2481,20 @@ async fn test_utxo_active_management2() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         })
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
 
-    check!(printr "alice 500000" context.verify_deposit(
+    check!(printr "alice 500000" context.deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -2481,13 +2513,13 @@ async fn test_utxo_active_management2() {
         1,
         vec![]
     ));
-    check!(printr "alice 60000" context.verify_deposit(
+    check!(printr "alice 60000" context.deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -2657,7 +2689,7 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         })
         .await
@@ -2671,7 +2703,7 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
                 recipient_id: context.get_account_by_name("alice").sdk_id(),
                 post_actions: None,
                 extra_msg: None,
-                safe_deposit: None,
+                safe_deposit: user_safe_deposit(),
                 refund_address: None,
             },
             "tx_bytes": generate_transaction_bytes(
@@ -2706,7 +2738,7 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
                 recipient_id: context.get_account_by_name("alice").sdk_id(),
                 post_actions: None,
                 extra_msg: None,
-                safe_deposit: None,
+                safe_deposit: user_safe_deposit(),
                 refund_address: None,
             },
             "tx_bytes": generate_transaction_bytes(
@@ -2792,13 +2824,18 @@ async fn test_verify_deposit_v2() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         })
         .await
         .unwrap();
 
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+
+    // On Zcash the deposit dispatches to the safe flow (safe_deposit is Some),
+    // which requires the recipient to be registered first.
+    #[cfg(feature = "zcash")]
+    check!(context.storage_deposit("nbtc", "alice"));
 
     // verify_deposit_v2: proof is a nested JSON object
     check!(printr "verify_deposit_v2" context.verify_deposit_v2(
@@ -2807,7 +2844,7 @@ async fn test_verify_deposit_v2() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -2882,20 +2919,20 @@ async fn test_verify_withdraw_v2() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         })
         .await
         .unwrap();
 
     // 1. Deposit via v1 to get UTXOs and nBTC
-    check!(context.verify_deposit(
+    check!(context.deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: user_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -2991,14 +3028,14 @@ async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
         recipient_id: context.get_account_by_name("bob").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: user_safe_deposit(),
         refund_address: None,
     };
     let bob_deposit_address = context
         .get_user_deposit_address(bob_deposit_msg.clone())
         .await
         .unwrap();
-    check!(context.verify_deposit(
+    check!(context.deposit_v2(
         "relayer",
         bob_deposit_msg,
         generate_transaction_bytes(
@@ -3051,23 +3088,21 @@ async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
         ],
     );
     let vout: u32 = 0;
-    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
 
     // Sanity: alice is NOT registered on nBTC yet.
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
 
-    // safe_verify_deposit succeeds at the transaction level but safe_mint
-    // returns U128(0) because alice is not registered; safe_mint_callback
-    // then burns the mint_amount from the bridge.
+    // verify_deposit_v2 dispatches to the safe flow (safe_deposit is Some) and
+    // succeeds at the transaction level, but safe_mint returns U128(0) because
+    // alice is not registered; safe_mint_callback then burns the mint_amount
+    // from the bridge. No storage_deposit here on purpose.
     let outcome = context
-        .safe_verify_deposit(
+        .verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![],
+            mock_proof(),
         )
         .await
         .unwrap();
@@ -3096,15 +3131,13 @@ async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
     // deposit can be retried once alice registers.
     check!(context.storage_deposit("nbtc", "alice"));
     check!(
-        print "retry safe_verify_deposit"
-        context.safe_verify_deposit(
+        print "retry verify_deposit_v2"
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg,
             tx_bytes,
             vout,
-            blockhash,
-            1,
-            vec![],
+            mock_proof(),
         )
     );
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
@@ -3134,7 +3167,7 @@ async fn test_verify_deposit_post_action_to_bridge_is_rejected() {
         recipient_id: context.get_account_by_name("bob").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: user_safe_deposit(),
         refund_address: None,
     };
     let bob_addr = context
@@ -3142,7 +3175,7 @@ async fn test_verify_deposit_post_action_to_bridge_is_rejected() {
         .await
         .unwrap();
     const SEED_UTXO_AMOUNT: u128 = 200_000;
-    check!(context.verify_deposit(
+    check!(context.deposit_v2(
         "relayer",
         bob_deposit_msg,
         generate_transaction_bytes(
@@ -3231,7 +3264,7 @@ async fn test_verify_deposit_post_action_to_bridge_is_rejected() {
             gas: Some(Gas::from_tgas(100)),
         }]),
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: user_safe_deposit(),
         refund_address: None,
     };
 
@@ -3241,7 +3274,7 @@ async fn test_verify_deposit_post_action_to_bridge_is_rejected() {
         .unwrap();
     check!(
         printr "verify_deposit with init-withdraw post_action"
-        context.verify_deposit(
+        context.deposit_v2(
             "relayer",
             alice_deposit_msg,
             generate_transaction_bytes(

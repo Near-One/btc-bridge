@@ -472,6 +472,14 @@ impl Contract {
     }
 
     pub fn get_user_deposit_address(&self, deposit_msg: DepositMsg) -> String {
+        // On Zcash only safe deposits can be minted (the nZec token implements
+        // only `safe_mint`), so refuse to hand out an address for a standard
+        // deposit that could never be completed.
+        #[cfg(feature = "zcash")]
+        require!(
+            deposit_msg.safe_deposit.is_some(),
+            "Zcash supports only safe deposits: set deposit_msg.safe_deposit (standard deposit cannot be minted)"
+        );
         let path = get_deposit_path(&deposit_msg);
         let deposit_address = self.generate_utxo_chain_address(&path).to_string();
         Event::LogDepositAddress {

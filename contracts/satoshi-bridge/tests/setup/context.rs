@@ -955,6 +955,45 @@ impl Context {
             .await
     }
 
+    /// Deposit through `verify_deposit_v2`, building a mock inclusion proof from
+    /// the classic (blockhash, tx_index, merkle_proof) args so call sites read
+    /// like the old `verify_deposit`. `verify_deposit_v2` dispatches to the safe
+    /// or standard flow based on `deposit_msg.safe_deposit`; for safe deposits
+    /// the recipient is registered first so `safe_mint` succeeds.
+    pub async fn deposit_v2(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        tx_bytes: Vec<u8>,
+        vout: u32,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+    ) -> Result<ExecutionFinalResult> {
+        if deposit_msg.safe_deposit.is_some() {
+            let _ = self
+                .root
+                .call(self.get_account_by_name("nbtc").id(), "storage_deposit")
+                .args_json(json!({
+                    "account_id": deposit_msg.recipient_id,
+                    "registration_only": true,
+                }))
+                .deposit(NearToken::from_near(1))
+                .max_gas()
+                .transact()
+                .await;
+        }
+        let proof = json!({
+            "tx_block_blockhash": tx_block_blockhash,
+            "tx_index": tx_index,
+            "merkle_proof": merkle_proof,
+            "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
+            "coinbase_merkle_proof": Vec::<String>::new(),
+        });
+        self.verify_deposit_v2(user, deposit_msg, tx_bytes, vout, proof)
+            .await
+    }
+
     pub async fn verify_withdraw_v2(
         &self,
         user: &str,

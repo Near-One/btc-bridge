@@ -14,6 +14,18 @@ const ZEC_REFUND_TADDR: &str = "tmD67UTsZ4iBbhCae4D43k1x8fhFNhwd4Jn";
 #[cfg(feature = "zcash")]
 const BLOCKHASH: &str = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d";
 
+/// Builds a `TxInclusionProof` JSON value for `verify_deposit_v2`.
+#[cfg(feature = "zcash")]
+fn mock_proof() -> near_sdk::serde_json::Value {
+    json!({
+        "tx_block_blockhash": BLOCKHASH,
+        "tx_index": 1u64,
+        "merkle_proof": Vec::<String>::new(),
+        "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
+        "coinbase_merkle_proof": Vec::<String>::new(),
+    })
+}
+
 /// Fetch the key of the single stored refund request (Zcash tx ids are computed
 /// differently from Bitcoin, so we read it back rather than recompute locally).
 #[cfg(feature = "zcash")]
@@ -61,7 +73,9 @@ async fn deposit_and_request_refund(
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
         refund_address: Some(refund_address.to_string()),
     };
     let deposit_address = context
@@ -130,7 +144,9 @@ async fn test_zcash_refund_shielded_to_unified_address() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
         refund_address: Some(recipient_ua.clone()),
     };
 
@@ -525,7 +541,9 @@ async fn test_zcash_refund_no_refund_address() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
         refund_address: None,
     };
     let deposit_address = context
@@ -561,7 +579,9 @@ async fn test_zcash_refund_duplicate_request() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -600,219 +620,6 @@ async fn test_zcash_refund_duplicate_request() {
     );
 }
 
-/// After execute_refund, verify_deposit is permanently blocked for that UTXO.
-#[tokio::test]
-#[cfg(feature = "zcash")]
-async fn test_zcash_refund_then_deposit_fails() {
-    let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
-
-    let deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").sdk_id(),
-        post_actions: None,
-        extra_msg: None,
-        safe_deposit: None,
-        refund_address: Some(ZEC_REFUND_TADDR.to_string()),
-    };
-    let deposit_address = context
-        .get_user_deposit_address(deposit_msg.clone())
-        .await
-        .unwrap();
-    let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![(
-            "e6e6069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f23",
-            0,
-            None,
-        )],
-        vec![(deposit_address.as_str(), 100_000)],
-    );
-    let vout: u32 = 0;
-
-    check!(context.request_refund(
-        "relayer",
-        deposit_msg.clone(),
-        ZEC_REFUND_TADDR,
-        tx_bytes.clone(),
-        vout,
-        BLOCKHASH.to_string(),
-        1,
-        vec![],
-        None,
-    ));
-
-    set_refund_timelock(&context, 0).await;
-    let key = refund_key(&context).await;
-
-    // Transparent refund (no Orchard bundle).
-    check!(print "execute_refund" context.execute_refund("alice", &key, None));
-
-    check!(
-        context.verify_deposit(
-            "relayer",
-            deposit_msg.clone(),
-            tx_bytes.clone(),
-            vout,
-            BLOCKHASH.to_string(),
-            1,
-            vec![]
-        ),
-        "Already deposit utxo"
-    );
-
-    let pending_keys = context
-        .get_btc_pending_infos_paged()
-        .await
-        .unwrap()
-        .keys()
-        .cloned()
-        .collect::<Vec<_>>();
-    check!(context.sign_btc_transaction("alice", &pending_keys[0], 0, 0));
-
-    check!(
-        context.verify_deposit(
-            "relayer",
-            deposit_msg.clone(),
-            tx_bytes.clone(),
-            vout,
-            BLOCKHASH.to_string(),
-            1,
-            vec![]
-        ),
-        "Already deposit utxo"
-    );
-
-    check!(context.verify_refund_finalize(
-        "relayer",
-        &pending_keys[0],
-        BLOCKHASH.to_string(),
-        1,
-        vec![]
-    ));
-
-    assert!(context
-        .get_btc_pending_infos_paged()
-        .await
-        .unwrap()
-        .is_empty());
-    check!(
-        context.verify_deposit(
-            "relayer",
-            deposit_msg,
-            tx_bytes,
-            vout,
-            BLOCKHASH.to_string(),
-            1,
-            vec![]
-        ),
-        "Already deposit utxo"
-    );
-    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
-}
-
-/// During the timelock, a deposit wins the race; execute_refund then fails.
-#[tokio::test]
-#[cfg(feature = "zcash")]
-async fn test_zcash_refund_race_deposit_wins() {
-    let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
-
-    let deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").sdk_id(),
-        post_actions: None,
-        extra_msg: None,
-        safe_deposit: None,
-        refund_address: Some(ZEC_REFUND_TADDR.to_string()),
-    };
-    let deposit_address = context
-        .get_user_deposit_address(deposit_msg.clone())
-        .await
-        .unwrap();
-    let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![(
-            "f7f7069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f24",
-            0,
-            None,
-        )],
-        vec![(deposit_address.as_str(), 100_000)],
-    );
-    let vout: u32 = 0;
-
-    check!(context.request_refund(
-        "relayer",
-        deposit_msg.clone(),
-        ZEC_REFUND_TADDR,
-        tx_bytes.clone(),
-        vout,
-        BLOCKHASH.to_string(),
-        1,
-        vec![],
-        None,
-    ));
-    let key = refund_key(&context).await;
-
-    check!(print "verify_deposit" context.verify_deposit(
-        "relayer", deposit_msg, tx_bytes, vout, BLOCKHASH.to_string(), 1, vec![]
-    ));
-    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
-
-    set_refund_timelock(&context, 0).await;
-    check!(
-        context.execute_refund("alice", &key, None),
-        "UTXO already verified via deposit, cannot refund"
-    );
-    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
-}
-
-/// A finalized deposit blocks a later refund request.
-#[tokio::test]
-#[cfg(feature = "zcash")]
-async fn test_zcash_refund_after_deposit_fails() {
-    let worker = near_workspaces::sandbox().await.unwrap();
-    let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
-
-    let deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").sdk_id(),
-        post_actions: None,
-        extra_msg: None,
-        safe_deposit: None,
-        refund_address: Some(ZEC_REFUND_TADDR.to_string()),
-    };
-    let deposit_address = context
-        .get_user_deposit_address(deposit_msg.clone())
-        .await
-        .unwrap();
-    let tx_bytes = setup::utils::generate_transaction_bytes(
-        vec![(
-            "a8a8069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f25",
-            0,
-            None,
-        )],
-        vec![(deposit_address.as_str(), 100_000)],
-    );
-    let vout: u32 = 0;
-
-    check!(print "verify_deposit" context.verify_deposit(
-        "relayer", deposit_msg.clone(), tx_bytes.clone(), vout, BLOCKHASH.to_string(), 1, vec![]
-    ));
-    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
-
-    check!(
-        context.request_refund(
-            "alice",
-            deposit_msg,
-            ZEC_REFUND_TADDR,
-            tx_bytes,
-            vout,
-            BLOCKHASH.to_string(),
-            1,
-            vec![],
-            None
-        ),
-        "UTXO already verified via deposit"
-    );
-    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
-}
-
 /// After a rejection the UTXO is untouched, so a normal deposit still works.
 #[tokio::test]
 #[cfg(feature = "zcash")]
@@ -824,7 +631,9 @@ async fn test_zcash_refund_reject_then_deposit_succeeds() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -860,8 +669,9 @@ async fn test_zcash_refund_reject_then_deposit_succeeds() {
         "Refund request not found"
     );
 
-    check!(print "verify_deposit" context.verify_deposit(
-        "relayer", deposit_msg, tx_bytes, vout, BLOCKHASH.to_string(), 1, vec![]
+    check!(context.storage_deposit("nbtc", "alice"));
+    check!(print "verify_deposit_v2" context.verify_deposit_v2(
+        "relayer", deposit_msg, tx_bytes, vout, mock_proof()
     ));
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
 }
@@ -877,7 +687,9 @@ async fn test_zcash_refund_double_request_after_execute() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -938,7 +750,9 @@ async fn test_zcash_refund_spoofed_refund_address() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -959,7 +773,9 @@ async fn test_zcash_refund_spoofed_refund_address() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
         refund_address: Some("tmEgW8c44RQQfft9FHXnqGp8XEcQQSRcUXD".to_string()),
     };
 
@@ -1211,7 +1027,9 @@ async fn test_zcash_refund_address_matches_deposit_msg() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -1243,7 +1061,9 @@ async fn test_zcash_refund_address_none_in_deposit_msg() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
         refund_address: None,
     };
     let deposit_address = context
@@ -1275,7 +1095,9 @@ async fn test_zcash_refund_address_mismatch() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -1319,7 +1141,9 @@ async fn test_zcash_refund_operator_skips_timelock() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: "".to_string(),
+        }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context

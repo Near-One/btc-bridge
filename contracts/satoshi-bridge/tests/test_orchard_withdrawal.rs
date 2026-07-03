@@ -6,6 +6,18 @@ use bitcoin::{Amount, TxOut};
 #[cfg(feature = "zcash")]
 use satoshi_bridge::network::{Address, Chain};
 
+/// Builds a `TxInclusionProof` JSON value for `verify_deposit_v2`.
+#[cfg(feature = "zcash")]
+fn mock_proof() -> near_sdk::serde_json::Value {
+    near_sdk::serde_json::json!({
+        "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
+        "tx_index": 1u64,
+        "merkle_proof": Vec::<String>::new(),
+        "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
+        "coinbase_merkle_proof": Vec::<String>::new(),
+    })
+}
+
 #[tokio::test]
 #[cfg(feature = "zcash")]
 async fn test_orchard_withdrawal_with_ovk_validation() {
@@ -31,7 +43,9 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+                msg: "".to_string(),
+            }),
             refund_address: None,
         })
         .await
@@ -58,20 +72,22 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
     );
 
     // Verify the deposit using Zcash transaction
-    check!(context.verify_deposit(
+    check!(context.storage_deposit("nbtc", "alice"));
+
+    check!(context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+                msg: "".to_string(),
+            }),
             refund_address: None,
         },
         zcash_tx_bytes,
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        mock_proof()
     ));
 
     println!("✅ Deposit verified successfully");
@@ -171,7 +187,9 @@ async fn test_orchard_withdrawal_to_shielded_only_ua() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+                msg: "".to_string(),
+            }),
             refund_address: None,
         })
         .await
@@ -189,20 +207,22 @@ async fn test_orchard_withdrawal_to_shielded_only_ua() {
         ],
     );
 
-    check!(context.verify_deposit(
+    check!(context.storage_deposit("nbtc", "alice"));
+
+    check!(context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+                msg: "".to_string(),
+            }),
             refund_address: None,
         },
         zcash_tx_bytes,
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        mock_proof()
     ));
 
     let utxos_keys = context
@@ -287,7 +307,9 @@ async fn test_orchard_withdrawal_amount_mismatch() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+                msg: "".to_string(),
+            }),
             refund_address: None,
         })
         .await
@@ -306,20 +328,22 @@ async fn test_orchard_withdrawal_amount_mismatch() {
         ],
     );
 
-    check!(context.verify_deposit(
+    check!(context.storage_deposit("nbtc", "alice"));
+
+    check!(context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+                msg: "".to_string(),
+            }),
             refund_address: None,
         },
         zcash_tx_bytes,
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        mock_proof()
     ));
 
     let utxos_keys = context
