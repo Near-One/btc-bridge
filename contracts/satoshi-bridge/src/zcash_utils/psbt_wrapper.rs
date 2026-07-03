@@ -501,29 +501,43 @@ impl PsbtWrapper {
     }
 
     pub fn get_min_fee(&self) -> Zatoshis {
-        let fee_rule = zcash_primitives::transaction::fees::zip317::FeeRule::standard();
         let orchard_action_count = self
             .orchard
             .as_ref()
             .map(|orchard| orchard.bundle.actions().len())
             .unwrap_or(0);
 
-        fee_rule
-            .fee_required(
-                &zcash_protocol::consensus::MainNetwork,
-                BlockHeight::from_u32(0u32),
-                vec![InputSize::STANDARD_P2PKH; self.vin.len()],
-                self.vout.iter().map(|i| i.serialized_size()),
-                0, // sapling_input_count
-                0, // sapling_output_count
-                orchard_action_count,
-            )
-            .unwrap()
+        zip317_min_fee(
+            self.vin.len(),
+            self.vout.iter().map(|i| i.serialized_size()).collect(),
+            orchard_action_count,
+        )
     }
 
     pub fn get_recipient_address(&self) -> Option<String> {
         self.recipient_address.clone()
     }
+}
+
+/// ZIP-317 minimum fee for a transaction with the given structure (`input_count`
+/// standard P2PKH inputs, the given transparent output sizes and Orchard action
+/// count). Height/branch_id do not affect the fee.
+pub(crate) fn zip317_min_fee(
+    input_count: usize,
+    transparent_output_sizes: Vec<usize>,
+    orchard_action_count: usize,
+) -> Zatoshis {
+    zcash_primitives::transaction::fees::zip317::FeeRule::standard()
+        .fee_required(
+            &zcash_protocol::consensus::MainNetwork,
+            BlockHeight::from_u32(0u32),
+            vec![InputSize::STANDARD_P2PKH; input_count],
+            transparent_output_sizes,
+            0, // sapling_input_count
+            0, // sapling_output_count
+            orchard_action_count,
+        )
+        .unwrap()
 }
 
 fn get_branch_id(current_height: u32, config: &Config) -> BranchId {

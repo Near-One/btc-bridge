@@ -546,7 +546,7 @@ impl Contract {
             "Refund request already exists for this UTXO"
         );
 
-        let resolved_gas_fee = gas_fee.unwrap_or(config.max_btc_gas_fee);
+        let resolved_gas_fee = gas_fee.unwrap_or_else(|| self.get_refund_gas_fee());
         require!(
             resolved_gas_fee < amount,
             "Gas fee must be less than deposit amount"
