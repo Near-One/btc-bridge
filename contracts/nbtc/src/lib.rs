@@ -123,13 +123,6 @@ impl Contract {
         }
     }
 
-    pub fn migration_mint(&mut self, entries: Vec<(AccountId, U128)>) {
-        self.assert_bridge();
-        for (account_id, amount) in entries {
-            self.mint_inner(&account_id, amount);
-        }
-    }
-
     pub fn mint(
         &mut self,
         mint_account_id: AccountId,
