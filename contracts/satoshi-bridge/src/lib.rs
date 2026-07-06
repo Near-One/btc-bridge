@@ -109,6 +109,7 @@ pub enum Role {
     UnrestrictedRelayer,
     RelayerManager,
     RefundOperator,
+    UnpauseManager,
 }
 
 /// Transaction inclusion proof with coinbase verification (v2).
@@ -158,7 +159,7 @@ pub enum VersionedContractData {
 #[near(contract_state)]
 #[derive(Pausable, Upgradable, PanicOnDefault)]
 #[access_control(role_type(Role))]
-#[pausable(manager_roles(Role::PauseManager))]
+#[pausable(pause_roles(Role::PauseManager), unpause_roles(Role::UnpauseManager))]
 #[upgradable(access_control_roles(
     code_stagers(Role::UpgradableCodeStager, Role::DAO),
     code_deployers(Role::UpgradableCodeDeployer, Role::DAO),
@@ -218,6 +219,7 @@ impl Contract {
         contract.acl_init_super_admin(env::predecessor_account_id());
         contract.acl_grant_role(Role::DAO.into(), env::predecessor_account_id());
         contract.acl_grant_role(Role::PauseManager.into(), env::predecessor_account_id());
+        contract.acl_grant_role(Role::UnpauseManager.into(), env::predecessor_account_id());
 
         contract.internal_set_account(
             &env::predecessor_account_id(),
