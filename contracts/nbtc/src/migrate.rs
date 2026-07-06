@@ -3,7 +3,9 @@ use crate::{
 };
 use near_contract_standards::fungible_token::{metadata::FungibleTokenMetadata, FungibleToken};
 use near_sdk::borsh::{self, BorshDeserialize};
-use near_sdk::{collections::LazyOption, env, near, require, store::Lazy, AccountId};
+use near_sdk::{
+    collections::LazyOption, env, near, require, store::Lazy, AccountId, Promise, PublicKey,
+};
 
 const STATE_KEY: &[u8] = b"STATE";
 const OWNABLE_KEY: &[u8] = b"__OWNER__";
@@ -18,6 +20,12 @@ pub struct NearIntentsState {
 impl Contract {
     pub fn version(&self) -> String {
         env!("CARGO_PKG_VERSION").to_owned()
+    }
+
+    /// Attach a new full access to the current contract.
+    pub fn attach_full_access_key(&mut self, public_key: PublicKey) -> Promise {
+        self.assert_controller();
+        Promise::new(env::current_account_id()).add_full_access_key(public_key)
     }
 
     #[private]
