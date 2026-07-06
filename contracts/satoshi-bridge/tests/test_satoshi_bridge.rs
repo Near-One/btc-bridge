@@ -889,6 +889,132 @@ async fn test_directly_withdraw() {
 }
 
 #[tokio::test]
+#[cfg(feature = "zcash")]
+async fn test_directly_withdraw_to_p2sh() {
+    let p2sh_target_address = "t26YqBabLj2kpZUPd3xCBhVHucMSV83GWSw";
+
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    check!(context.set_deposit_bridge_fee(10000, 0, 9000));
+    check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
+    let config = context.get_bridge_config().await.unwrap();
+    let withdraw_change_address = context.get_change_address().await.unwrap();
+    let alice_btc_deposit_address = context
+        .get_user_deposit_address(DepositMsg {
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
+            post_actions: None,
+            extra_msg: None,
+            safe_deposit: None,
+            refund_address: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+    check!(printr "alice 500000" context.verify_deposit(
+        "relayer",
+        DepositMsg {
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
+            post_actions: None,
+            extra_msg: None,
+            safe_deposit: None,
+            refund_address: None,
+        },
+        generate_transaction_bytes(
+            vec![(
+                "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
+                1,
+                None,
+            ),],
+            vec![
+                ("1MgiBKohM2poApYamQadp21vJrNyh5T19G", 90000),
+                (alice_btc_deposit_address.as_str(), 500000),
+            ],
+        ),
+        1,
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+        1,
+        vec![]
+    ));
+
+    check!(context.storage_deposit("nbtc", "bob"));
+    check!(context.ft_transfer("alice", "bob", 200000));
+    assert_eq!(context.ft_balance_of("bob").await.unwrap().0, 200000);
+
+    let utxos_keys = context
+        .get_utxos_paged()
+        .await
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<String>>();
+    let first_utxo = utxos_keys[0].split('@').collect::<Vec<_>>();
+    let withdraw_amount = 200000;
+    let btc_gas_fee = 10000;
+    let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
+    check!(print "do_withdraw p2sh" context.do_withdraw("bob", "bridge", withdraw_amount, TokenReceiverMessage::Withdraw {
+        target_btc_address: p2sh_target_address.to_string(),
+        input: vec![OutPoint {
+            txid: first_utxo[0].parse().unwrap(),
+            vout: first_utxo[1].parse().unwrap(),
+        }],
+        output: vec![TxOut {
+            value: Amount::from_sat((withdraw_amount - btc_gas_fee - withdraw_fee) as u64),
+            script_pubkey: Address::parse(p2sh_target_address, get_chain())
+            .expect("Invalid btc address")
+            .script_pubkey().expect("Failed to get script pubkey")
+        },TxOut {
+            value: Amount::from_sat(320000),
+            script_pubkey: Address::parse(withdraw_change_address.as_str(), get_chain())
+            .expect("Invalid btc address")
+            .script_pubkey().expect("Failed to get script pubkey")
+        }],
+        max_gas_fee: None,
+        chain_specific_data: None,
+    }));
+
+    let target_output_script = Address::parse(p2sh_target_address, get_chain())
+        .unwrap()
+        .script_pubkey()
+        .unwrap();
+    assert!(target_output_script.is_p2sh());
+
+    let btc_pending_sign_txs = context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    check!(print "sign_btc_transaction" context.sign_btc_transaction("relayer", &btc_pending_sign_txs[0], 0, 0));
+    let btc_pending_verify_txs = context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    check!(print "verify_withdraw" context.verify_withdraw(
+        "relayer",
+        &btc_pending_verify_txs[0],
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+        1,
+        vec![]
+    ));
+    assert_eq!(
+        context.ft_balance_of("relayer").await.unwrap().0,
+        1000 + 2000
+    );
+    assert_eq!(
+        context
+            .get_metadata()
+            .await
+            .unwrap()
+            .cur_available_protocol_fee,
+        9000 + 18000
+    );
+}
+
+#[tokio::test]
 async fn test_one_click() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;

@@ -105,11 +105,11 @@ async fn deposit_and_request_refund(
 /// refunded to a unified address via an Orchard bundle.
 ///
 /// deposit (150000) ──request_refund(refund_address = UA)──▶ refund request
-///   ──execute_refund(Orchard bundle, 100000)──▶ refund BTCPendingInfo
+///   ──execute_refund(Orchard bundle, 140000)──▶ refund BTCPendingInfo
 ///   ──sign──▶ pending_verify ──verify_refund_finalize──▶ cleaned up
 ///
-/// gas_fee defaults to config.max_btc_gas_fee (50000), so the Orchard output is
-/// 150000 - 50000 = 100000 (a cached bundle amount).
+/// With no explicit gas_fee, the default is the ZIP-317 minimum (10000), so the
+/// Orchard output must be 150000 - 10000 = 140000.
 #[tokio::test]
 #[cfg(feature = "zcash")]
 async fn test_zcash_refund_shielded_to_unified_address() {
@@ -119,8 +119,8 @@ async fn test_zcash_refund_shielded_to_unified_address() {
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
 
     let deposit_amount: u64 = 150_000;
-    let gas_fee: u64 = 50_000; // config.max_btc_gas_fee default
-    let refund_amount: u64 = deposit_amount - gas_fee; // 100000, cached bundle
+    let gas_fee: u64 = 10_000; // default = ZIP-317 minimum
+    let refund_amount: u64 = deposit_amount - gas_fee; // 140000
 
     // Unified address (Orchard + P2PKH receivers) + Orchard bundle paying `refund_amount`.
     let (recipient_ua, bundle_hex) = setup::orchard::get_or_gen_bundle(refund_amount);
@@ -388,6 +388,106 @@ async fn test_zcash_refund_transparent() {
         .unwrap()
         .is_empty());
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+}
+
+#[tokio::test]
+#[cfg(feature = "zcash")]
+async fn test_zcash_refund_transparent_p2sh() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+
+    let refund_p2sh_addr = "t26YqBabLj2kpZUPd3xCBhVHucMSV83GWSw";
+    let key = deposit_and_request_refund(&context, refund_p2sh_addr, 150_000).await;
+
+    check!(
+        print "execute_refund (transparent P2SH)"
+        context.execute_refund("root", &key, None)
+    );
+
+    let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
+    assert_eq!(pending_infos.len(), 1);
+    let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
+    let pending_values = pending_infos.values().cloned().collect::<Vec<_>>();
+    pending_values[0].assert_pending_sign();
+
+    check!(context.sign_btc_transaction("alice", &pending_keys[0], 0, 0));
+
+    let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
+    let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
+    let pending_values = pending_infos.values().cloned().collect::<Vec<_>>();
+    pending_values[0].assert_pending_verify();
+
+    check!(context.verify_refund_finalize(
+        "relayer",
+        &pending_keys[0],
+        BLOCKHASH.to_string(),
+        1,
+        vec![],
+    ));
+
+    assert!(context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+}
+
+/// Transparent refund to a TEX address (ZIP-320), exercised on both Zcash
+/// networks: the testnet HRP (`textest1…`) and the mainnet HRP (`tex1…`). Both
+/// strings encode the same 20-byte P2PKH hash, so the two cases differ only by
+/// network.
+#[tokio::test]
+#[cfg(feature = "zcash")]
+async fn test_zcash_refund_transparent_tex_address() {
+    // (chain, TEX address for that network).
+    let cases = [
+        (
+            "ZcashTestnet",
+            "textest1qyqszqgpqyqszqgpqyqszqgpqyqszqgpfcjgfy",
+        ),
+        ("ZcashMainnet", "tex1qyqszqgpqyqszqgpqyqszqgpqyqszqgpskd7vl"),
+    ];
+
+    for (chain, refund_tex) in cases {
+        let worker = near_workspaces::sandbox().await.unwrap();
+        let context = Context::new(&worker, Some(chain.to_string())).await;
+
+        let key = deposit_and_request_refund(&context, refund_tex, 150_000).await;
+
+        check!(
+            print "execute_refund (transparent, TEX)"
+            context.execute_refund("root", &key, None)
+        );
+
+        let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
+        assert_eq!(pending_infos.len(), 1);
+        let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
+        let pending_values = pending_infos.values().cloned().collect::<Vec<_>>();
+        pending_values[0].assert_pending_sign();
+
+        check!(context.sign_btc_transaction("alice", &pending_keys[0], 0, 0));
+
+        let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
+        let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
+        let pending_values = pending_infos.values().cloned().collect::<Vec<_>>();
+        pending_values[0].assert_pending_verify();
+
+        check!(context.verify_refund_finalize(
+            "relayer",
+            &pending_keys[0],
+            BLOCKHASH.to_string(),
+            1,
+            vec![],
+        ));
+
+        assert!(context
+            .get_btc_pending_infos_paged()
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+    }
 }
 
 /// `execute_refund` keeps the refund request (marking it `executed`) instead of
