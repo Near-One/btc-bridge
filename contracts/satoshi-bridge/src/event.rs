@@ -113,11 +113,6 @@ pub enum Event<'a> {
         accounts: usize,
         total_amount: U128,
     },
-    TokenMigrationRolledBack {
-        new_token: &'a AccountId,
-        accounts: usize,
-        total_amount: U128,
-    },
 }
 
 impl Event<'_> {

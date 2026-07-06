@@ -23,6 +23,6 @@ pub trait NBtc {
         relayer_fee: U128,
     );
     fn safe_mint(&mut self, account_id: AccountId, amount: U128, msg: Option<String>);
-    fn migration_burn(&mut self, accounts: Vec<AccountId>) -> Vec<(AccountId, U128)>;
-    fn migration_mint(&mut self, entries: Vec<(AccountId, U128)>);
+    fn ft_balance_of(&self, account_id: AccountId) -> U128;
+    fn ft_total_supply(&self) -> U128;
 }
