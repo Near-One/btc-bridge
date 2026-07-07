@@ -25,5 +25,5 @@ near-sdk.workspace = true
 near-contract-standards.workspace = true
 
 [dev-dependencies]
-near-workspaces = { version = "0.20", features = ["unstable"] }
+near-workspaces = { version = "0.22", features = ["unstable"] }
 tokio = { version = "1.12.0", features = ["full"] }
