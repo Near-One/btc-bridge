@@ -2769,10 +2769,12 @@ dependencies = [
 
 [[package]]
 name = "nbtc"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "near-contract-standards",
  "near-sdk",
+ "near-workspaces",
+ "tokio",
 ]
 
 [[package]]

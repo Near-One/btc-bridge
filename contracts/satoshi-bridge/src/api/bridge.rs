@@ -168,6 +168,36 @@ impl Contract {
         )
     }
 
+    #[access_control_any(roles(Role::MigrationOperator, Role::DAO))]
+    #[pause(except(roles(Role::DAO)))]
+    pub fn verify_migrate_deposit(
+        &mut self,
+        tx_bytes: Base64VecU8,
+        vout: usize,
+        proof: TxInclusionProof,
+    ) -> Promise {
+        self.internal_verify_migrate_deposit_entry(
+            tx_bytes.0,
+            vout,
+            proof.tx_block_blockhash,
+            proof.tx_index,
+            proof.merkle_proof,
+            Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
+        )
+    }
+
+    #[payable]
+    #[access_control_any(roles(Role::MigrationOperator, Role::DAO))]
+    #[pause(except(roles(Role::DAO)))]
+    pub fn migrate_to_new_token(
+        &mut self,
+        new_token: AccountId,
+        accounts: Vec<AccountId>,
+    ) -> Promise {
+        assert_one_yocto();
+        self.internal_migrate_to_new_token(new_token, accounts)
+    }
+
     /// Verify that the user's withdrawal has been successful, and burn the corresponding amount of tokens.
     ///
     /// # Deprecated

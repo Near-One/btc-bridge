@@ -9,13 +9,15 @@ use near_contract_standards::fungible_token::{
 use near_contract_standards::storage_management::{
     StorageBalance, StorageBalanceBounds, StorageManagement,
 };
-use near_sdk::borsh::BorshSerialize;
+use near_sdk::borsh::{self, BorshSerialize};
 use near_sdk::collections::LazyOption;
 use near_sdk::json_types::{Base64VecU8, U128};
 use near_sdk::{
     assert_one_yocto, env, log, near, require, AccountId, BorshStorageKey, Gas, NearToken,
     PanicOnDefault, PromiseOrValue,
 };
+
+mod migrate;
 
 #[derive(PanicOnDefault)]
 #[near(contract_state)]
@@ -31,6 +33,9 @@ const GAS_FOR_FT_TRANSFER_CALL: Gas = Gas::from_tgas(30);
 
 const OUTER_UPGRADE_GAS: Gas = Gas::from_tgas(15);
 const NO_DEPOSIT: NearToken = NearToken::from_yoctonear(0);
+
+const WITHDRAW_RELAYER_ADDRESS: &[u8] = b"WITHDRAW_RELAYER_ADDRESS";
+const WITHDRAW_MEMO_PREFIX: &str = "WITHDRAW_TO:";
 
 #[derive(BorshSerialize, BorshStorageKey)]
 #[borsh(crate = "near_sdk::borsh")]
@@ -176,6 +181,17 @@ impl Contract {
 impl FungibleTokenCore for Contract {
     #[payable]
     fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>) {
+        // Legacy bridging flow used by Near Intents
+        if receiver_id == env::current_account_id()
+            && memo
+                .as_ref()
+                .is_some_and(|m| m.starts_with(WITHDRAW_MEMO_PREFIX))
+        {
+            if let Some(withdraw_relayer) = Self::read_withdraw_relayer_address() {
+                return self.token.ft_transfer(withdraw_relayer, amount, memo);
+            }
+        }
+
         self.token.ft_transfer(receiver_id, amount, memo);
     }
 
@@ -291,7 +307,7 @@ impl Contract {
         }
         if let Some(decimals) = decimals {
             // Decimals can't be changed if it's already set.
-            if decimals != 0 {
+            if metadata.decimals == 0 {
                 metadata.decimals = decimals;
             }
         }
@@ -301,41 +317,14 @@ impl Contract {
 
         self.metadata.set(&metadata);
     }
-}
 
-#[near]
-impl Contract {
-    pub fn version(&self) -> String {
-        env!("CARGO_PKG_VERSION").to_owned()
-    }
-
-    #[private]
-    #[init(ignore_state)]
-    pub fn migrate() -> Self {
-        env::state_read().unwrap_or_else(|| env::panic_str("ERR_FAILED_TO_READ_STATE"))
-    }
-
-    pub fn upgrade_and_migrate(&self) {
+    /// # Panics
+    ///
+    /// This function will panic if serialization fails.
+    pub fn set_withdraw_relayer_address(&mut self, relayer: &AccountId) {
         self.assert_controller();
 
-        // Receive the code directly from the input to avoid the
-        // GAS overhead of deserializing parameters
-        let code = env::input().unwrap_or_else(|| env::panic_str("ERR_NO_INPUT"));
-        // Deploy the contract code.
-        let promise_id = env::promise_batch_create(&env::current_account_id());
-        env::promise_batch_action_deploy_contract(promise_id, &code);
-        // Call promise to migrate the state.
-        // Batched together to fail upgrade if migration fails.
-        env::promise_batch_action_function_call(
-            promise_id,
-            "migrate",
-            b"",
-            NO_DEPOSIT,
-            env::prepaid_gas()
-                .saturating_sub(env::used_gas())
-                .saturating_sub(OUTER_UPGRADE_GAS),
-        );
-        env::promise_return(promise_id);
+        env::storage_write(WITHDRAW_RELAYER_ADDRESS, &borsh::to_vec(relayer).unwrap());
     }
 }
 
@@ -360,6 +349,10 @@ impl Contract {
             memo: None,
         }
         .emit();
+    }
+
+    fn read_withdraw_relayer_address() -> Option<AccountId> {
+        env::storage_read(WITHDRAW_RELAYER_ADDRESS).and_then(|data| borsh::from_slice(&data).ok())
     }
 }
 
