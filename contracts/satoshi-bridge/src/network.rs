@@ -30,6 +30,7 @@ pub enum Chain {
 pub struct BranchIdUpdateBlockHeight {
     pub nu6_1_update: u32,
     pub nu6_2_update: u32,
+    pub nu6_3_update: u32,
 }
 
 #[cfg(feature = "zcash")]
@@ -39,10 +40,14 @@ impl BranchIdUpdateBlockHeight {
             Chain::ZcashMainnet => Self {
                 nu6_1_update: 3146400,
                 nu6_2_update: 3364600,
+                // NU6.3 mainnet activation height — 0 = not yet activated.
+                // Must be set to the ZIP-258 finalized height before deploying to mainnet.
+                nu6_3_update: 0,
             },
             Chain::ZcashTestnet => Self {
                 nu6_1_update: 3536500,
                 nu6_2_update: 4052000,
+                nu6_3_update: 4134000,
             },
             _ => unreachable!(),
         }
@@ -52,6 +57,10 @@ impl Chain {
     #[cfg(feature = "zcash")]
     pub fn get_branch_id(&self, block_height: u32) -> BranchId {
         let block_height_update = BranchIdUpdateBlockHeight::new(self);
+        if block_height_update.nu6_3_update != 0 && block_height >= block_height_update.nu6_3_update
+        {
+            return BranchId::Nu6_3;
+        }
         if block_height_update.nu6_2_update != 0 && block_height >= block_height_update.nu6_2_update
         {
             return BranchId::Nu6_2;
@@ -591,7 +600,7 @@ mod tests {
             BranchId::Nu6_2
         );
 
-        // Testnet: NU6.1 at 3_536_500, NU6.2 at 4_052_000.
+        // Testnet: NU6.1 at 3_536_500, NU6.2 at 4_052_000, NU6.3 at 4_134_000.
         assert_eq!(Chain::ZcashTestnet.get_branch_id(3_536_499), BranchId::Nu6);
         assert_eq!(
             Chain::ZcashTestnet.get_branch_id(3_536_500),
@@ -605,5 +614,17 @@ mod tests {
             Chain::ZcashTestnet.get_branch_id(4_052_000),
             BranchId::Nu6_2
         );
+        assert_eq!(
+            Chain::ZcashTestnet.get_branch_id(4_133_999),
+            BranchId::Nu6_2
+        );
+        assert_eq!(
+            Chain::ZcashTestnet.get_branch_id(4_134_000),
+            BranchId::Nu6_3
+        );
+
+        // Mainnet NU6.3 activation is not yet set (nu6_3_update = 0 sentinel),
+        // so any height still resolves to Nu6.2 until the height is populated.
+        assert_eq!(Chain::ZcashMainnet.get_branch_id(u32::MAX), BranchId::Nu6_2);
     }
 }

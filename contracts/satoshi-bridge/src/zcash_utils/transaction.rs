@@ -50,8 +50,11 @@ impl Transaction {
 
     pub fn decode(data: &[u8], _chain: &network::Chain) -> Result<Self, std::io::Error> {
         let mut cursor = std::io::Cursor::new(data);
-        let branch_id = BranchId::Nu6_2;
-        let tx = ZCashTransaction::read(&mut cursor, branch_id)?;
+        // `Transaction::read` reads the branch_id from the tx header for v5 and
+        // v6 transactions (which is all the bridge ever handles). The explicit
+        // `consensus_branch_id` argument only affects legacy v3/v4 parsing, so
+        // any post-NU5 variant is a safe placeholder here.
+        let tx = ZCashTransaction::read(&mut cursor, BranchId::Nu6_3)?;
         Ok(Self { inner_tx: tx })
     }
 
@@ -112,16 +115,31 @@ impl Transaction {
         let lock_time = 0;
         let expiry_height = BlockHeight::from_u32(expiry_height);
 
-        TransactionData::from_parts(
-            TxVersion::V5,
-            branch_id,
-            lock_time,
-            expiry_height,
-            Some(transparent_bundle),
-            None,
-            None,
-            None,
-        )
+        // NU6.3+ requires v6 transactions; the sighash preimage for transparent
+        // inputs is otherwise derived the same way, but the txid digest ties in
+        // the Ironwood bundle domain even when the bundle itself is empty.
+        if matches!(branch_id, BranchId::Nu6_3) {
+            TransactionData::from_parts_v6(
+                branch_id,
+                lock_time,
+                expiry_height,
+                Some(transparent_bundle),
+                None,
+                None,
+                None,
+            )
+        } else {
+            TransactionData::from_parts(
+                TxVersion::V5,
+                branch_id,
+                lock_time,
+                expiry_height,
+                Some(transparent_bundle),
+                None,
+                None,
+                None,
+            )
+        }
     }
 }
 

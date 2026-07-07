@@ -1,6 +1,6 @@
 use crate::network::Address;
 use crate::network::{Chain, OrchardRawAddress};
-use orchard::bundle::ProofSizeEnforcement;
+use orchard::bundle::BundleVersion;
 use orchard::Bundle;
 use std::io::Cursor;
 use zcash_primitives::transaction::components::orchard::read_v5_bundle;
@@ -37,11 +37,14 @@ impl ParsedOrchardBundle {
 
 pub fn extract_orchard_bundle(
     orchard_bundle_bytes: Option<Vec<u8>>,
-    proof_size_enforcement: ProofSizeEnforcement,
+    bundle_version: BundleVersion,
 ) -> Result<Option<ParsedOrchardBundle>, String> {
     if let Some(orchard_bundle_bytes) = orchard_bundle_bytes {
         let mut reader = Cursor::new(orchard_bundle_bytes);
-        let bundle = read_v5_bundle(&mut reader, proof_size_enforcement)
+        // `read_v5_bundle` is a misnomer at the framing level: it reads a bare
+        // Orchard-shaped bundle whose flag-byte grammar and circuit are picked by
+        // `bundle_version`. `ironwood_v3` uses this same reader.
+        let bundle = read_v5_bundle(&mut reader, bundle_version)
             .map_err(|_| "Failed to read orchard bundle".to_string())?
             .ok_or_else(|| "Orchard bundle is empty".to_string())?;
 

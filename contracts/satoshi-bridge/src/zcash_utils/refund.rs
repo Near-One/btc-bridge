@@ -49,13 +49,16 @@ impl Contract {
 
 /// ZIP-317 minimum for a transparent refund: one input, one standard P2PKH output.
 fn transparent_refund_min_fee() -> u128 {
-    zip317_min_fee(1, vec![P2PKH_STANDARD_OUTPUT_SIZE], 0).into_u64() as u128
+    zip317_min_fee(1, vec![P2PKH_STANDARD_OUTPUT_SIZE], 0, 0).into_u64() as u128
 }
 
 /// ZIP-317 minimum for a shielded refund: one input, no transparent output, and the
-/// fixed `EXPECTED_ACTIONS_NUMBER` Orchard actions.
+/// fixed `EXPECTED_ACTIONS_NUMBER` shielded actions. ZIP-317 rev.1 sums Orchard
+/// and Ironwood action counts, so the numeric fee is the same whether the
+/// refund is routed through the Orchard slot (pre-NU6.3) or the Ironwood slot
+/// (NU6.3+); we account for it in the Ironwood slot which covers both epochs.
 fn shielded_refund_min_fee() -> u128 {
-    zip317_min_fee(1, vec![], EXPECTED_ACTIONS_NUMBER).into_u64() as u128
+    zip317_min_fee(1, vec![], 0, EXPECTED_ACTIONS_NUMBER).into_u64() as u128
 }
 
 #[cfg(test)]

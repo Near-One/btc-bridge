@@ -5,10 +5,9 @@ use crate::*;
 use bitcoin::hashes::Hash;
 use bitcoin::{OutPoint, TxOut};
 use near_sdk::{env, require};
-use orchard::bundle::ProofSizeEnforcement;
+use orchard::bundle::BundleVersion;
 use std::io;
 use std::io::{Cursor, Read, Write};
-use zcash_primitives::transaction::components::orchard::read_v5_bundle;
 use zcash_primitives::transaction::fees::transparent::{InputSize, OutputView};
 use zcash_primitives::transaction::fees::FeeRule;
 use zcash_primitives::transaction::{TransactionData, TransactionDigest, TxVersion};
@@ -74,16 +73,17 @@ impl PsbtWrapper {
         let inputs =
             vec![ZcashTxOut::new(Zatoshis::from_u64(0).unwrap(), Script::default()); vin.len()];
 
+        let branch_id = get_branch_id(current_height, config);
         let orchard = orchard_policy::extract_orchard_bundle(
             orchard_bundle_bytes,
-            proof_size_enforcement(get_branch_id(current_height, config)),
+            bundle_version_for(branch_id),
         )
         .unwrap_or_else(|_| {
             env::panic_str("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle")
         });
 
         Self {
-            branch_id: get_branch_id(current_height, config),
+            branch_id,
             expiry_height,
             vout,
             vin,
@@ -129,16 +129,17 @@ impl PsbtWrapper {
                 .collect()
         };
 
+        let branch_id = get_branch_id(current_height, config);
         let orchard = orchard_policy::extract_orchard_bundle(
             orchard_bundle_bytes,
-            proof_size_enforcement(get_branch_id(current_height, config)),
+            bundle_version_for(branch_id),
         )
         .unwrap_or_else(|_| {
             env::panic_str("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle")
         });
 
         Self {
-            branch_id: get_branch_id(current_height, config),
+            branch_id,
             expiry_height,
             vin: original_psbt.vin,
             vout,
@@ -214,12 +215,13 @@ impl PsbtWrapper {
 
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::<u8>::new();
-        let version: u8 = 3;
+        let version: u8 = 4;
         buf.push(version);
         match self.branch_id {
             BranchId::Nu6 => buf.write_all(&[7u8; 1]).unwrap(),
             BranchId::Nu6_1 => buf.write_all(&[8u8; 1]).unwrap(),
             BranchId::Nu6_2 => buf.write_all(&[9u8; 1]).unwrap(),
+            BranchId::Nu6_3 => buf.write_all(&[10u8; 1]).unwrap(),
             _ => unreachable!(),
         }
         buf.write_all(&self.expiry_height.to_le_bytes()).unwrap();
@@ -246,11 +248,19 @@ impl PsbtWrapper {
         }
 
         if let Some(orchard) = &self.orchard {
-            zcash_primitives::transaction::components::orchard::write_v5_bundle(
-                Some(&orchard.bundle),
-                &mut buf,
-            )
-            .unwrap();
+            if is_ironwood(self.branch_id) {
+                zcash_primitives::transaction::components::orchard::write_v6_bundle(
+                    Some(&orchard.bundle),
+                    &mut buf,
+                )
+                .unwrap();
+            } else {
+                zcash_primitives::transaction::components::orchard::write_v5_bundle(
+                    Some(&orchard.bundle),
+                    &mut buf,
+                )
+                .unwrap();
+            }
 
             buf.write_all(&[1u8; 1]).unwrap();
             buf.write_all(&orchard.output.amount.to_le_bytes()).unwrap();
@@ -290,6 +300,7 @@ impl PsbtWrapper {
                 7 => BranchId::Nu6,
                 8 => BranchId::Nu6_1,
                 9 => BranchId::Nu6_2,
+                10 => BranchId::Nu6_3,
                 _ => env::panic_str("ERR_INVALID_PSBT: unsupported branch_id"),
             }
         } else {
@@ -334,7 +345,19 @@ impl PsbtWrapper {
         }
 
         let orchard_bundle = if version >= 3 {
-            read_v5_bundle(&mut rdr, proof_size_enforcement(branch_id)).unwrap_or_else(|_| {
+            let bundle_version = bundle_version_for(branch_id);
+            let result = if is_ironwood(branch_id) {
+                zcash_primitives::transaction::components::orchard::read_v6_bundle(
+                    &mut rdr,
+                    bundle_version,
+                )
+            } else {
+                zcash_primitives::transaction::components::orchard::read_v5_bundle(
+                    &mut rdr,
+                    bundle_version,
+                )
+            };
+            result.unwrap_or_else(|_| {
                 env::panic_str("ERR_INVALID_PSBT: failed to read Orchard bundle")
             })
         } else {
@@ -409,17 +432,35 @@ impl PsbtWrapper {
             authorization: zcash_transparent::bundle::Authorized,
         };
 
-        // Here we encode the Zcash transaction with orchard bundle so it can be submited to the network
-        let inner_tx = TransactionData::from_parts(
-            TxVersion::V5,
-            self.branch_id,
-            0,
-            BlockHeight::from(self.expiry_height),
-            Some(transparent_bundle),
-            None,
-            None,
-            self.orchard.map(|b| b.bundle),
-        )
+        let branch_id = self.branch_id;
+        let expiry = BlockHeight::from(self.expiry_height);
+        let shielded = self.orchard.map(|b| b.bundle);
+
+        // NU6.3+ transactions must be v6, with the shielded bundle routed to the
+        // Ironwood slot (adding new value into the Orchard pool is a consensus
+        // violation post-NU6.3). Pre-NU6.3 keeps the v5 + Orchard-slot path.
+        let inner_tx = if is_ironwood(branch_id) {
+            TransactionData::from_parts_v6(
+                branch_id,
+                0,
+                expiry,
+                Some(transparent_bundle),
+                None,     // sapling
+                None,     // orchard slot (empty; new value cannot enter Orchard)
+                shielded, // ironwood slot
+            )
+        } else {
+            TransactionData::from_parts(
+                TxVersion::V5,
+                branch_id,
+                0,
+                expiry,
+                Some(transparent_bundle),
+                None, // sprout
+                None, // sapling
+                shielded,
+            )
+        }
         .freeze()
         .unwrap_or_else(|_| {
             env::panic_str("ERR_TX_FREEZE: failed to freeze Zcash transaction data")
@@ -437,16 +478,27 @@ impl PsbtWrapper {
         tx_data: &TransactionData<TransparentUnauthorized>,
         digester: D,
     ) -> D::Digest {
+        let version = tx_data.version();
+        // Post-NU6.3 the shielded bundle lives in the Ironwood slot, so route the
+        // recovered bundle to `digest_ironwood`; earlier epochs still commit it
+        // via `digest_orchard`. Both slots are otherwise `None`.
+        let shielded = self.orchard.as_ref().map(|b| &b.bundle);
+        let (orchard_bundle, ironwood_bundle) = if is_ironwood(self.branch_id) {
+            (None, shielded)
+        } else {
+            (shielded, None)
+        };
         digester.combine(
             digester.digest_header(
-                tx_data.version(),
+                version,
                 tx_data.consensus_branch_id(),
                 tx_data.lock_time(),
                 tx_data.expiry_height(),
             ),
             digester.digest_transparent(tx_data.transparent_bundle()),
-            digester.digest_sapling(None),
-            digester.digest_orchard(self.orchard.as_ref().map(|b| &b.bundle)),
+            digester.digest_sapling(version, None),
+            digester.digest_orchard(version, orchard_bundle),
+            digester.digest_ironwood(ironwood_bundle),
         )
     }
 
@@ -501,16 +553,23 @@ impl PsbtWrapper {
     }
 
     pub fn get_min_fee(&self) -> Zatoshis {
-        let orchard_action_count = self
+        let action_count = self
             .orchard
             .as_ref()
             .map(|orchard| orchard.bundle.actions().len())
             .unwrap_or(0);
 
+        let (orchard_action_count, ironwood_action_count) = if is_ironwood(self.branch_id) {
+            (0, action_count)
+        } else {
+            (action_count, 0)
+        };
+
         zip317_min_fee(
             self.vin.len(),
             self.vout.iter().map(|i| i.serialized_size()).collect(),
             orchard_action_count,
+            ironwood_action_count,
         )
     }
 
@@ -520,12 +579,14 @@ impl PsbtWrapper {
 }
 
 /// ZIP-317 minimum fee for a transaction with the given structure (`input_count`
-/// standard P2PKH inputs, the given transparent output sizes and Orchard action
-/// count). Height/branch_id do not affect the fee.
+/// standard P2PKH inputs, the given transparent output sizes, and Orchard/Ironwood
+/// action counts). Height/branch_id do not affect the fee; the caller decides which
+/// pool the shielded action count belongs to.
 pub(crate) fn zip317_min_fee(
     input_count: usize,
     transparent_output_sizes: Vec<usize>,
     orchard_action_count: usize,
+    ironwood_action_count: usize,
 ) -> Zatoshis {
     zcash_primitives::transaction::fees::zip317::FeeRule::standard()
         .fee_required(
@@ -536,6 +597,7 @@ pub(crate) fn zip317_min_fee(
             0, // sapling_input_count
             0, // sapling_output_count
             orchard_action_count,
+            ironwood_action_count,
         )
         .unwrap()
 }
@@ -544,13 +606,21 @@ fn get_branch_id(current_height: u32, config: &Config) -> BranchId {
     config.chain.get_branch_id(current_height)
 }
 
-/// Orchard proof-size rule per consensus branch (mirrors `zcash_primitives`):
-/// NU6.2 enforces the canonical proof size; earlier branches tolerate the
-/// pre-NU6.2 non-canonical proofs.
-fn proof_size_enforcement(branch_id: BranchId) -> ProofSizeEnforcement {
+/// Whether transactions at this branch id must be built as v6 with the shielded
+/// bundle routed into the Ironwood slot instead of the Orchard slot.
+pub(crate) fn is_ironwood(branch_id: BranchId) -> bool {
+    matches!(branch_id, BranchId::Nu6_3)
+}
+
+/// Selects the `BundleVersion` used when (de)serializing a standalone Orchard-or-
+/// Ironwood bundle for the given consensus branch. The bundle wire format is
+/// identical across variants; the `BundleVersion` fixes flag-byte semantics
+/// (cross-address bit) and circuit / proof-size expectations.
+pub(crate) fn bundle_version_for(branch_id: BranchId) -> BundleVersion {
     match branch_id {
-        BranchId::Nu6_2 => ProofSizeEnforcement::Strict,
-        _ => ProofSizeEnforcement::Unenforced,
+        BranchId::Nu6_2 => BundleVersion::orchard_v2(),
+        BranchId::Nu6_3 => BundleVersion::ironwood_v3(),
+        _ => BundleVersion::orchard_insecure_v1(),
     }
 }
 
