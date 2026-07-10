@@ -241,6 +241,158 @@ async fn test_ironwood_shielded_refund() {
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
 }
 
+/// A shielded withdrawal built in the Nu6_2 epoch (v5 tx + Orchard-slot bundle)
+/// is unmineable once NU6.3 activates. The RBF replacement is built for the
+/// CURRENT epoch (Nu6_3 -> v6 + Ironwood slot), so the caller must supply a
+/// brand-new Ironwood bundle paying the same recipient/amount; the original
+/// pre-activation Orchard bundle bytes are rejected at parse time.
+#[tokio::test]
+async fn test_shielded_withdraw_rbf_across_nu63_activation() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+
+    check!(context.set_deposit_bridge_fee(10000, 0, 9000));
+    check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
+    let config = context.get_bridge_config().await.unwrap();
+
+    let (utxo_txid, utxo_vout) = deposit_for_alice(&context, 500_000).await;
+
+    // Allow alice to hold the original + the RBF replacement.
+    let alice_id = context.get_account_by_name("alice").id().clone();
+    context
+        .get_account_by_name("root")
+        .call(context.bridge_contract.id(), "set_pending_tx_limit")
+        .args_json(json!({ "account_id": alice_id, "max_pending": 2 }))
+        .deposit(near_sdk::NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Original created before activation: v5 tx, legacy Orchard bundle
+    // (orchard_v2: V2 notes, no Ironwood slot).
+    context
+        .set_light_client_block_height(PRE_NU6_3_HEIGHT)
+        .await;
+
+    let utxo_value = 500_000u128;
+    let withdraw_amount = 200_000u128;
+    let btc_gas_fee = 10_000u128;
+    let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
+    let shielded_amount = (withdraw_amount - withdraw_fee - btc_gas_fee) as u64;
+    let change_amount = utxo_value - shielded_amount as u128 - btc_gas_fee;
+
+    // Legacy Orchard fixture and Ironwood fixture share the spending key, so
+    // both pay the same Orchard-protocol receiver and the same amount — exactly
+    // the situation of a stuck shielded withdrawal re-issued after activation.
+    let (recipient_ua, orchard_bundle_hex) = setup::orchard::get_or_gen_bundle(shielded_amount);
+    let (_ironwood_ua, ironwood_bundle_hex) =
+        setup::orchard::get_or_gen_ironwood_bundle(shielded_amount);
+
+    let withdraw_change_address = context.get_change_address().await.unwrap();
+    let change_script_pubkey = Address::parse(&withdraw_change_address, Chain::ZcashTestnet)
+        .expect("Invalid change address")
+        .script_pubkey()
+        .expect("Failed to get script pubkey");
+
+    check!(context.do_withdraw(
+        "alice",
+        "bridge",
+        withdraw_amount,
+        TokenReceiverMessage::Withdraw {
+            target_btc_address: recipient_ua.clone(),
+            input: vec![OutPoint {
+                txid: utxo_txid.parse().unwrap(),
+                vout: utxo_vout.parse().unwrap(),
+            }],
+            output: vec![TxOut {
+                value: Amount::from_sat(change_amount as u64),
+                script_pubkey: change_script_pubkey,
+            }],
+            max_gas_fee: None,
+            chain_specific_data: Some(ChainSpecificData {
+                orchard_bundle_bytes: hex::decode(&orchard_bundle_hex).unwrap().into(),
+                expiry_height: PRE_NU6_3_HEIGHT + 10_000,
+            }),
+        }
+    ));
+
+    let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
+    assert_eq!(pending_infos.len(), 1);
+    let original_id = pending_infos.keys().next().unwrap().clone();
+    pending_infos.values().next().unwrap().assert_pending_sign();
+
+    check!(context.sign_btc_transaction("alice", &original_id, 0, 0));
+    let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
+    pending_infos
+        .values()
+        .next()
+        .unwrap()
+        .assert_pending_verify();
+
+    // NU6.3 activates; the signed v5/Nu6_2 tx above can never be mined now.
+    context
+        .set_light_client_block_height(POST_NU6_3_HEIGHT)
+        .await;
+
+    // Re-sending the ORIGINAL Orchard bundle bytes must be rejected: post-NU6.3
+    // the bundle is parsed as ironwood_v3, and a legacy Orchard bundle (V2 note
+    // plaintexts) cannot pass it.
+    check!(
+        context
+            .get_account_by_name("alice")
+            .call(context.bridge_contract.id(), "withdraw_rbf")
+            .args_json(json!({
+                "original_btc_pending_verify_id": original_id,
+                "output": [],
+                "chain_specific_data": ChainSpecificData {
+                    orchard_bundle_bytes: hex::decode(&orchard_bundle_hex).unwrap().into(),
+                    expiry_height: POST_NU6_3_HEIGHT + 10_000,
+                },
+            }))
+            .max_gas()
+            .transact(),
+        "ERR_INVALID_ORCHARD_BUNDLE"
+    );
+
+    // The valid replacement: same recipient/amount, but a fresh Ironwood bundle.
+    check!(
+        print "withdraw_rbf (ironwood)"
+        context
+            .get_account_by_name("alice")
+            .call(context.bridge_contract.id(), "withdraw_rbf")
+            .args_json(json!({
+                "original_btc_pending_verify_id": original_id,
+                "output": [],
+                "chain_specific_data": ChainSpecificData {
+                    orchard_bundle_bytes: hex::decode(&ironwood_bundle_hex).unwrap().into(),
+                    expiry_height: POST_NU6_3_HEIGHT + 10_000,
+                },
+            }))
+            .max_gas()
+            .transact()
+    );
+
+    let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
+    assert_eq!(
+        pending_infos.len(),
+        2,
+        "RBF must create a second, distinct pending tx"
+    );
+    let rbf_id = pending_infos
+        .keys()
+        .find(|k| **k != original_id)
+        .expect("replacement tx id")
+        .clone();
+    pending_infos[&rbf_id].assert_pending_sign();
+
+    // Signing the replacement exercises the v6 sighash with the Ironwood digest.
+    check!(context.sign_btc_transaction("alice", &rbf_id, 0, 0));
+    let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
+    pending_infos[&rbf_id].assert_pending_verify();
+}
+
 /// A transparent withdrawal built in the Nu6_2 epoch (v5, branch id Nu6_2) is
 /// unmineable once NU6.3 activates (a v5 tx commits to its consensus branch id).
 /// The recovery path is user RBF: the replacement must pick up the branch id
