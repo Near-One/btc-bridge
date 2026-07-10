@@ -40,9 +40,7 @@ impl BranchIdUpdateBlockHeight {
             Chain::ZcashMainnet => Self {
                 nu6_1_update: 3146400,
                 nu6_2_update: 3364600,
-                // NU6.3 mainnet activation height — 0 = not yet activated.
-                // Must be set to the ZIP-258 finalized height before deploying to mainnet.
-                nu6_3_update: 0,
+                nu6_3_update: 3428143,
             },
             Chain::ZcashTestnet => Self {
                 nu6_1_update: 3536500,
