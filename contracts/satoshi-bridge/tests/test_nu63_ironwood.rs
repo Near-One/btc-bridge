@@ -74,7 +74,9 @@ async fn test_ironwood_withdrawal_v6_sign() {
 
     let (utxo_txid, utxo_vout) = deposit_for_alice(&context, 500_000).await;
 
-    context.set_light_client_block_height(POST_NU6_3_HEIGHT).await;
+    context
+        .set_light_client_block_height(POST_NU6_3_HEIGHT)
+        .await;
 
     let utxo_value = 500_000u128;
     let withdraw_amount = 200_000u128;
@@ -121,7 +123,11 @@ async fn test_ironwood_withdrawal_v6_sign() {
     check!(context.sign_btc_transaction("alice", &pending_keys[0], 0, 0));
 
     let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
-    pending_infos.values().next().unwrap().assert_pending_verify();
+    pending_infos
+        .values()
+        .next()
+        .unwrap()
+        .assert_pending_verify();
 }
 
 /// Shielded refund executed after NU6.3 activation: the refund transaction is
@@ -183,7 +189,9 @@ async fn test_ironwood_shielded_refund() {
     assert_eq!(requests.len(), 1, "exactly one refund request expected");
     let key = requests.keys().next().unwrap().clone();
 
-    context.set_light_client_block_height(POST_NU6_3_HEIGHT).await;
+    context
+        .set_light_client_block_height(POST_NU6_3_HEIGHT)
+        .await;
 
     check!(
         print "execute_refund"
@@ -208,7 +216,11 @@ async fn test_ironwood_shielded_refund() {
     );
 
     let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
-    pending_infos.values().next().unwrap().assert_pending_verify();
+    pending_infos
+        .values()
+        .next()
+        .unwrap()
+        .assert_pending_verify();
 
     check!(
         print "verify_refund_finalize"
@@ -259,7 +271,9 @@ async fn test_transparent_withdraw_rbf_across_nu63_activation() {
         .unwrap();
 
     // Withdrawal created before activation: v5 tx with branch id Nu6_2.
-    context.set_light_client_block_height(PRE_NU6_3_HEIGHT).await;
+    context
+        .set_light_client_block_height(PRE_NU6_3_HEIGHT)
+        .await;
 
     let utxo_value = 500_000u128;
     let withdraw_amount = 200_000u128;
@@ -310,10 +324,16 @@ async fn test_transparent_withdraw_rbf_across_nu63_activation() {
 
     check!(context.sign_btc_transaction("alice", &original_id, 0, 0));
     let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
-    pending_infos.values().next().unwrap().assert_pending_verify();
+    pending_infos
+        .values()
+        .next()
+        .unwrap()
+        .assert_pending_verify();
 
     // NU6.3 activates; the signed v5/Nu6_2 tx above can never be mined now.
-    context.set_light_client_block_height(POST_NU6_3_HEIGHT).await;
+    context
+        .set_light_client_block_height(POST_NU6_3_HEIGHT)
+        .await;
 
     // User RBF: empty `output` reuses the original outputs; the branch id (and
     // hence tx version and txid) comes from the current height.
