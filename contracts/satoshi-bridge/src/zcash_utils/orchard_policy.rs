@@ -3,16 +3,13 @@ use crate::network::{Chain, OrchardRawAddress};
 use orchard::bundle::BundleVersion;
 use orchard::Bundle;
 use std::io::Cursor;
-use zcash_primitives::transaction::components::orchard::read_v5_bundle;
+use zcash_primitives::transaction::components::orchard::{read_v5_bundle, read_v6_bundle};
 use zcash_protocol::value::ZatBalance;
 
 /// Bridge OVK used to recover outputs for policy checks.
 /// Hardcoded to all zeroes for now; can be made configurable later.
 pub const BRIDGE_OVK: [u8; 32] = [0u8; 32];
 
-/// Minimum number of actions required in an Orchard bundle per the Orchard protocol.
-/// The Orchard builder automatically pads bundles to meet this minimum for privacy.
-/// See: https://github.com/zcash/orchard/blob/main/src/builder.rs#L36
 pub const EXPECTED_ACTIONS_NUMBER: usize = 1;
 
 pub struct OrchardOutput {
@@ -41,12 +38,13 @@ pub fn extract_orchard_bundle(
 ) -> Result<Option<ParsedOrchardBundle>, String> {
     if let Some(orchard_bundle_bytes) = orchard_bundle_bytes {
         let mut reader = Cursor::new(orchard_bundle_bytes);
-        // `read_v5_bundle` is a misnomer at the framing level: it reads a bare
-        // Orchard-shaped bundle whose flag-byte grammar and circuit are picked by
-        // `bundle_version`. `ironwood_v3` uses this same reader.
-        let bundle = read_v5_bundle(&mut reader, bundle_version)
-            .map_err(|_| "Failed to read orchard bundle".to_string())?
-            .ok_or_else(|| "Orchard bundle is empty".to_string())?;
+        let bundle = if bundle_version == BundleVersion::ironwood_v3() {
+            read_v6_bundle(&mut reader, bundle_version)
+        } else {
+            read_v5_bundle(&mut reader, bundle_version)
+        }
+        .map_err(|_| "Failed to read orchard bundle".to_string())?
+        .ok_or_else(|| "Orchard bundle is empty".to_string())?;
 
         // Check action count first per Orchard protocol requirements
         if bundle.actions().len() != EXPECTED_ACTIONS_NUMBER {
