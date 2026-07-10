@@ -436,9 +436,10 @@ impl PsbtWrapper {
         let expiry = BlockHeight::from(self.expiry_height);
         let shielded = self.orchard.map(|b| b.bundle);
 
-        // NU6.3+ transactions must be v6, with the shielded bundle routed to the
-        // Ironwood slot (adding new value into the Orchard pool is a consensus
-        // violation post-NU6.3). Pre-NU6.3 keeps the v5 + Orchard-slot path.
+        // Post-NU6.3 v5 stays consensus-valid, but adding new value into the
+        // Orchard pool is a consensus violation (ZIP 2006), so the shielded
+        // bundle must ride in the v6 Ironwood slot; the bridge builds v6 for all
+        // Nu6_3 txs to match the sighash path. Pre-NU6.3 keeps v5 + Orchard slot.
         let inner_tx = if is_ironwood(branch_id) {
             TransactionData::from_parts_v6(
                 branch_id,

@@ -115,9 +115,10 @@ impl Transaction {
         let lock_time = 0;
         let expiry_height = BlockHeight::from_u32(expiry_height);
 
-        // NU6.3+ requires v6 transactions; the sighash preimage for transparent
-        // inputs is otherwise derived the same way, but the txid digest ties in
-        // the Ironwood bundle domain even when the bundle itself is empty.
+        // Post-NU6.3 v5 stays consensus-valid (ZIP 229), but shielded value must
+        // enter the Ironwood pool (ZIP 2006) and only the v6 format carries an
+        // Ironwood bundle, so at Nu6_3 every bridge tx is built as v6 to keep the
+        // sighash and broadcast paths on one format.
         if matches!(branch_id, BranchId::Nu6_3) {
             TransactionData::from_parts_v6(
                 branch_id,
