@@ -621,8 +621,15 @@ mod tests {
             BranchId::Nu6_3
         );
 
-        // Mainnet NU6.3 activation is not yet set (nu6_3_update = 0 sentinel),
-        // so any height still resolves to Nu6.2 until the height is populated.
-        assert_eq!(Chain::ZcashMainnet.get_branch_id(u32::MAX), BranchId::Nu6_2);
+        // Mainnet: NU6.3 at 3_428_143.
+        assert_eq!(
+            Chain::ZcashMainnet.get_branch_id(3_428_142),
+            BranchId::Nu6_2
+        );
+        assert_eq!(
+            Chain::ZcashMainnet.get_branch_id(3_428_143),
+            BranchId::Nu6_3
+        );
+        assert_eq!(Chain::ZcashMainnet.get_branch_id(u32::MAX), BranchId::Nu6_3);
     }
 }
