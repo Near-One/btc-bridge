@@ -1,3 +1,5 @@
+#![cfg(not(feature = "zcash"))]
+
 mod setup;
 use bitcoin::Transaction as BtcTransaction;
 use near_sdk::serde_json::json;
