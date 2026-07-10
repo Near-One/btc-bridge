@@ -58,7 +58,10 @@ fn transparent_refund_min_fee() -> u128 {
 /// refund is routed through the Orchard slot (pre-NU6.3) or the Ironwood slot
 /// (NU6.3+); we account for it in the Ironwood slot which covers both epochs.
 fn shielded_refund_min_fee() -> u128 {
-    zip317_min_fee(1, vec![], 0, EXPECTED_ACTIONS_NUMBER).into_u64() as u128
+    std::cmp::max(
+        zip317_min_fee(1, vec![], 0, EXPECTED_ACTIONS_NUMBER).into_u64(),
+        zip317_min_fee(1, vec![], EXPECTED_ACTIONS_NUMBER, 0).into_u64(),
+    ) as u128
 }
 
 #[cfg(test)]
