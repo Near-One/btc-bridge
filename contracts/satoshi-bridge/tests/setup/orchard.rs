@@ -1,4 +1,5 @@
 use orchard::builder::{Builder, BundleType};
+use orchard::bundle::{BundleVersion, Flags};
 use orchard::keys::{FullViewingKey, OutgoingViewingKey, Scope, SpendingKey};
 use orchard::tree::Anchor;
 use orchard::value::NoteValue;
@@ -30,8 +31,17 @@ pub fn gen_ua_and_orchard_bundle_hex_with_key(
     let recipient = fvk.address_at(0u32, Scope::External);
 
     // Build a simple output-only bundle with BRIDGE_OVK
-    // Use Coinbase bundle type which supports single output without dummy actions
-    let mut builder = Builder::new(BundleType::Coinbase, Anchor::empty_tree());
+    // Use Coinbase bundle type which supports single output without dummy actions.
+    // orchard_v2 keeps the pre-NU6.3 wire format (V2 notes, fixed post-NU6.2 circuit),
+    // matching the heights the integration tests run at and the cached fixtures.
+    let bundle_version = BundleVersion::orchard_v2();
+    let mut builder = Builder::new(
+        BundleType::Coinbase,
+        bundle_version,
+        Flags::SPENDS_DISABLED,
+        Anchor::empty_tree(),
+    )
+    .expect("orchard builder");
     builder
         .add_output(
             Some(OutgoingViewingKey::from(BRIDGE_OVK)),
@@ -47,7 +57,7 @@ pub fn gen_ua_and_orchard_bundle_hex_with_key(
         .expect("build orchard bundle")
         .expect("bundle present");
 
-    let pk = orchard::circuit::ProvingKey::build();
+    let pk = orchard::circuit::ProvingKey::build(bundle_version.circuit_version());
     let authorized = unauth
         .create_proof(&pk, &mut rng)
         .expect("create proof")
