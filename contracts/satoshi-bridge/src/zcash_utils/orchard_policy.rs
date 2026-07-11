@@ -1,10 +1,12 @@
 use crate::network::Address;
 use crate::network::{Chain, OrchardRawAddress};
-use orchard::bundle::BundleVersion;
-use orchard::Bundle;
+use orchard::{Bundle, ValuePool};
 use std::io::Cursor;
 use zcash_primitives::transaction::components::orchard::{read_v5_bundle, read_v6_bundle};
+use zcash_protocol::consensus::BranchId;
 use zcash_protocol::value::ZatBalance;
+
+use super::psbt_wrapper::is_ironwood;
 
 /// Bridge OVK used to recover outputs for policy checks.
 /// Hardcoded to all zeroes for now; can be made configurable later.
@@ -34,14 +36,14 @@ impl ParsedOrchardBundle {
 
 pub fn extract_orchard_bundle(
     orchard_bundle_bytes: Option<Vec<u8>>,
-    bundle_version: BundleVersion,
+    branch_id: BranchId,
 ) -> Result<Option<ParsedOrchardBundle>, String> {
     if let Some(orchard_bundle_bytes) = orchard_bundle_bytes {
         let mut reader = Cursor::new(orchard_bundle_bytes);
-        let bundle = if bundle_version == BundleVersion::ironwood_v3() {
-            read_v6_bundle(&mut reader, bundle_version)
+        let bundle = if is_ironwood(branch_id) {
+            read_v6_bundle(&mut reader, branch_id, ValuePool::Ironwood)
         } else {
-            read_v5_bundle(&mut reader, bundle_version)
+            read_v5_bundle(&mut reader, branch_id)
         }
         .map_err(|_| "Failed to read orchard bundle".to_string())?
         .ok_or_else(|| "Orchard bundle is empty".to_string())?;

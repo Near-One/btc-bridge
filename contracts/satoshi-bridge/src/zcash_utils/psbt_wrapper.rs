@@ -5,7 +5,6 @@ use crate::*;
 use bitcoin::hashes::Hash;
 use bitcoin::{OutPoint, TxOut};
 use near_sdk::{env, require};
-use orchard::bundle::BundleVersion;
 use std::io;
 use std::io::{Cursor, Read, Write};
 use zcash_primitives::transaction::fees::transparent::{InputSize, OutputView};
@@ -74,13 +73,10 @@ impl PsbtWrapper {
             vec![ZcashTxOut::new(Zatoshis::from_u64(0).unwrap(), Script::default()); vin.len()];
 
         let branch_id = get_branch_id(current_height, config);
-        let orchard = orchard_policy::extract_orchard_bundle(
-            orchard_bundle_bytes,
-            bundle_version_for(branch_id),
-        )
-        .unwrap_or_else(|_| {
-            env::panic_str("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle")
-        });
+        let orchard = orchard_policy::extract_orchard_bundle(orchard_bundle_bytes, branch_id)
+            .unwrap_or_else(|_| {
+                env::panic_str("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle")
+            });
 
         Self {
             branch_id,
@@ -130,13 +126,10 @@ impl PsbtWrapper {
         };
 
         let branch_id = get_branch_id(current_height, config);
-        let orchard = orchard_policy::extract_orchard_bundle(
-            orchard_bundle_bytes,
-            bundle_version_for(branch_id),
-        )
-        .unwrap_or_else(|_| {
-            env::panic_str("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle")
-        });
+        let orchard = orchard_policy::extract_orchard_bundle(orchard_bundle_bytes, branch_id)
+            .unwrap_or_else(|_| {
+                env::panic_str("ERR_INVALID_ORCHARD_BUNDLE: failed to extract Orchard bundle")
+            });
 
         Self {
             branch_id,
@@ -345,16 +338,15 @@ impl PsbtWrapper {
         }
 
         let orchard_bundle = if version >= 3 {
-            let bundle_version = bundle_version_for(branch_id);
             let result = if is_ironwood(branch_id) {
                 zcash_primitives::transaction::components::orchard::read_v6_bundle(
                     &mut rdr,
-                    bundle_version,
+                    branch_id,
+                    orchard::ValuePool::Ironwood,
                 )
             } else {
                 zcash_primitives::transaction::components::orchard::read_v5_bundle(
-                    &mut rdr,
-                    bundle_version,
+                    &mut rdr, branch_id,
                 )
             };
             result.unwrap_or_else(|_| {
@@ -611,18 +603,6 @@ fn get_branch_id(current_height: u32, config: &Config) -> BranchId {
 /// bundle routed into the Ironwood slot instead of the Orchard slot.
 pub(crate) fn is_ironwood(branch_id: BranchId) -> bool {
     matches!(branch_id, BranchId::Nu6_3)
-}
-
-/// Selects the `BundleVersion` used when (de)serializing a standalone Orchard-or-
-/// Ironwood bundle for the given consensus branch. The bundle wire format is
-/// identical across variants; the `BundleVersion` fixes flag-byte semantics
-/// (cross-address bit) and circuit / proof-size expectations.
-pub(crate) fn bundle_version_for(branch_id: BranchId) -> BundleVersion {
-    match branch_id {
-        BranchId::Nu6_2 => BundleVersion::orchard_v2(),
-        BranchId::Nu6_3 => BundleVersion::ironwood_v3(),
-        _ => BundleVersion::orchard_insecure_v1(),
-    }
 }
 
 fn read_u32_le<R: Read>(r: &mut R) -> io::Result<u32> {
