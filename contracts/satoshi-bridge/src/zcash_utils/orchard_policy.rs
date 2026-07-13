@@ -1,18 +1,17 @@
 use crate::network::Address;
 use crate::network::{Chain, OrchardRawAddress};
-use orchard::bundle::ProofSizeEnforcement;
-use orchard::Bundle;
+use orchard::{Bundle, ValuePool};
 use std::io::Cursor;
-use zcash_primitives::transaction::components::orchard::read_v5_bundle;
+use zcash_primitives::transaction::components::orchard::{read_v5_bundle, read_v6_bundle};
+use zcash_protocol::consensus::BranchId;
 use zcash_protocol::value::ZatBalance;
+
+use super::psbt_wrapper::is_ironwood;
 
 /// Bridge OVK used to recover outputs for policy checks.
 /// Hardcoded to all zeroes for now; can be made configurable later.
 pub const BRIDGE_OVK: [u8; 32] = [0u8; 32];
 
-/// Minimum number of actions required in an Orchard bundle per the Orchard protocol.
-/// The Orchard builder automatically pads bundles to meet this minimum for privacy.
-/// See: https://github.com/zcash/orchard/blob/main/src/builder.rs#L36
 pub const EXPECTED_ACTIONS_NUMBER: usize = 1;
 
 pub struct OrchardOutput {
@@ -37,13 +36,17 @@ impl ParsedOrchardBundle {
 
 pub fn extract_orchard_bundle(
     orchard_bundle_bytes: Option<Vec<u8>>,
-    proof_size_enforcement: ProofSizeEnforcement,
+    branch_id: BranchId,
 ) -> Result<Option<ParsedOrchardBundle>, String> {
     if let Some(orchard_bundle_bytes) = orchard_bundle_bytes {
         let mut reader = Cursor::new(orchard_bundle_bytes);
-        let bundle = read_v5_bundle(&mut reader, proof_size_enforcement)
-            .map_err(|_| "Failed to read orchard bundle".to_string())?
-            .ok_or_else(|| "Orchard bundle is empty".to_string())?;
+        let bundle = if is_ironwood(branch_id) {
+            read_v6_bundle(&mut reader, branch_id, ValuePool::Ironwood)
+        } else {
+            read_v5_bundle(&mut reader, branch_id)
+        }
+        .map_err(|_| "Failed to read orchard bundle".to_string())?
+        .ok_or_else(|| "Orchard bundle is empty".to_string())?;
 
         // Check action count first per Orchard protocol requirements
         if bundle.actions().len() != EXPECTED_ACTIONS_NUMBER {
