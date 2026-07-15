@@ -1,9 +1,10 @@
 use crate::{
-    near, require, AccessControllable, Contract, ContractExt, Pausable, PromiseOrValue, Role,
+    near, require, trusted_relayer, AccessControllable, Contract, ContractExt, Pausable, PromiseOrValue, Role,
 };
 
 use near_plugins::pause;
 
+#[trusted_relayer]
 #[near]
 impl Contract {
     /// Sign the specified input of the BTC transaction, and when signing the last unsigned input, generate a signed transaction ready to be broadcasted.
@@ -17,6 +18,7 @@ impl Contract {
     ///
     /// bool - Whether the signature was successful.
     #[payable]
+    #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn sign_btc_transaction(
         &mut self,
