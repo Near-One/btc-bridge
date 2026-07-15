@@ -1,5 +1,6 @@
 use crate::{
-    near, require, trusted_relayer, AccessControllable, Contract, ContractExt, Pausable, PromiseOrValue, Role,
+    near, require, trusted_relayer, AccessControllable, Contract, ContractExt, Pausable,
+    PromiseOrValue, Role,
 };
 
 use near_plugins::pause;
