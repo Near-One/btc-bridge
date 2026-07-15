@@ -37,14 +37,12 @@ async fn deposit_for_alice(context: &Context, amount: u64) -> (String, String) {
         ],
     );
 
-    check!(context.verify_deposit(
+    check!(context.verify_deposit_v2(
         "relayer",
         deposit_msg,
         zcash_tx_bytes,
         1,
-        BLOCK_HASH.to_string(),
-        1,
-        vec![]
+        proof_json(BLOCK_HASH.to_string(), 1, vec![])
     ));
 
     let utxos_keys = context
@@ -224,12 +222,10 @@ async fn test_ironwood_shielded_refund() {
 
     check!(
         print "verify_refund_finalize"
-        context.verify_refund_finalize(
+        context.verify_withdraw_v2(
             "relayer",
             &pending_keys[0],
-            BLOCK_HASH.to_string(),
-            1,
-            vec![],
+            proof_json(BLOCK_HASH.to_string(), 1, vec![]),
         )
     );
 

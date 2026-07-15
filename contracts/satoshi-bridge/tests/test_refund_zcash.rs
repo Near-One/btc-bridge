@@ -253,12 +253,10 @@ async fn test_zcash_refund_shielded_to_unified_address() {
     let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
     check!(
         print "verify_refund_finalize"
-        context.verify_refund_finalize(
+        context.verify_withdraw_v2(
             "relayer",
             &pending_keys[0],
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-            1,
-            vec![],
+            proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![]),
         )
     );
 
@@ -374,12 +372,14 @@ async fn test_zcash_refund_transparent() {
     let pending_values = pending_infos.values().cloned().collect::<Vec<_>>();
     pending_values[0].assert_pending_verify();
 
-    check!(context.verify_refund_finalize(
+    check!(context.verify_withdraw_v2(
         "relayer",
         &pending_keys[0],
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![],
+        proof_json(
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![]
+        ),
     ));
 
     assert!(context
@@ -417,12 +417,10 @@ async fn test_zcash_refund_transparent_p2sh() {
     let pending_values = pending_infos.values().cloned().collect::<Vec<_>>();
     pending_values[0].assert_pending_verify();
 
-    check!(context.verify_refund_finalize(
+    check!(context.verify_withdraw_v2(
         "relayer",
         &pending_keys[0],
-        BLOCKHASH.to_string(),
-        1,
-        vec![],
+        proof_json(BLOCKHASH.to_string(), 1, vec![]),
     ));
 
     assert!(context
@@ -473,12 +471,10 @@ async fn test_zcash_refund_transparent_tex_address() {
         let pending_values = pending_infos.values().cloned().collect::<Vec<_>>();
         pending_values[0].assert_pending_verify();
 
-        check!(context.verify_refund_finalize(
+        check!(context.verify_withdraw_v2(
             "relayer",
             &pending_keys[0],
-            BLOCKHASH.to_string(),
-            1,
-            vec![],
+            proof_json(BLOCKHASH.to_string(), 1, vec![]),
         ));
 
         assert!(context
@@ -747,14 +743,12 @@ async fn test_zcash_refund_then_deposit_fails() {
     check!(print "execute_refund" context.execute_refund("alice", &key, None));
 
     check!(
-        context.verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            BLOCKHASH.to_string(),
-            1,
-            vec![]
+            proof_json(BLOCKHASH.to_string(), 1, vec![])
         ),
         "Already deposit utxo"
     );
@@ -769,24 +763,20 @@ async fn test_zcash_refund_then_deposit_fails() {
     check!(context.sign_btc_transaction("alice", &pending_keys[0], 0, 0));
 
     check!(
-        context.verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            BLOCKHASH.to_string(),
-            1,
-            vec![]
+            proof_json(BLOCKHASH.to_string(), 1, vec![])
         ),
         "Already deposit utxo"
     );
 
-    check!(context.verify_refund_finalize(
+    check!(context.verify_withdraw_v2(
         "relayer",
         &pending_keys[0],
-        BLOCKHASH.to_string(),
-        1,
-        vec![]
+        proof_json(BLOCKHASH.to_string(), 1, vec![])
     ));
 
     assert!(context
@@ -795,14 +785,12 @@ async fn test_zcash_refund_then_deposit_fails() {
         .unwrap()
         .is_empty());
     check!(
-        context.verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg,
             tx_bytes,
             vout,
-            BLOCKHASH.to_string(),
-            1,
-            vec![]
+            proof_json(BLOCKHASH.to_string(), 1, vec![])
         ),
         "Already deposit utxo"
     );
@@ -850,8 +838,8 @@ async fn test_zcash_refund_race_deposit_wins() {
     ));
     let key = refund_key(&context).await;
 
-    check!(print "verify_deposit" context.verify_deposit(
-        "relayer", deposit_msg, tx_bytes, vout, BLOCKHASH.to_string(), 1, vec![]
+    check!(print "verify_deposit" context.verify_deposit_v2(
+        "relayer", deposit_msg, tx_bytes, vout, proof_json(BLOCKHASH.to_string(), 1, vec![])
     ));
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
 
@@ -891,8 +879,8 @@ async fn test_zcash_refund_after_deposit_fails() {
     );
     let vout: u32 = 0;
 
-    check!(print "verify_deposit" context.verify_deposit(
-        "relayer", deposit_msg.clone(), tx_bytes.clone(), vout, BLOCKHASH.to_string(), 1, vec![]
+    check!(print "verify_deposit" context.verify_deposit_v2(
+        "relayer", deposit_msg.clone(), tx_bytes.clone(), vout, proof_json(BLOCKHASH.to_string(), 1, vec![])
     ));
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
 
@@ -960,8 +948,8 @@ async fn test_zcash_refund_reject_then_deposit_succeeds() {
         "Refund request not found"
     );
 
-    check!(print "verify_deposit" context.verify_deposit(
-        "relayer", deposit_msg, tx_bytes, vout, BLOCKHASH.to_string(), 1, vec![]
+    check!(print "verify_deposit" context.verify_deposit_v2(
+        "relayer", deposit_msg, tx_bytes, vout, proof_json(BLOCKHASH.to_string(), 1, vec![])
     ));
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
 }
@@ -1127,8 +1115,8 @@ async fn test_zcash_refund_race_safe_deposit_wins() {
     let key = refund_key(&context).await;
 
     check!(context.storage_deposit("nbtc", "alice"));
-    check!(print "safe_verify_deposit" context.safe_verify_deposit(
-        "relayer", deposit_msg, tx_bytes, vout, BLOCKHASH.to_string(), 1, vec![]
+    check!(print "safe_verify_deposit" context.verify_deposit_v2(
+        "relayer", deposit_msg, tx_bytes, vout, proof_json(BLOCKHASH.to_string(), 1, vec![])
     ));
     assert!(context.ft_balance_of("alice").await.unwrap().0 > 0);
 
@@ -1170,8 +1158,8 @@ async fn test_zcash_refund_after_safe_deposit_fails() {
     let vout: u32 = 0;
 
     check!(context.storage_deposit("nbtc", "alice"));
-    check!(print "safe_verify_deposit" context.safe_verify_deposit(
-        "relayer", deposit_msg.clone(), tx_bytes.clone(), vout, BLOCKHASH.to_string(), 1, vec![]
+    check!(print "safe_verify_deposit" context.verify_deposit_v2(
+        "relayer", deposit_msg.clone(), tx_bytes.clone(), vout, proof_json(BLOCKHASH.to_string(), 1, vec![])
     ));
     assert!(context.ft_balance_of("alice").await.unwrap().0 > 0);
 
@@ -1239,14 +1227,12 @@ async fn test_zcash_refund_then_safe_deposit_fails() {
     check!(print "execute_refund" context.execute_refund("alice", &key, None));
 
     check!(
-        context.safe_verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            BLOCKHASH.to_string(),
-            1,
-            vec![]
+            proof_json(BLOCKHASH.to_string(), 1, vec![])
         ),
         "Already deposit utxo"
     );
@@ -1261,24 +1247,20 @@ async fn test_zcash_refund_then_safe_deposit_fails() {
     check!(context.sign_btc_transaction("alice", &pending_keys[0], 0, 0));
 
     check!(
-        context.safe_verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            BLOCKHASH.to_string(),
-            1,
-            vec![]
+            proof_json(BLOCKHASH.to_string(), 1, vec![])
         ),
         "Already deposit utxo"
     );
 
-    check!(context.verify_refund_finalize(
+    check!(context.verify_withdraw_v2(
         "relayer",
         &pending_keys[0],
-        BLOCKHASH.to_string(),
-        1,
-        vec![]
+        proof_json(BLOCKHASH.to_string(), 1, vec![])
     ));
     assert!(context
         .get_btc_pending_infos_paged()
@@ -1286,14 +1268,12 @@ async fn test_zcash_refund_then_safe_deposit_fails() {
         .unwrap()
         .is_empty());
     check!(
-        context.safe_verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg,
             tx_bytes,
             vout,
-            BLOCKHASH.to_string(),
-            1,
-            vec![]
+            proof_json(BLOCKHASH.to_string(), 1, vec![])
         ),
         "Already deposit utxo"
     );

@@ -6,47 +6,6 @@ use near_sdk::json_types::Base64VecU8;
 #[near]
 impl Contract {
     /// Verify that the user has transferred BTC asset to the protocol's designated BTC deposit account,
-    /// and mint NBTC to the user's NEAR account.
-    ///
-    /// # Deprecated
-    /// Use `verify_deposit_v2` instead, which includes coinbase proof for stronger verification.
-    ///
-    /// # Arguments
-    ///
-    /// * `deposit_msg` - Information used to generate the deposit address path.
-    /// * `tx_bytes` - Successfully confirmed BTC transaction bytes.
-    /// * `vout` - The index of the output where the user sent BTC to the deposit address.
-    /// * `tx_block_blockhash` - The block hash where the transaction is located.
-    /// * `tx_index` - The index of the transaction in the block.
-    /// * `merkle_proof` - Merkle proof of the transaction.
-    ///
-    /// # Returns
-    ///
-    /// bool - Whether nBTC minting was successful.
-    #[trusted_relayer]
-    #[pause(except(roles(Role::DAO)))]
-    #[deprecated(note = "use verify_deposit_v2")]
-    pub fn verify_deposit(
-        &mut self,
-        deposit_msg: DepositMsg,
-        tx_bytes: Vec<u8>,
-        vout: usize,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-    ) -> Promise {
-        self.internal_verify_deposit_entry(
-            deposit_msg,
-            tx_bytes,
-            vout,
-            tx_block_blockhash,
-            tx_index,
-            merkle_proof,
-            None,
-        )
-    }
-
-    /// Verify that the user has transferred BTC asset to the protocol's designated BTC deposit account,
     /// and mint nBTC to the user's NEAR account. Includes coinbase proof for stronger
     /// transaction inclusion verification.
     ///
@@ -101,73 +60,6 @@ impl Contract {
         }
     }
 
-    /// Safe version of verify_deposit, only supports minting nBTC with safe_deposit message and revert the deposit on failed XCC calls.
-    /// It doesn't charge deposit fee, and doesn't pay the token storage for the user
-    ///
-    /// # Deprecated
-    /// Use `verify_deposit_v2` instead (pass `deposit_msg.safe_deposit = Some(..)`), which
-    /// includes coinbase proof for stronger verification.
-    ///
-    /// # Arguments
-    ///
-    /// * `deposit_msg` - Information used to generate the deposit address path. Must contain `safe_deposit`.
-    /// * `tx_bytes` - Successfully confirmed BTC transaction bytes.
-    /// * `vout` - The index of the output where the user sent BTC to the deposit address.
-    /// * `tx_block_blockhash` - The block hash where the transaction is located.
-    /// * `tx_index` - The index of the transaction in the block.
-    /// * `merkle_proof` - Merkle proof of the transaction.
-    ///
-    /// # Returns
-    ///
-    /// bool - Whether nBTC minting was successful.
-    #[payable]
-    #[trusted_relayer]
-    #[pause(except(roles(Role::DAO)))]
-    #[deprecated(note = "use verify_deposit_v2 with deposit_msg.safe_deposit = Some(..)")]
-    pub fn safe_verify_deposit(
-        &mut self,
-        deposit_msg: DepositMsg,
-        tx_bytes: Vec<u8>,
-        vout: usize,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-    ) -> Promise {
-        self.internal_safe_verify_deposit_entry(
-            deposit_msg,
-            tx_bytes,
-            vout,
-            tx_block_blockhash,
-            tx_index,
-            merkle_proof,
-            None,
-        )
-    }
-
-    #[payable]
-    #[trusted_relayer]
-    #[pause(except(roles(Role::DAO)))]
-    #[deprecated(note = "use verify_deposit_v2")]
-    pub fn safe_verify_deposit_compact(
-        &mut self,
-        deposit_msg: DepositMsg,
-        tx_bytes: Base64VecU8,
-        vout: usize,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-    ) -> Promise {
-        self.internal_safe_verify_deposit_entry(
-            deposit_msg,
-            tx_bytes.0,
-            vout,
-            tx_block_blockhash,
-            tx_index,
-            merkle_proof,
-            None,
-        )
-    }
-
     #[access_control_any(roles(Role::MigrationOperator, Role::DAO))]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_migrate_deposit(
@@ -198,55 +90,45 @@ impl Contract {
         self.internal_migrate_to_new_token(new_token, accounts)
     }
 
-    /// Verify that the user's withdrawal has been successful, and burn the corresponding amount of tokens.
-    ///
-    /// # Deprecated
-    /// Use `verify_withdraw_v2` instead, which includes coinbase proof for stronger verification.
-    ///
-    /// # Arguments
-    ///
-    /// * `tx_id` - The transaction ID of the successfully on-chain withdrawal.
-    /// * `tx_block_blockhash` - The block hash where the transaction is located.
-    /// * `tx_index` - The index of the transaction in the block.
-    /// * `merkle_proof` - Merkle proof of the transaction.
-    ///
-    /// # Returns
-    ///
-    /// bool - Whether nBTC burning was successful.
-    #[trusted_relayer]
-    #[pause(except(roles(Role::DAO)))]
-    #[deprecated(note = "use verify_withdraw_v2")]
-    pub fn verify_withdraw(
-        &mut self,
-        tx_id: String,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-    ) -> Promise {
-        self.internal_verify_withdraw_entry(tx_id, tx_block_blockhash, tx_index, merkle_proof, None)
-    }
-
-    /// Verify that the user's withdrawal has been successful, and burn the corresponding amount of tokens.
+    /// Verify that a pending bridge transaction (withdraw, active UTXO management or refund)
+    /// has been confirmed on-chain, and finalize it accordingly: burn the corresponding
+    /// tokens for withdraw / active UTXO management, or clean up the refund state.
+    /// The transaction kind is resolved from the stored pending info by `tx_id`.
     /// Includes coinbase proof for stronger transaction inclusion verification.
     ///
     /// # Arguments
     ///
-    /// * `tx_id` - The transaction ID of the successfully on-chain withdrawal.
+    /// * `tx_id` - The transaction ID of the successfully on-chain transaction.
     /// * `proof` - Transaction inclusion proof with coinbase verification.
     ///
     /// # Returns
     ///
-    /// bool - Whether nBTC burning was successful.
+    /// bool - Whether finalization was successful.
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_withdraw_v2(&mut self, tx_id: String, proof: TxInclusionProof) -> Promise {
-        self.internal_verify_withdraw_entry(
-            tx_id,
-            proof.tx_block_blockhash,
-            proof.tx_index,
-            proof.merkle_proof,
-            Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
-        )
+        match self.internal_unwrap_btc_pending_info(&tx_id).state.clone() {
+            PendingInfoState::WithdrawOriginal(_)
+            | PendingInfoState::WithdrawUserRbf(_)
+            | PendingInfoState::WithdrawCancelRbf(_) => self.internal_verify_withdraw_entry(
+                tx_id,
+                proof.tx_block_blockhash,
+                proof.tx_index,
+                proof.merkle_proof,
+                Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
+            ),
+            PendingInfoState::ActiveUtxoManagementOriginal(_)
+            | PendingInfoState::ActiveUtxoManagementRbf(_)
+            | PendingInfoState::ActiveUtxoManagementCancelRbf(_) => self
+                .internal_verify_active_utxo_management_entry(
+                    tx_id,
+                    proof.tx_block_blockhash,
+                    proof.tx_index,
+                    proof.merkle_proof,
+                    Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
+                ),
+            PendingInfoState::Refund(_) => self.internal_verify_refund_finalize_entry(tx_id, proof),
+        }
     }
 
     /// The user actively increases the gas fee of the Withdraw transaction to accelerate it.
@@ -296,67 +178,6 @@ impl Contract {
             output,
             None,
         );
-    }
-
-    /// Verify that the active UTXO management has been successful, and burn the gas fee.
-    ///
-    /// # Deprecated
-    /// Use `verify_active_utxo_management_v2` instead, which includes coinbase proof for stronger verification.
-    ///
-    /// # Arguments
-    ///
-    /// * `tx_id` - The transaction ID of the successfully on-chain UTXO management.
-    /// * `tx_block_blockhash` - The block hash where the transaction is located.
-    /// * `tx_index` - The index of the transaction in the block.
-    /// * `merkle_proof` - Merkle proof of the transaction.
-    ///
-    /// # Returns
-    ///
-    /// bool - Whether nBTC burning was successful.
-    #[trusted_relayer]
-    #[pause(except(roles(Role::DAO)))]
-    #[deprecated(note = "use verify_active_utxo_management_v2")]
-    pub fn verify_active_utxo_management(
-        &mut self,
-        tx_id: String,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-    ) -> Promise {
-        self.internal_verify_active_utxo_management_entry(
-            tx_id,
-            tx_block_blockhash,
-            tx_index,
-            merkle_proof,
-            None,
-        )
-    }
-
-    /// Verify that the active UTXO management has been successful, and burn the gas fee.
-    /// Includes coinbase proof for stronger transaction inclusion verification.
-    ///
-    /// # Arguments
-    ///
-    /// * `tx_id` - The transaction ID of the successfully on-chain UTXO management.
-    /// * `proof` - Transaction inclusion proof with coinbase verification.
-    ///
-    /// # Returns
-    ///
-    /// bool - Whether nBTC burning was successful.
-    #[trusted_relayer]
-    #[pause(except(roles(Role::DAO)))]
-    pub fn verify_active_utxo_management_v2(
-        &mut self,
-        tx_id: String,
-        proof: TxInclusionProof,
-    ) -> Promise {
-        self.internal_verify_active_utxo_management_entry(
-            tx_id,
-            proof.tx_block_blockhash,
-            proof.tx_index,
-            proof.merkle_proof,
-            Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
-        )
     }
 
     /// The number of UTXOs in a Withdraw transaction is managed through outputs that are all change addresses.
@@ -482,7 +303,7 @@ impl Contract {
 impl Contract {
     // ── Refund API ──
 
-    /// Submit a refund request for a deposit that was never finalized via `verify_deposit` or `safe_verify_deposit`.
+    /// Submit a refund request for a deposit that was never finalized via `verify_deposit_v2`.
     /// The BTC transaction is verified through the Light Client to prove the deposit exists.
     /// After the timelock period, anyone can call `execute_refund` to initiate the return.
     ///
@@ -586,29 +407,6 @@ impl Contract {
     ) -> PromiseOrValue<()> {
         let timelock_sec = self.resolve_execute_refund_timelock(&utxo_storage_key);
         self.internal_execute_refund(utxo_storage_key, timelock_sec, chain_specific_data)
-    }
-
-    /// Verify that the refund BTC transaction has been confirmed on the Bitcoin network.
-    /// Cleans up the `BTCPendingInfo` after successful verification.
-    ///
-    /// # Arguments
-    ///
-    /// * `tx_id` - Transaction ID of the confirmed refund transaction.
-    /// * `proof` - Transaction inclusion proof for Light Client verification, bundling:
-    ///   `tx_block_blockhash` (block hash containing the transaction), `tx_index`
-    ///   (transaction index within the block), `merkle_proof` (Merkle proof of the
-    ///   transaction), and the coinbase fields `coinbase_tx_id` and
-    ///   `coinbase_merkle_proof` used to verify the block's coinbase.
-    #[trusted_relayer]
-    #[pause(except(roles(Role::DAO)))]
-    pub fn verify_refund_finalize(&mut self, tx_id: String, proof: TxInclusionProof) -> Promise {
-        let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id);
-        btc_pending_info.assert_refund_pending_verify_tx();
-        require!(
-            btc_pending_info.tx_bytes_with_sign.is_some(),
-            "Missing tx_bytes_with_sign"
-        );
-        self.internal_verify_refund_finalize(tx_id, proof, btc_pending_info)
     }
 
     /// Remove a leftover refund pending transaction whose refund request is gone

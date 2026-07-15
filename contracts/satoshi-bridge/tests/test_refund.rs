@@ -168,12 +168,10 @@ async fn test_refund_basic_flow() {
     let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
     check!(
         print "verify_refund_finalize"
-        context.verify_refund_finalize(
+        context.verify_withdraw_v2(
             "relayer",
             &pending_keys[0],
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-            1,
-            vec![]
+            proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
         )
     );
 
@@ -430,14 +428,12 @@ async fn test_refund_then_deposit_fails() {
 
     // 3. verify_deposit blocked RIGHT AFTER execute_refund (before sign)
     check!(
-        context.verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         ),
         "Already deposit utxo"
     );
@@ -452,14 +448,12 @@ async fn test_refund_then_deposit_fails() {
 
     // 5. verify_deposit STILL blocked after sign (after broadcast)
     check!(
-        context.verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         ),
         "Already deposit utxo"
     );
@@ -467,12 +461,10 @@ async fn test_refund_then_deposit_fails() {
     // 6. verify_refund_finalize — finalize the refund
     check!(
         print "verify_refund_finalize"
-        context.verify_refund_finalize(
+        context.verify_withdraw_v2(
             "relayer",
             &pending_keys[0],
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         )
     );
 
@@ -485,7 +477,13 @@ async fn test_refund_then_deposit_fails() {
 
     // 8. verify_deposit STILL blocked after verify_refund_finalize
     check!(
-        context.verify_deposit("relayer", deposit_msg, tx_bytes, vout, blockhash, 1, vec![]),
+        context.verify_deposit_v2(
+            "relayer",
+            deposit_msg,
+            tx_bytes,
+            vout,
+            proof_json(blockhash, 1, vec![])
+        ),
         "Already deposit utxo"
     );
 
@@ -542,14 +540,12 @@ async fn test_refund_race_deposit_wins() {
     // 2. During timelock, Relayer calls verify_deposit — deposit succeeds
     check!(
         print "verify_deposit"
-        context.verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         )
     );
 
@@ -612,14 +608,12 @@ async fn test_refund_after_deposit_fails() {
     // 1. verify_deposit — Relayer finalizes deposit first
     check!(
         print "verify_deposit"
-        context.verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         )
     );
 
@@ -709,14 +703,12 @@ async fn test_refund_reject_then_deposit_succeeds() {
     // 4. verify_deposit works normally — UTXO was not marked
     check!(
         print "verify_deposit"
-        context.verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg,
             tx_bytes,
             vout,
-            blockhash,
-            1,
-            vec![]
+            proof_json(blockhash, 1, vec![])
         )
     );
 
@@ -934,14 +926,12 @@ async fn test_refund_race_safe_deposit_wins() {
     check!(context.storage_deposit("nbtc", "alice"));
     check!(
         print "safe_verify_deposit"
-        context.safe_verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         )
     );
 
@@ -1004,14 +994,12 @@ async fn test_refund_after_safe_deposit_fails() {
     check!(context.storage_deposit("nbtc", "alice"));
     check!(
         print "safe_verify_deposit"
-        context.safe_verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         )
     );
 
@@ -1106,14 +1094,12 @@ async fn test_refund_then_safe_deposit_fails() {
 
     // 3. safe_verify_deposit blocked RIGHT AFTER execute_refund (before sign)
     check!(
-        context.safe_verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         ),
         "Already deposit utxo"
     );
@@ -1128,14 +1114,12 @@ async fn test_refund_then_safe_deposit_fails() {
 
     // 5. safe_verify_deposit STILL blocked after sign (after broadcast)
     check!(
-        context.safe_verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         ),
         "Already deposit utxo"
     );
@@ -1143,12 +1127,10 @@ async fn test_refund_then_safe_deposit_fails() {
     // 6. verify_refund_finalize — finalize the refund
     check!(
         print "verify_refund_finalize"
-        context.verify_refund_finalize(
+        context.verify_withdraw_v2(
             "relayer",
             &pending_keys[0],
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         )
     );
 
@@ -1161,7 +1143,13 @@ async fn test_refund_then_safe_deposit_fails() {
 
     // 8. safe_verify_deposit STILL blocked after verify_refund_finalize
     check!(
-        context.safe_verify_deposit("relayer", deposit_msg, tx_bytes, vout, blockhash, 1, vec![]),
+        context.verify_deposit_v2(
+            "relayer",
+            deposit_msg,
+            tx_bytes,
+            vout,
+            proof_json(blockhash, 1, vec![])
+        ),
         "Already deposit utxo"
     );
 

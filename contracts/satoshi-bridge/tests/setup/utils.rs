@@ -241,6 +241,20 @@ pub fn generate_transaction_bytes(
     buf
 }
 
+pub fn proof_json(
+    tx_block_blockhash: String,
+    tx_index: u64,
+    merkle_proof: Vec<String>,
+) -> near_sdk::serde_json::Value {
+    near_sdk::serde_json::json!({
+        "tx_block_blockhash": tx_block_blockhash,
+        "tx_index": tx_index,
+        "merkle_proof": merkle_proof,
+        "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
+        "coinbase_merkle_proof": Vec::<String>::new(),
+    })
+}
+
 pub fn tool_err_msg(outcome: &Result<ExecutionFinalResult>) -> String {
     match outcome {
         Ok(res) => {

@@ -126,7 +126,7 @@ impl Contract {
     ) -> Promise {
         require!(
             deposit_msg.safe_deposit.is_none(),
-            "safe_deposit not supported in verify_deposit"
+            "safe_deposit not supported in the standard deposit flow"
         );
         let path = get_deposit_path(&deposit_msg);
         let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
@@ -186,7 +186,7 @@ impl Contract {
         let path = get_deposit_path(&deposit_msg);
         let safe_deposit_msg = deposit_msg
             .safe_deposit
-            .unwrap_or_else(|| env::panic_str("safe_deposit is required in safe_verify_deposit"));
+            .unwrap_or_else(|| env::panic_str("safe_deposit is required in the safe deposit flow"));
 
         let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
             .expect("Deserialization tx_bytes failed");

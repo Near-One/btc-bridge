@@ -1,6 +1,6 @@
 mod setup;
 use bitcoin::{Amount, OutPoint, TxOut};
-use near_sdk::{AccountId, Gas, NearToken};
+use near_sdk::{AccountId, Gas};
 use satoshi_bridge::network::{Address, Chain};
 use satoshi_bridge::{DepositMsg, PendingInfoState, PostAction, TokenReceiverMessage};
 use setup::*;
@@ -63,22 +63,26 @@ async fn test_role() {
     // check!(view context.bridge_pa_all_paused());
     check!(print context.bridge_pa_pause_feature("alice", "ALL"));
     check!(
-        context.verify_withdraw(
+        context.verify_withdraw_v2(
             "relayer",
             "",
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-            1,
-            vec![]
+            proof_json(
+                "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+                1,
+                vec![]
+            )
         ),
         "Method is paused"
     );
     check!(
-        context.verify_withdraw(
+        context.verify_withdraw_v2(
             "alice",
             "",
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-            1,
-            vec![]
+            proof_json(
+                "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+                1,
+                vec![]
+            )
         ),
         "pending info not exist"
     );
@@ -129,7 +133,7 @@ async fn test_base() {
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
-    check!(printr "alice 10000" context.verify_deposit(
+    check!(printr "alice 10000" context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -150,9 +154,7 @@ async fn test_base() {
             ],
         ),
         0,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
     assert_eq!(context.ft_balance_of("root").await.unwrap().0, 0);
@@ -178,7 +180,7 @@ async fn test_base() {
             .cur_available_protocol_fee,
         0
     );
-    check!(printr "alice 50000" context.verify_deposit(
+    check!(printr "alice 50000" context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -199,9 +201,7 @@ async fn test_base() {
             ],
         ),
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 50000);
     assert_eq!(context.ft_balance_of("root").await.unwrap().0, 0);
@@ -228,7 +228,7 @@ async fn test_base() {
         0
     );
     check!(
-        context.verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             DepositMsg {
                 recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -249,9 +249,11 @@ async fn test_base() {
                 ],
             ),
             1,
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-            1,
-            vec![]
+            proof_json(
+                "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+                1,
+                vec![]
+            )
         ),
         "Already deposit utxo"
     );
@@ -262,7 +264,7 @@ async fn test_base() {
         context.get_unavailable_utxos_paged().await.unwrap().len(),
         1
     );
-    check!(context.verify_deposit(
+    check!(context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("bob").sdk_id(),
@@ -283,9 +285,11 @@ async fn test_base() {
             ],
         ),
         0,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json(
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![]
+        )
     ));
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 50000);
     assert_eq!(context.ft_balance_of("bob").await.unwrap().0, 200000);
@@ -430,12 +434,10 @@ async fn test_base() {
     let btc_pending_sign_txs = context.get_btc_pending_infos_paged().await.unwrap();
     let keys = btc_pending_sign_txs.keys().cloned().collect::<Vec<_>>();
     assert_eq!(context.ft_balance_of("bridge").await.unwrap().0, 110000);
-    check!(print context.verify_withdraw(
+    check!(print context.verify_withdraw_v2(
         "relayer",
         &keys[0],
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert_eq!(context.ft_balance_of("relayer").await.unwrap().0, 5000);
     assert_eq!(
@@ -494,7 +496,7 @@ async fn test_fix_bridge_fee_and_relayer() {
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
-    check!(printr "alice 500000" context.verify_deposit(
+    check!(printr "alice 500000" context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -515,9 +517,7 @@ async fn test_fix_bridge_fee_and_relayer() {
             ],
         ),
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert_eq!(context.ft_balance_of("relayer").await.unwrap().0, 1000);
     assert_eq!(
@@ -574,12 +574,10 @@ async fn test_fix_bridge_fee_and_relayer() {
         .keys()
         .cloned()
         .collect::<Vec<_>>();
-    check!(print "verify_withdraw" context.verify_withdraw(
+    check!(print "verify_withdraw" context.verify_withdraw_v2(
         "relayer",
         &btc_pending_verify_txs[0],
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert_eq!(
         context.ft_balance_of("relayer").await.unwrap().0,
@@ -636,7 +634,7 @@ async fn test_ratio_bridge_fee_and_relayer() {
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
-    check!(printr "alice 500000" context.verify_deposit(
+    check!(printr "alice 500000" context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -657,9 +655,7 @@ async fn test_ratio_bridge_fee_and_relayer() {
             ],
         ),
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert_eq!(context.ft_balance_of("relayer").await.unwrap().0, 5000);
     assert_eq!(
@@ -716,12 +712,10 @@ async fn test_ratio_bridge_fee_and_relayer() {
         .keys()
         .cloned()
         .collect::<Vec<_>>();
-    check!(print "verify_withdraw" context.verify_withdraw(
+    check!(print "verify_withdraw" context.verify_withdraw_v2(
         "relayer",
         &btc_pending_verify_txs[0],
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert_eq!(
         context.ft_balance_of("relayer").await.unwrap().0,
@@ -781,7 +775,7 @@ async fn test_directly_withdraw() {
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
-    check!(printr "alice 500000" context.verify_deposit(
+    check!(printr "alice 500000" context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -802,9 +796,7 @@ async fn test_directly_withdraw() {
             ],
         ),
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert_eq!(context.ft_balance_of("relayer").await.unwrap().0, 1000);
     assert_eq!(
@@ -867,12 +859,10 @@ async fn test_directly_withdraw() {
         .keys()
         .cloned()
         .collect::<Vec<_>>();
-    check!(print "verify_withdraw" context.verify_withdraw(
+    check!(print "verify_withdraw" context.verify_withdraw_v2(
         "relayer",
         &btc_pending_verify_txs[0],
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert_eq!(
         context.ft_balance_of("relayer").await.unwrap().0,
@@ -910,7 +900,7 @@ async fn test_directly_withdraw_to_p2sh() {
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
-    check!(printr "alice 500000" context.verify_deposit(
+    check!(printr "alice 500000" context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -931,9 +921,7 @@ async fn test_directly_withdraw_to_p2sh() {
             ],
         ),
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
 
     check!(context.storage_deposit("nbtc", "bob"));
@@ -993,12 +981,10 @@ async fn test_directly_withdraw_to_p2sh() {
         .keys()
         .cloned()
         .collect::<Vec<_>>();
-    check!(print "verify_withdraw" context.verify_withdraw(
+    check!(print "verify_withdraw" context.verify_withdraw_v2(
         "relayer",
         &btc_pending_verify_txs[0],
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert_eq!(
         context.ft_balance_of("relayer").await.unwrap().0,
@@ -1039,7 +1025,7 @@ async fn test_one_click() {
             .get_user_deposit_address(deposit_msg.clone())
             .await
             .unwrap();
-        check!(printr "alice 50000" context.verify_deposit(
+        check!(printr "alice 50000" context.verify_deposit_v2(
             "relayer",
             deposit_msg,
             generate_transaction_bytes(
@@ -1054,9 +1040,7 @@ async fn test_one_click() {
                 ],
             ),
             1,
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-            1,
-            vec![]
+            proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
         ));
         times += 1;
         assert_eq!(
@@ -1100,7 +1084,7 @@ async fn test_one_click() {
             .get_user_deposit_address(deposit_msg.clone())
             .await
             .unwrap();
-        check!(printr "alice 50000" context.verify_deposit(
+        check!(printr "alice 50000" context.verify_deposit_v2(
             "relayer",
             deposit_msg,
             generate_transaction_bytes(
@@ -1115,9 +1099,7 @@ async fn test_one_click() {
                 ],
             ),
             1,
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-            1,
-            vec![]
+            proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
         ));
 
         times += 1;
@@ -1158,7 +1140,7 @@ async fn test_one_click() {
             .get_user_deposit_address(deposit_msg.clone())
             .await
             .unwrap();
-        check!(printr "alice 50000" context.verify_deposit(
+        check!(printr "alice 50000" context.verify_deposit_v2(
             "relayer",
             deposit_msg,
             generate_transaction_bytes(
@@ -1173,9 +1155,7 @@ async fn test_one_click() {
                 ],
             ),
             1,
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-            1,
-            vec![]
+            proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
         ));
 
         times += 1;
@@ -1225,7 +1205,7 @@ async fn test_one_click() {
             .get_user_deposit_address(deposit_msg.clone())
             .await
             .unwrap();
-        check!(printr "alice 50000" context.verify_deposit(
+        check!(printr "alice 50000" context.verify_deposit_v2(
             "relayer",
             deposit_msg,
             generate_transaction_bytes(
@@ -1240,9 +1220,7 @@ async fn test_one_click() {
                 ],
             ),
             1,
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-            1,
-            vec![]
+            proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
         ));
 
         times += 1;
@@ -1299,7 +1277,7 @@ async fn test_one_click() {
             .get_user_deposit_address(deposit_msg.clone())
             .await
             .unwrap();
-        check!(printr "alice 50000" context.verify_deposit(
+        check!(printr "alice 50000" context.verify_deposit_v2(
             "relayer",
             deposit_msg,
             generate_transaction_bytes(
@@ -1314,9 +1292,7 @@ async fn test_one_click() {
                 ],
             ),
             1,
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-            1,
-            vec![]
+            proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
         ));
 
         times += 1;
@@ -1357,7 +1333,7 @@ async fn test_one_click() {
             .get_user_deposit_address(deposit_msg.clone())
             .await
             .unwrap();
-        check!(printr "alice 50000" context.verify_deposit(
+        check!(printr "alice 50000" context.verify_deposit_v2(
             "relayer",
             deposit_msg,
             generate_transaction_bytes(
@@ -1372,9 +1348,7 @@ async fn test_one_click() {
                 ],
             ),
             1,
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-            1,
-            vec![]
+            proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
         ));
 
         times += 1;
@@ -1424,7 +1398,7 @@ async fn test_one_click() {
             .get_user_deposit_address(deposit_msg.clone())
             .await
             .unwrap();
-        check!(printr "alice 50000" context.verify_deposit(
+        check!(printr "alice 50000" context.verify_deposit_v2(
             "relayer",
             deposit_msg,
             generate_transaction_bytes(
@@ -1439,9 +1413,7 @@ async fn test_one_click() {
                 ],
             ),
             1,
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-            1,
-            vec![]
+            proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
         ));
 
         times += 1;
@@ -1492,7 +1464,7 @@ async fn test_one_click() {
             .get_user_deposit_address(deposit_msg.clone())
             .await
             .unwrap();
-        check!(printr "alice 50000" context.verify_deposit(
+        check!(printr "alice 50000" context.verify_deposit_v2(
             "relayer",
             deposit_msg,
             generate_transaction_bytes(
@@ -1507,9 +1479,7 @@ async fn test_one_click() {
                 ],
             ),
             1,
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-            1,
-            vec![]
+            proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
         ));
 
         times += 1;
@@ -1555,7 +1525,7 @@ async fn test_utxo_passive_management() {
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
 
-    check!(printr "alice 500000" context.verify_deposit(
+    check!(printr "alice 500000" context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -1576,11 +1546,9 @@ async fn test_utxo_passive_management() {
             ],
         ),
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
-    check!(printr "alice 60000" context.verify_deposit(
+    check!(printr "alice 60000" context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -1601,9 +1569,7 @@ async fn test_utxo_passive_management() {
             ],
         ),
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 560000);
 
@@ -1786,7 +1752,7 @@ async fn test_cancel_withdraw() {
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
-    check!(printr "alice 500000" context.verify_deposit(
+    check!(printr "alice 500000" context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -1807,9 +1773,7 @@ async fn test_cancel_withdraw() {
             ],
         ),
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert_eq!(context.ft_balance_of("relayer").await.unwrap().0, 1000);
     assert_eq!(
@@ -1965,12 +1929,10 @@ async fn test_cancel_withdraw() {
     assert_eq!(500000, context.ft_total_supply().await.unwrap().0);
     assert!(context.get_utxos_paged().await.unwrap().is_empty());
     assert!(context.get_btc_pending_infos_paged().await.unwrap().len() == 2);
-    check!(print "verify_withdraw" context.verify_withdraw(
+    check!(print "verify_withdraw" context.verify_withdraw_v2(
         "relayer",
         &cancel_withdraw_tx_id,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert!(context.get_utxos_paged().await.unwrap().len() == 2);
     assert!(context
@@ -2023,7 +1985,7 @@ async fn test_cancel_withdraw2() {
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
-    check!(printr "alice 500000" context.verify_deposit(
+    check!(printr "alice 500000" context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -2044,9 +2006,7 @@ async fn test_cancel_withdraw2() {
             ],
         ),
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert_eq!(context.ft_balance_of("relayer").await.unwrap().0, 1000);
     assert_eq!(
@@ -2149,12 +2109,10 @@ async fn test_cancel_withdraw2() {
     assert_eq!(500000, context.ft_total_supply().await.unwrap().0);
     assert!(context.get_utxos_paged().await.unwrap().is_empty());
     assert!(context.get_btc_pending_infos_paged().await.unwrap().len() == 2);
-    check!(print context.verify_withdraw(
+    check!(print context.verify_withdraw_v2(
         "relayer",
         &original_btc_pending_verify_id,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert!(context.get_btc_pending_infos_paged().await.unwrap().len() == 1);
     assert_eq!(
@@ -2210,7 +2168,7 @@ async fn test_utxo_active_management() {
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
 
-    check!(printr "alice 500000" context.verify_deposit(
+    check!(printr "alice 500000" context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -2231,11 +2189,9 @@ async fn test_utxo_active_management() {
             ],
         ),
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
-    check!(printr "alice 60000" context.verify_deposit(
+    check!(printr "alice 60000" context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -2256,9 +2212,7 @@ async fn test_utxo_active_management() {
             ],
         ),
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert_eq!(
         context.ft_balance_of("alice").await.unwrap().0,
@@ -2536,12 +2490,10 @@ async fn test_utxo_active_management() {
             .cur_available_protocol_fee,
         20000 - 16000
     );
-    check!(print context.verify_active_utxo_management(
+    check!(print context.verify_withdraw_v2(
         "relayer",
         &cancel_active_utxo_management_tx_id,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert_eq!(
         context
@@ -2582,7 +2534,7 @@ async fn test_utxo_active_management2() {
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
 
-    check!(printr "alice 500000" context.verify_deposit(
+    check!(printr "alice 500000" context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -2603,11 +2555,9 @@ async fn test_utxo_active_management2() {
             ],
         ),
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
-    check!(printr "alice 60000" context.verify_deposit(
+    check!(printr "alice 60000" context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -2628,9 +2578,7 @@ async fn test_utxo_active_management2() {
             ],
         ),
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert_eq!(
         context.ft_balance_of("alice").await.unwrap().0,
@@ -2743,12 +2691,10 @@ async fn test_utxo_active_management2() {
             .cur_available_protocol_fee,
         20000 - 16000
     );
-    check!(print context.verify_active_utxo_management(
+    check!(print context.verify_withdraw_v2(
         "relayer",
         &active_utxo_management_rbf_tx_id,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
     assert_eq!(
         context
@@ -2789,9 +2735,9 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
         .await
         .unwrap();
 
-    // verify_deposit should fail for an account without the trusted-relayer role
+    // verify_deposit_v2 should fail for an account without the trusted-relayer role
     let outcome = unauthorized
-        .call(context.bridge_contract.id(), "verify_deposit")
+        .call(context.bridge_contract.id(), "verify_deposit_v2")
         .args_json(near_sdk::serde_json::json!({
             "deposit_msg": DepositMsg {
                 recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -2800,7 +2746,7 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
                 safe_deposit: None,
                 refund_address: None,
             },
-            "tx_bytes": generate_transaction_bytes(
+            "tx_bytes": near_sdk::json_types::Base64VecU8(generate_transaction_bytes(
                 vec![(
                     "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
                     1,
@@ -2810,91 +2756,31 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
                     (alice_btc_deposit_address.as_str(), 50000),
                     (TARGET_ADDRESS, 90000),
                 ],
-            ),
+            )),
             "vout": 0u32,
-            "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
-            "tx_index": 1u64,
-            "merkle_proof": Vec::<String>::new(),
+            "proof": mock_proof(),
         }))
         .max_gas()
         .transact()
         .await;
     assert!(
         tool_err_msg(&outcome).contains("Relayer is not active"),
-        "verify_deposit should reject an account without trusted-relayer role"
+        "verify_deposit_v2 should reject an account without trusted-relayer role"
     );
 
-    // safe_verify_deposit should fail for an account without the trusted-relayer role
+    // verify_withdraw_v2 should fail for an account without the trusted-relayer role
     let outcome = unauthorized
-        .call(context.bridge_contract.id(), "safe_verify_deposit")
-        .args_json(near_sdk::serde_json::json!({
-            "deposit_msg": DepositMsg {
-                recipient_id: context.get_account_by_name("alice").sdk_id(),
-                post_actions: None,
-                extra_msg: None,
-                safe_deposit: None,
-                refund_address: None,
-            },
-            "tx_bytes": generate_transaction_bytes(
-                vec![(
-                    "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
-                    1,
-                    None,
-                )],
-                vec![
-                    (alice_btc_deposit_address.as_str(), 50000),
-                    (TARGET_ADDRESS, 90000),
-                ],
-            ),
-            "vout": 0u32,
-            "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
-            "tx_index": 1u64,
-            "merkle_proof": Vec::<String>::new(),
-        }))
-        .max_gas()
-        .deposit(NearToken::from_near(1))
-        .transact()
-        .await;
-    assert!(
-        tool_err_msg(&outcome).contains("Relayer is not active"),
-        "safe_verify_deposit should reject an account without trusted-relayer role"
-    );
-
-    // verify_withdraw should fail for an account without the trusted-relayer role
-    let outcome = unauthorized
-        .call(context.bridge_contract.id(), "verify_withdraw")
+        .call(context.bridge_contract.id(), "verify_withdraw_v2")
         .args_json(near_sdk::serde_json::json!({
             "tx_id": "",
-            "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
-            "tx_index": 1u64,
-            "merkle_proof": Vec::<String>::new(),
+            "proof": mock_proof(),
         }))
         .max_gas()
         .transact()
         .await;
     assert!(
         tool_err_msg(&outcome).contains("Relayer is not active"),
-        "verify_withdraw should reject an account without trusted-relayer role"
-    );
-
-    // verify_active_utxo_management should fail for an account without the trusted-relayer role
-    let outcome = unauthorized
-        .call(
-            context.bridge_contract.id(),
-            "verify_active_utxo_management",
-        )
-        .args_json(near_sdk::serde_json::json!({
-            "tx_id": "",
-            "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
-            "tx_index": 1u64,
-            "merkle_proof": Vec::<String>::new(),
-        }))
-        .max_gas()
-        .transact()
-        .await;
-    assert!(
-        tool_err_msg(&outcome).contains("Relayer is not active"),
-        "verify_active_utxo_management should reject an account without trusted-relayer role"
+        "verify_withdraw_v2 should reject an account without trusted-relayer role"
     );
 }
 
@@ -3015,7 +2901,7 @@ async fn test_verify_withdraw_v2() {
         .unwrap();
 
     // 1. Deposit via v1 to get UTXOs and nBTC
-    check!(context.verify_deposit(
+    check!(context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -3036,9 +2922,11 @@ async fn test_verify_withdraw_v2() {
             ],
         ),
         0,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json(
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![]
+        )
     ));
     assert!(context.ft_balance_of("alice").await.unwrap().0 > 0);
 
@@ -3124,7 +3012,7 @@ async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
         .get_user_deposit_address(bob_deposit_msg.clone())
         .await
         .unwrap();
-    check!(context.verify_deposit(
+    check!(context.verify_deposit_v2(
         "relayer",
         bob_deposit_msg,
         generate_transaction_bytes(
@@ -3139,9 +3027,11 @@ async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
             ],
         ),
         0,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json(
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![]
+        )
     ));
     const BRIDGE_SEED: u128 = 150_000;
     check!(context.ft_transfer("bob", "bridge", BRIDGE_SEED));
@@ -3186,14 +3076,12 @@ async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
     // returns U128(0) because alice is not registered; safe_mint_callback
     // then burns the mint_amount from the bridge.
     let outcome = context
-        .safe_verify_deposit(
+        .verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![],
+            proof_json(blockhash.clone(), 1, vec![]),
         )
         .await
         .unwrap();
@@ -3223,14 +3111,12 @@ async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
     check!(context.storage_deposit("nbtc", "alice"));
     check!(
         print "retry safe_verify_deposit"
-        context.safe_verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg,
             tx_bytes,
             vout,
-            blockhash,
-            1,
-            vec![],
+            proof_json(blockhash, 1, vec![]),
         )
     );
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
@@ -3268,7 +3154,7 @@ async fn test_verify_deposit_post_action_to_bridge_is_rejected() {
         .await
         .unwrap();
     const SEED_UTXO_AMOUNT: u128 = 200_000;
-    check!(context.verify_deposit(
+    check!(context.verify_deposit_v2(
         "relayer",
         bob_deposit_msg,
         generate_transaction_bytes(
@@ -3283,9 +3169,11 @@ async fn test_verify_deposit_post_action_to_bridge_is_rejected() {
             ],
         ),
         0,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json(
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![]
+        )
     ));
 
     let seed_utxo_keys = context
@@ -3367,7 +3255,7 @@ async fn test_verify_deposit_post_action_to_bridge_is_rejected() {
         .unwrap();
     check!(
         printr "verify_deposit with init-withdraw post_action"
-        context.verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             alice_deposit_msg,
             generate_transaction_bytes(
@@ -3382,9 +3270,7 @@ async fn test_verify_deposit_post_action_to_bridge_is_rejected() {
                 ],
             ),
             0,
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-            1,
-            vec![]
+            proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
         )
     );
 
@@ -3421,7 +3307,7 @@ async fn test_verify_active_utxo_management_v2() {
     // verify_active_utxo_management_v2 with a non-existent tx_id must be rejected:
     // internal_unwrap_btc_pending_info panics before any proof verification.
     check!(
-        context.verify_active_utxo_management_v2("relayer", "non_existent_tx_id", mock_proof()),
+        context.verify_withdraw_v2("relayer", "non_existent_tx_id", mock_proof()),
         "BTC pending info not exist"
     );
 }
@@ -3463,14 +3349,16 @@ async fn test_safe_verify_deposit_to_bridge_recipient_is_rejected() {
     );
 
     let outcome = context
-        .safe_verify_deposit(
+        .verify_deposit_v2(
             "relayer",
             deposit_msg,
             tx_bytes,
             0,
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-            1,
-            vec![],
+            proof_json(
+                "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+                1,
+                vec![],
+            ),
         )
         .await
         .unwrap();
