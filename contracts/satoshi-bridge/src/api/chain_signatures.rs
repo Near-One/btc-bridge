@@ -1,5 +1,5 @@
 use crate::{
-    near, require, trusted_relayer, AccessControllable, Contract, ContractExt, Pausable,
+    near, require, trusted_relayer, AccessControllable, Contract, ContractExt, Pausable, Promise,
     PromiseOrValue, Role,
 };
 
@@ -43,5 +43,27 @@ impl Contract {
         }
         self.internal_sign_btc_transaction(btc_pending_sign_id, sign_index, key_version)
             .into()
+    }
+
+    /// Sign the input of a refund transaction. Unlike `sign_btc_transaction`,
+    /// this is callable by anyone (no trusted relayer required), so users can
+    /// drive the refund flow themselves after `execute_refund`.
+    ///
+    /// # Arguments
+    ///
+    /// * `btc_pending_sign_id` - Pending signature BTC transaction ID.
+    /// * `sign_index` - Specify the input index for this signature.
+    #[payable]
+    #[pause(except(roles(Role::DAO)))]
+    pub fn sign_refund(
+        &mut self,
+        btc_pending_sign_id: String,
+        sign_index: usize,
+        key_version: u32,
+    ) -> Promise {
+        let btc_pending_info = self.internal_unwrap_btc_pending_info(&btc_pending_sign_id);
+        btc_pending_info.assert_refund_related();
+        btc_pending_info.assert_pending_sign();
+        self.internal_sign_btc_transaction(btc_pending_sign_id, sign_index, key_version)
     }
 }
