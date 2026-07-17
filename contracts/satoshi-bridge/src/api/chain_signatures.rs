@@ -28,12 +28,10 @@ impl Contract {
         key_version: u32,
     ) -> PromiseOrValue<bool> {
         let btc_pending_info = self.internal_unwrap_btc_pending_info(&btc_pending_sign_id);
-        if !btc_pending_info.is_refund() {
-            require!(
-                self.is_trusted_relayer(&env::predecessor_account_id()),
-                "Relayer is not active"
-            );
-        }
+        require!(
+            btc_pending_info.is_refund() || self.is_trusted_relayer(&env::predecessor_account_id()),
+            "Relayer is not active"
+        );
         btc_pending_info.assert_pending_sign();
         if let Some(original_tx_id) = btc_pending_info.get_original_tx_id() {
             if !self.check_btc_pending_info_exists(original_tx_id) {
