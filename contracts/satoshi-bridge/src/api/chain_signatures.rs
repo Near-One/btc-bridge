@@ -1,5 +1,5 @@
 use crate::{
-    near, require, AccessControllable, Contract, ContractExt, Pausable, PromiseOrValue, Role,
+    env, near, require, AccessControllable, Contract, ContractExt, Pausable, PromiseOrValue, Role,
 };
 
 use near_plugins::pause;
@@ -7,6 +7,9 @@ use near_plugins::pause;
 #[near]
 impl Contract {
     /// Sign the specified input of the BTC transaction, and when signing the last unsigned input, generate a signed transaction ready to be broadcasted.
+    ///
+    /// Requires an active trusted relayer, except for refund transactions,
+    /// which anyone can sign so users can drive the refund flow themselves.
     ///
     /// # Arguments
     ///
@@ -25,6 +28,10 @@ impl Contract {
         key_version: u32,
     ) -> PromiseOrValue<bool> {
         let btc_pending_info = self.internal_unwrap_btc_pending_info(&btc_pending_sign_id);
+        require!(
+            btc_pending_info.is_refund() || self.is_trusted_relayer(&env::predecessor_account_id()),
+            "Relayer is not active"
+        );
         btc_pending_info.assert_pending_sign();
         if let Some(original_tx_id) = btc_pending_info.get_original_tx_id() {
             if !self.check_btc_pending_info_exists(original_tx_id) {
