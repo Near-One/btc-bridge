@@ -15,7 +15,7 @@ pub struct DepositMsg {
     // Parameters for executing ft_transfer_call after successful nBTC minting.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub post_actions: Option<Vec<PostAction>>,
-    // Used to support other dApps extending based on verify_deposit.
+    // Used to support other dApps extending based on verify_deposit_v2.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub extra_msg: Option<String>,
     // Replacment for the legacy post_actions to support safer cross-contract calls.

@@ -163,17 +163,15 @@ async fn test_refund_basic_flow() {
     let pending_values = pending_infos.values().cloned().collect::<Vec<_>>();
     pending_values[0].assert_pending_verify();
 
-    // 10. Verify refund transaction on-chain (like verify_withdraw but no burn)
+    // 10. Verify refund transaction on-chain via verify_withdraw_v2 (no burn for refunds)
     let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
     let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
     check!(
-        print "verify_refund_finalize"
-        context.verify_refund_finalize(
+        print "verify_withdraw_v2 (refund finalize)"
+        context.verify_withdraw_v2(
             "relayer",
             &pending_keys[0],
-            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-            1,
-            vec![]
+            proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
         )
     );
 
@@ -428,16 +426,14 @@ async fn test_refund_then_deposit_fails() {
         context.execute_refund("alice", &key)
     );
 
-    // 3. verify_deposit blocked RIGHT AFTER execute_refund (before sign)
+    // 3. verify_deposit_v2 blocked RIGHT AFTER execute_refund (before sign)
     check!(
-        context.verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         ),
         "Already deposit utxo"
     );
@@ -450,29 +446,25 @@ async fn test_refund_then_deposit_fails() {
         context.sign_btc_transaction("alice", &pending_keys[0], 0, 0)
     );
 
-    // 5. verify_deposit STILL blocked after sign (after broadcast)
+    // 5. verify_deposit_v2 STILL blocked after sign (after broadcast)
     check!(
-        context.verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         ),
         "Already deposit utxo"
     );
 
-    // 6. verify_refund_finalize — finalize the refund
+    // 6. verify_withdraw_v2 — finalize the refund (refund finalization was unified into verify_withdraw_v2)
     check!(
-        print "verify_refund_finalize"
-        context.verify_refund_finalize(
+        print "verify_withdraw_v2 (refund finalize)"
+        context.verify_withdraw_v2(
             "relayer",
             &pending_keys[0],
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         )
     );
 
@@ -483,9 +475,15 @@ async fn test_refund_then_deposit_fails() {
         .unwrap()
         .is_empty());
 
-    // 8. verify_deposit STILL blocked after verify_refund_finalize
+    // 8. verify_deposit_v2 STILL blocked after refund finalization
     check!(
-        context.verify_deposit("relayer", deposit_msg, tx_bytes, vout, blockhash, 1, vec![]),
+        context.verify_deposit_v2(
+            "relayer",
+            deposit_msg,
+            tx_bytes,
+            vout,
+            proof_json(blockhash, 1, vec![])
+        ),
         "Already deposit utxo"
     );
 
@@ -539,17 +537,15 @@ async fn test_refund_race_deposit_wins() {
         )
     );
 
-    // 2. During timelock, Relayer calls verify_deposit — deposit succeeds
+    // 2. During timelock, Relayer calls verify_deposit_v2 — deposit succeeds
     check!(
-        print "verify_deposit"
-        context.verify_deposit(
+        print "verify_deposit_v2"
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         )
     );
 
@@ -609,17 +605,15 @@ async fn test_refund_after_deposit_fails() {
     let vout: u32 = 0;
     let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
 
-    // 1. verify_deposit — Relayer finalizes deposit first
+    // 1. verify_deposit_v2 — Relayer finalizes deposit first
     check!(
-        print "verify_deposit"
-        context.verify_deposit(
+        print "verify_deposit_v2"
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         )
     );
 
@@ -706,17 +700,15 @@ async fn test_refund_reject_then_deposit_succeeds() {
         "Refund request not found"
     );
 
-    // 4. verify_deposit works normally — UTXO was not marked
+    // 4. verify_deposit_v2 works normally — UTXO was not marked
     check!(
-        print "verify_deposit"
-        context.verify_deposit(
+        print "verify_deposit_v2"
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg,
             tx_bytes,
             vout,
-            blockhash,
-            1,
-            vec![]
+            proof_json(blockhash, 1, vec![])
         )
     );
 
@@ -929,19 +921,18 @@ async fn test_refund_race_safe_deposit_wins() {
         )
     );
 
-    // 2. During timelock, Relayer calls safe_verify_deposit — succeeds
+    // 2. During timelock, Relayer calls verify_deposit_v2 (safe deposit via
+    // deposit_msg.safe_deposit) — succeeds
     // Register alice in nBTC first (safe_mint requires it)
     check!(context.storage_deposit("nbtc", "alice"));
     check!(
-        print "safe_verify_deposit"
-        context.safe_verify_deposit(
+        print "verify_deposit_v2 (safe deposit)"
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         )
     );
 
@@ -1000,18 +991,16 @@ async fn test_refund_after_safe_deposit_fails() {
     let vout: u32 = 0;
     let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
 
-    // 1. Register alice in nBTC and do safe_verify_deposit
+    // 1. Register alice in nBTC and do verify_deposit_v2 (safe deposit via deposit_msg.safe_deposit)
     check!(context.storage_deposit("nbtc", "alice"));
     check!(
-        print "safe_verify_deposit"
-        context.safe_verify_deposit(
+        print "verify_deposit_v2 (safe deposit)"
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         )
     );
 
@@ -1067,7 +1056,7 @@ async fn test_refund_then_safe_deposit_fails() {
     let vout: u32 = 0;
     let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
 
-    // Register alice in nBTC (needed for safe_verify_deposit attempts)
+    // Register alice in nBTC (needed for safe deposit attempts via verify_deposit_v2)
     check!(context.storage_deposit("nbtc", "alice"));
 
     // 1. Request refund
@@ -1104,16 +1093,14 @@ async fn test_refund_then_safe_deposit_fails() {
         context.execute_refund("alice", &key)
     );
 
-    // 3. safe_verify_deposit blocked RIGHT AFTER execute_refund (before sign)
+    // 3. verify_deposit_v2 (safe deposit) blocked RIGHT AFTER execute_refund (before sign)
     check!(
-        context.safe_verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         ),
         "Already deposit utxo"
     );
@@ -1126,29 +1113,25 @@ async fn test_refund_then_safe_deposit_fails() {
         context.sign_btc_transaction("alice", &pending_keys[0], 0, 0)
     );
 
-    // 5. safe_verify_deposit STILL blocked after sign (after broadcast)
+    // 5. verify_deposit_v2 (safe deposit) STILL blocked after sign (after broadcast)
     check!(
-        context.safe_verify_deposit(
+        context.verify_deposit_v2(
             "relayer",
             deposit_msg.clone(),
             tx_bytes.clone(),
             vout,
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         ),
         "Already deposit utxo"
     );
 
-    // 6. verify_refund_finalize — finalize the refund
+    // 6. verify_withdraw_v2 — finalize the refund (refund finalization was unified into verify_withdraw_v2)
     check!(
-        print "verify_refund_finalize"
-        context.verify_refund_finalize(
+        print "verify_withdraw_v2 (refund finalize)"
+        context.verify_withdraw_v2(
             "relayer",
             &pending_keys[0],
-            blockhash.clone(),
-            1,
-            vec![]
+            proof_json(blockhash.clone(), 1, vec![])
         )
     );
 
@@ -1159,9 +1142,15 @@ async fn test_refund_then_safe_deposit_fails() {
         .unwrap()
         .is_empty());
 
-    // 8. safe_verify_deposit STILL blocked after verify_refund_finalize
+    // 8. verify_deposit_v2 (safe deposit) STILL blocked after refund finalization
     check!(
-        context.safe_verify_deposit("relayer", deposit_msg, tx_bytes, vout, blockhash, 1, vec![]),
+        context.verify_deposit_v2(
+            "relayer",
+            deposit_msg,
+            tx_bytes,
+            vout,
+            proof_json(blockhash, 1, vec![])
+        ),
         "Already deposit utxo"
     );
 

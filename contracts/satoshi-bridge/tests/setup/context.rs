@@ -840,31 +840,6 @@ impl Context {
             .await
     }
 
-    pub async fn verify_deposit(
-        &self,
-        user: &str,
-        deposit_msg: DepositMsg,
-        tx_bytes: Vec<u8>,
-        vout: u32,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-    ) -> Result<ExecutionFinalResult> {
-        self.get_account_by_name(user)
-            .call(self.bridge_contract.id(), "verify_deposit")
-            .args_json(json!({
-                "deposit_msg": deposit_msg,
-                "tx_bytes": tx_bytes,
-                "vout": vout,
-                "tx_block_blockhash": tx_block_blockhash,
-                "tx_index": tx_index,
-                "merkle_proof": merkle_proof,
-            }))
-            .max_gas()
-            .transact()
-            .await
-    }
-
     pub async fn sign_btc_transaction(
         &self,
         user: &str,
@@ -878,48 +853,6 @@ impl Context {
                 "btc_pending_sign_id": btc_pending_sign_id,
                 "sign_index": sign_index,
                 "key_version": key_version,
-            }))
-            .max_gas()
-            .transact()
-            .await
-    }
-
-    pub async fn verify_active_utxo_management(
-        &self,
-        user: &str,
-        tx_id: &str,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-    ) -> Result<ExecutionFinalResult> {
-        self.get_account_by_name(user)
-            .call(self.bridge_contract.id(), "verify_active_utxo_management")
-            .args_json(json!({
-                "tx_id": tx_id,
-                "tx_block_blockhash": tx_block_blockhash,
-                "tx_index": tx_index,
-                "merkle_proof": merkle_proof,
-            }))
-            .max_gas()
-            .transact()
-            .await
-    }
-
-    pub async fn verify_withdraw(
-        &self,
-        user: &str,
-        tx_id: &str,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-    ) -> Result<ExecutionFinalResult> {
-        self.get_account_by_name(user)
-            .call(self.bridge_contract.id(), "verify_withdraw")
-            .args_json(json!({
-                "tx_id": tx_id,
-                "tx_block_blockhash": tx_block_blockhash,
-                "tx_index": tx_index,
-                "merkle_proof": merkle_proof,
             }))
             .max_gas()
             .transact()
@@ -962,26 +895,6 @@ impl Context {
     ) -> Result<ExecutionFinalResult> {
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "verify_withdraw_v2")
-            .args_json(json!({
-                "tx_id": tx_id,
-                "proof": proof,
-            }))
-            .max_gas()
-            .transact()
-            .await
-    }
-
-    pub async fn verify_active_utxo_management_v2(
-        &self,
-        user: &str,
-        tx_id: &str,
-        proof: Value,
-    ) -> Result<ExecutionFinalResult> {
-        self.get_account_by_name(user)
-            .call(
-                self.bridge_contract.id(),
-                "verify_active_utxo_management_v2",
-            )
             .args_json(json!({
                 "tx_id": tx_id,
                 "proof": proof,
@@ -1546,57 +1459,6 @@ impl Context {
             .args_json(json!({
                 "utxo_storage_key": utxo_storage_key,
             }))
-            .max_gas()
-            .transact()
-            .await
-    }
-
-    pub async fn verify_refund_finalize(
-        &self,
-        user: &str,
-        tx_id: &str,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-    ) -> Result<ExecutionFinalResult> {
-        self.get_account_by_name(user)
-            .call(self.bridge_contract.id(), "verify_refund_finalize")
-            .args_json(json!({
-                "tx_id": tx_id,
-                "proof": {
-                    "tx_block_blockhash": tx_block_blockhash,
-                    "tx_index": tx_index,
-                    "merkle_proof": merkle_proof,
-                    "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
-                    "coinbase_merkle_proof": Vec::<String>::new(),
-                },
-            }))
-            .max_gas()
-            .transact()
-            .await
-    }
-
-    pub async fn safe_verify_deposit(
-        &self,
-        user: &str,
-        deposit_msg: DepositMsg,
-        tx_bytes: Vec<u8>,
-        vout: u32,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-    ) -> Result<ExecutionFinalResult> {
-        self.get_account_by_name(user)
-            .call(self.bridge_contract.id(), "safe_verify_deposit")
-            .args_json(json!({
-                "deposit_msg": deposit_msg,
-                "tx_bytes": tx_bytes,
-                "vout": vout,
-                "tx_block_blockhash": tx_block_blockhash,
-                "tx_index": tx_index,
-                "merkle_proof": merkle_proof,
-            }))
-            .deposit(NearToken::from_millinear(2))
             .max_gas()
             .transact()
             .await

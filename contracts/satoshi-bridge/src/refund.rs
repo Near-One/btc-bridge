@@ -41,8 +41,8 @@ pub struct RefundRequest {
     /// Set once `execute_refund` has built a refund transaction for this request.
     /// While `true` the request is kept (not removed) so `execute_refund` can be
     /// called again to re-create the transaction (e.g. after a consensus branch
-    /// change); it is removed only when the refund is finalized in
-    /// `verify_refund_finalize`.
+    /// change); it is removed only when the refund is finalized via
+    /// `verify_withdraw_v2`.
     pub executed: bool,
 }
 
@@ -308,7 +308,7 @@ impl Contract {
     }
 
     /// Given a fully-built refund PSBT, create the refund `BTCPendingInfo`, mark
-    /// the deposit UTXO verified (to block a later `verify_deposit`), emit events
+    /// the deposit UTXO verified (to block a later `verify_deposit_v2`), emit events
     /// and remove the request. `caller` is the account that will own the pending
     /// info — it must be passed explicitly because on Zcash this runs inside a
     /// `#[private]` callback where `predecessor` is the contract itself.
@@ -374,7 +374,7 @@ impl Contract {
             .btc_pending_sign_ids
             .insert(btc_pending_id.clone());
 
-        // Mark UTXO as verified to prevent verify_deposit later
+        // Mark UTXO as verified to prevent verify_deposit_v2 later
         self.data_mut()
             .verified_deposit_utxo
             .insert(utxo_storage_key.clone());
@@ -394,7 +394,7 @@ impl Contract {
 
         // Keep the request (so `execute_refund` can be called again to re-create
         // the transaction) but mark it executed; it is removed only when the
-        // refund is finalized in `verify_refund_finalize`.
+        // refund is finalized via `verify_withdraw_v2`.
         refund_request.executed = true;
         self.data_mut()
             .refund_requests
@@ -428,6 +428,20 @@ impl Contract {
         let account = self.internal_unwrap_mut_account(&account_id);
         account.btc_pending_sign_ids.remove(&tx_id);
         account.btc_pending_verify_list.remove(&tx_id);
+    }
+
+    pub(crate) fn internal_verify_refund_finalize_entry(
+        &mut self,
+        tx_id: String,
+        proof: TxInclusionProof,
+    ) -> Promise {
+        let btc_pending_info = self.internal_unwrap_btc_pending_info(&tx_id);
+        btc_pending_info.assert_refund_pending_verify_tx();
+        require!(
+            btc_pending_info.tx_bytes_with_sign.is_some(),
+            "Missing tx_bytes_with_sign"
+        );
+        self.internal_verify_refund_finalize(tx_id, proof, btc_pending_info)
     }
 
     /// Verify refund transaction was included in Bitcoin blockchain.
