@@ -574,7 +574,7 @@ async fn test_fix_bridge_fee_and_relayer() {
         .keys()
         .cloned()
         .collect::<Vec<_>>();
-    check!(print "verify_withdraw" context.verify_withdraw_v2(
+    check!(print "verify_withdraw_v2" context.verify_withdraw_v2(
         "relayer",
         &btc_pending_verify_txs[0],
         proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
@@ -712,7 +712,7 @@ async fn test_ratio_bridge_fee_and_relayer() {
         .keys()
         .cloned()
         .collect::<Vec<_>>();
-    check!(print "verify_withdraw" context.verify_withdraw_v2(
+    check!(print "verify_withdraw_v2" context.verify_withdraw_v2(
         "relayer",
         &btc_pending_verify_txs[0],
         proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
@@ -859,7 +859,7 @@ async fn test_directly_withdraw() {
         .keys()
         .cloned()
         .collect::<Vec<_>>();
-    check!(print "verify_withdraw" context.verify_withdraw_v2(
+    check!(print "verify_withdraw_v2" context.verify_withdraw_v2(
         "relayer",
         &btc_pending_verify_txs[0],
         proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
@@ -981,7 +981,7 @@ async fn test_directly_withdraw_to_p2sh() {
         .keys()
         .cloned()
         .collect::<Vec<_>>();
-    check!(print "verify_withdraw" context.verify_withdraw_v2(
+    check!(print "verify_withdraw_v2" context.verify_withdraw_v2(
         "relayer",
         &btc_pending_verify_txs[0],
         proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
@@ -1929,7 +1929,7 @@ async fn test_cancel_withdraw() {
     assert_eq!(500000, context.ft_total_supply().await.unwrap().0);
     assert!(context.get_utxos_paged().await.unwrap().is_empty());
     assert!(context.get_btc_pending_infos_paged().await.unwrap().len() == 2);
-    check!(print "verify_withdraw" context.verify_withdraw_v2(
+    check!(print "verify_withdraw_v2" context.verify_withdraw_v2(
         "relayer",
         &cancel_withdraw_tx_id,
         proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
@@ -2859,7 +2859,7 @@ async fn test_safe_verify_deposit_v2() {
 
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
 
-    // Register alice for nBTC storage (required for safe_verify_deposit)
+    // Register alice for nBTC storage (required for safe deposit via verify_deposit_v2)
     check!(context.storage_deposit("nbtc", "alice"));
 
     // verify_deposit_v2 dispatches to the safe flow because deposit_msg.safe_deposit is Some.
@@ -2900,7 +2900,7 @@ async fn test_verify_withdraw_v2() {
         .await
         .unwrap();
 
-    // 1. Deposit via v1 to get UTXOs and nBTC
+    // 1. Deposit via v2 to get UTXOs and nBTC
     check!(context.verify_deposit_v2(
         "relayer",
         DepositMsg {
@@ -2986,8 +2986,9 @@ async fn test_verify_withdraw_v2() {
 }
 
 // Regression test for the safe_mint fix.
-// When safe_verify_deposit is called with an unregistered recipient, safe_mint
-// must deposit the amount to the bridge before returning U128(0) so that
+// When verify_deposit_v2 with safe_deposit=Some(..) is called with an unregistered
+// recipient, safe_mint must deposit the amount to the bridge before returning
+// U128(0) so that
 // safe_mint_callback's burn (from bridge balance) succeeds. Before the fix,
 // nothing was deposited and the detached burn would panic because
 // internal_withdraw on the bridge's zero balance failed. The pre-seeded bridge
@@ -2998,7 +2999,7 @@ async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
 
-    // Seed the bridge with some nBTC: bob does a regular verify_deposit
+    // Seed the bridge with some nBTC: bob does a regular verify_deposit_v2
     // (which auto-registers him and mints to him) and then transfers part of
     // his balance to the bridge account.
     let bob_deposit_msg = DepositMsg {
@@ -3072,9 +3073,9 @@ async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
     // Sanity: alice is NOT registered on nBTC yet.
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
 
-    // safe_verify_deposit succeeds at the transaction level but safe_mint
-    // returns U128(0) because alice is not registered; safe_mint_callback
-    // then burns the mint_amount from the bridge.
+    // verify_deposit_v2 with safe_deposit=Some(..) succeeds at the transaction
+    // level but safe_mint returns U128(0) because alice is not registered;
+    // safe_mint_callback then burns the mint_amount from the bridge.
     let outcome = context
         .verify_deposit_v2(
             "relayer",
@@ -3110,7 +3111,7 @@ async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
     // deposit can be retried once alice registers.
     check!(context.storage_deposit("nbtc", "alice"));
     check!(
-        print "retry safe_verify_deposit"
+        print "retry verify_deposit_v2 (safe deposit)"
         context.verify_deposit_v2(
             "relayer",
             deposit_msg,
@@ -3127,7 +3128,7 @@ async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
     assert_eq!(context.get_utxos_paged().await.unwrap().len(), 2);
 }
 
-// Regression test: a post_action in verify_deposit must NOT be able to target
+// Regression test: a post_action in verify_deposit_v2 must NOT be able to target
 // the bridge itself. Previously, if the bridge account was added to the
 // post_action_receiver_id_white_list, a relayer-paid deposit could drive the
 // bridge's own ft_on_transfer (e.g. TokenReceiverMessage::Withdraw) within the
@@ -3254,7 +3255,7 @@ async fn test_verify_deposit_post_action_to_bridge_is_rejected() {
         .await
         .unwrap();
     check!(
-        printr "verify_deposit with init-withdraw post_action"
+        printr "verify_deposit_v2 with init-withdraw post_action"
         context.verify_deposit_v2(
             "relayer",
             alice_deposit_msg,

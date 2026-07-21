@@ -357,7 +357,7 @@ impl Contract {
 
     /// Reject a pending refund request.
     /// - DAO or Operator can reject any request.
-    /// - Anyone can reject a request if the UTXO has already been verified via `verify_deposit`
+    /// - Anyone can reject a request if the UTXO has already been verified via `verify_deposit_v2`
     ///
     /// # Arguments
     ///
@@ -370,7 +370,7 @@ impl Contract {
         // later deposit) while keeping the request with `executed == true`. That membership
         // must NOT open the permissionless reject path, otherwise anyone could cancel an
         // in-flight refund — so only treat the UTXO as "already deposited" when the request
-        // was not executed by us, i.e. a real `verify_deposit` finalized it.
+        // was not executed by us, i.e. a real `verify_deposit_v2` finalized it.
         let executed = self
             .data()
             .refund_requests

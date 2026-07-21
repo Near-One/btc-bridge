@@ -221,7 +221,7 @@ async fn test_ironwood_shielded_refund() {
         .assert_pending_verify();
 
     check!(
-        print "verify_refund_finalize"
+        print "verify_withdraw_v2 (refund finalize)"
         context.verify_withdraw_v2(
             "relayer",
             &pending_keys[0],

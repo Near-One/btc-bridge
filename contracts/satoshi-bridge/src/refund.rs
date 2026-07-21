@@ -308,7 +308,7 @@ impl Contract {
     }
 
     /// Given a fully-built refund PSBT, create the refund `BTCPendingInfo`, mark
-    /// the deposit UTXO verified (to block a later `verify_deposit`), emit events
+    /// the deposit UTXO verified (to block a later `verify_deposit_v2`), emit events
     /// and remove the request. `caller` is the account that will own the pending
     /// info — it must be passed explicitly because on Zcash this runs inside a
     /// `#[private]` callback where `predecessor` is the contract itself.
@@ -374,7 +374,7 @@ impl Contract {
             .btc_pending_sign_ids
             .insert(btc_pending_id.clone());
 
-        // Mark UTXO as verified to prevent verify_deposit later
+        // Mark UTXO as verified to prevent verify_deposit_v2 later
         self.data_mut()
             .verified_deposit_utxo
             .insert(utxo_storage_key.clone());

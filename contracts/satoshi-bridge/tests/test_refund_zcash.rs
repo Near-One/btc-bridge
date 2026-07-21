@@ -106,7 +106,7 @@ async fn deposit_and_request_refund(
 ///
 /// deposit (150000) ──request_refund(refund_address = UA)──▶ refund request
 ///   ──execute_refund(Orchard bundle, 140000)──▶ refund BTCPendingInfo
-///   ──sign──▶ pending_verify ──verify_refund_finalize──▶ cleaned up
+///   ──sign──▶ pending_verify ──verify_withdraw_v2──▶ cleaned up
 ///
 /// With no explicit gas_fee, the default is the ZIP-317 minimum (10000), so the
 /// Orchard output must be 150000 - 10000 = 140000.
@@ -252,7 +252,7 @@ async fn test_zcash_refund_shielded_to_unified_address() {
     let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
     let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
     check!(
-        print "verify_refund_finalize"
+        print "verify_withdraw_v2 (refund finalize)"
         context.verify_withdraw_v2(
             "relayer",
             &pending_keys[0],
@@ -491,7 +491,7 @@ async fn test_zcash_refund_transparent_tex_address() {
 /// consensus branch change). Re-running with unchanged conditions rebuilds the
 /// identical transaction, which is rejected as a duplicate ("pending info already
 /// exist") — crucially NOT "Refund request not found". The request is removed
-/// only when the refund is finalized in `verify_refund_finalize`.
+/// only when the refund is finalized in `verify_withdraw_v2`.
 #[tokio::test]
 #[cfg(feature = "zcash")]
 async fn test_zcash_execute_refund_twice() {
@@ -575,7 +575,7 @@ async fn test_zcash_execute_refund_twice() {
     );
 
     // The request is still kept after the second execution (removed only on
-    // verify_refund_finalize).
+    // verify_withdraw_v2).
     let requests_after: HashMap<String, near_sdk::serde_json::Value> = context
         .bridge_contract
         .call("get_refund_requests_paged")
@@ -696,7 +696,7 @@ async fn test_zcash_refund_duplicate_request() {
     );
 }
 
-/// After execute_refund, verify_deposit is permanently blocked for that UTXO.
+/// After execute_refund, verify_deposit_v2 is permanently blocked for that UTXO.
 #[tokio::test]
 #[cfg(feature = "zcash")]
 async fn test_zcash_refund_then_deposit_fails() {
@@ -838,7 +838,7 @@ async fn test_zcash_refund_race_deposit_wins() {
     ));
     let key = refund_key(&context).await;
 
-    check!(print "verify_deposit" context.verify_deposit_v2(
+    check!(print "verify_deposit_v2" context.verify_deposit_v2(
         "relayer", deposit_msg, tx_bytes, vout, proof_json(BLOCKHASH.to_string(), 1, vec![])
     ));
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
@@ -879,7 +879,7 @@ async fn test_zcash_refund_after_deposit_fails() {
     );
     let vout: u32 = 0;
 
-    check!(print "verify_deposit" context.verify_deposit_v2(
+    check!(print "verify_deposit_v2" context.verify_deposit_v2(
         "relayer", deposit_msg.clone(), tx_bytes.clone(), vout, proof_json(BLOCKHASH.to_string(), 1, vec![])
     ));
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
@@ -948,7 +948,7 @@ async fn test_zcash_refund_reject_then_deposit_succeeds() {
         "Refund request not found"
     );
 
-    check!(print "verify_deposit" context.verify_deposit_v2(
+    check!(print "verify_deposit_v2" context.verify_deposit_v2(
         "relayer", deposit_msg, tx_bytes, vout, proof_json(BLOCKHASH.to_string(), 1, vec![])
     ));
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
@@ -1115,7 +1115,7 @@ async fn test_zcash_refund_race_safe_deposit_wins() {
     let key = refund_key(&context).await;
 
     check!(context.storage_deposit("nbtc", "alice"));
-    check!(print "safe_verify_deposit" context.verify_deposit_v2(
+    check!(print "verify_deposit_v2 (safe deposit)" context.verify_deposit_v2(
         "relayer", deposit_msg, tx_bytes, vout, proof_json(BLOCKHASH.to_string(), 1, vec![])
     ));
     assert!(context.ft_balance_of("alice").await.unwrap().0 > 0);
@@ -1158,7 +1158,7 @@ async fn test_zcash_refund_after_safe_deposit_fails() {
     let vout: u32 = 0;
 
     check!(context.storage_deposit("nbtc", "alice"));
-    check!(print "safe_verify_deposit" context.verify_deposit_v2(
+    check!(print "verify_deposit_v2 (safe deposit)" context.verify_deposit_v2(
         "relayer", deposit_msg.clone(), tx_bytes.clone(), vout, proof_json(BLOCKHASH.to_string(), 1, vec![])
     ));
     assert!(context.ft_balance_of("alice").await.unwrap().0 > 0);
@@ -1179,7 +1179,7 @@ async fn test_zcash_refund_after_safe_deposit_fails() {
     );
 }
 
-/// After execute_refund, safe_verify_deposit is permanently blocked.
+/// After execute_refund, verify_deposit_v2 (safe deposit) is permanently blocked.
 #[tokio::test]
 #[cfg(feature = "zcash")]
 async fn test_zcash_refund_then_safe_deposit_fails() {
