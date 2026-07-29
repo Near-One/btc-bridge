@@ -20,11 +20,11 @@ jobs:
 
       - name: Build nBTC contract
         run: |
-          cargo near build reproducible-wasm --manifest-path ./contracts/nbtc/Cargo.toml
+          make release-nbtc
         timeout-minutes: 60
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: target/near/nbtc/nbtc.wasm
+          files: res/nbtc_release.wasm
