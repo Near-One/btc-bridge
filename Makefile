@@ -6,7 +6,9 @@ RFLAGS="-C link-arg=-s"
 
 FEATURES = bitcoin zcash
 
-release: $(addprefix build-,$(FEATURES))
+release: $(addprefix build-,$(FEATURES)) release-nbtc
+
+release-nbtc:
 	$(call build_release_wasm,nbtc,nbtc)
 
 build-local: $(addprefix build-local-,$(FEATURES)) nbtc mock-chain-signatures mock-btc-light-client mock-dapp
