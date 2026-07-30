@@ -14,13 +14,12 @@ impl Contract {
             refund_address: None,
         });
         let utxo_storage_key = generate_utxo_storage_key(txid, vout);
-        let tx_bytes = Vec::new();
 
         self.data_mut().utxos.insert(
             utxo_storage_key.clone(),
             VUTXO::Current(UTXO {
                 path,
-                tx_bytes,
+                tx_bytes: Vec::new(),
                 vout: vout.try_into().unwrap(),
                 balance: u64::MAX,
             }),

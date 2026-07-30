@@ -142,11 +142,9 @@ impl Contract {
             "Invalid deposit tx_bytes"
         );
 
-        // We don't need to store the tx_bytes in storage.
-        let tx_bytes = Vec::new();
         let utxo = UTXO {
             path,
-            tx_bytes,
+            tx_bytes: Vec::new(),
             vout,
             balance: transaction.output()[vout].value.to_sat(),
         };
@@ -203,11 +201,9 @@ impl Contract {
             "Invalid deposit tx_bytes"
         );
 
-        // We don't need to store the tx_bytes in storage.
-        let tx_bytes = vec![0u8; 0];
         let utxo = UTXO {
             path,
-            tx_bytes,
+            tx_bytes: Vec::new(),
             vout,
             balance: transaction.output()[vout].value.to_sat(),
         };
