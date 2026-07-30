@@ -143,7 +143,7 @@ impl Contract {
         );
 
         // We don't need to store the tx_bytes in storage.
-        let tx_bytes = vec![0u8; 0];
+        let tx_bytes = Vec::new();
         let utxo = UTXO {
             path,
             tx_bytes,
