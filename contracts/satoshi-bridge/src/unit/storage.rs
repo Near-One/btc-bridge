@@ -14,7 +14,7 @@ impl Contract {
             refund_address: None,
         });
         let utxo_storage_key = generate_utxo_storage_key(txid, vout);
-        let tx_bytes = vec![0u8; 300]; // TODO: optimise storage usage
+        let tx_bytes = Vec::new();
 
         self.data_mut().utxos.insert(
             utxo_storage_key.clone(),
