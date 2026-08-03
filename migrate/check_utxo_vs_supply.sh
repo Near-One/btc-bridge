@@ -3,11 +3,11 @@ set -euo pipefail
 
 # Reconciles the bridge's UTXO set against the token total supply.
 #
-# Invariant: ft_total_supply == sum(available UTXOs) + sum(unavailable UTXOs)
+# Invariant: ft_total_supply == sum(available UTXOs)
 # A non-zero diff can be transient (deposit mint or withdraw burn in flight) —
 # re-run after a minute before treating it as a real discrepancy.
 #
-# Usage: check_utxo_vs_supply.sh <bridge-account-id> [rpc-url]
+# Usage: check_utxo_vs_supply.sh
 
 BRIDGE="zcash-connector.bridge.near"
 RPC="https://rpc.mainnet.near.org"
@@ -74,23 +74,21 @@ read -r UNAVAILABLE_SUM UNAVAILABLE_COUNT <<< "$(sum_utxos_paged get_unavailable
 
 TOTAL_SUPPLY=$(view_call "$TOKEN" ft_total_supply '{}' | jq -r 'tonumber')
 
-UTXO_TOTAL=$((AVAILABLE_SUM + UNAVAILABLE_SUM))
-DIFF=$((UTXO_TOTAL - TOTAL_SUPPLY))
+DIFF=$((AVAILABLE_SUM - TOTAL_SUPPLY))
 
 echo ""
 echo "=== UTXO vs total supply (block $BLOCK_HEIGHT) ==="
-echo "Available UTXOs:    $AVAILABLE_COUNT pcs, sum = $AVAILABLE_SUM"
-echo "Unavailable UTXOs:  $UNAVAILABLE_COUNT pcs, sum = $UNAVAILABLE_SUM"
-echo "UTXO total:         $UTXO_TOTAL"
-echo "ft_total_supply:    $TOTAL_SUPPLY"
-echo "Diff (UTXO-supply): $DIFF"
+echo "Available UTXOs:         $AVAILABLE_COUNT pcs, sum = $AVAILABLE_SUM"
+echo "Unavailable UTXOs:       $UNAVAILABLE_COUNT pcs, sum = $UNAVAILABLE_SUM (informational)"
+echo "ft_total_supply:         $TOTAL_SUPPLY"
+echo "Diff (available-supply): $DIFF"
 
 if [ "$AVAILABLE_COUNT" -ne "$EXPECTED_UTXOS" ]; then
     echo "WARNING: fetched $AVAILABLE_COUNT available UTXOs, but metadata reports $EXPECTED_UTXOS" >&2
 fi
 
 if [ "$DIFF" -eq 0 ]; then
-    echo "OK: UTXO sum matches total supply"
+    echo "OK: available UTXO sum matches total supply"
 else
     echo "MISMATCH: diff = $DIFF (may be transient if a mint/burn is in flight — re-run to confirm)"
     exit 1
