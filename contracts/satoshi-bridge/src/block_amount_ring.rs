@@ -45,10 +45,7 @@ impl BlockAmountRing {
         let i = self.slot(block_height);
         match &mut self.cells[i] {
             Some(c) if c.block_height == block_height => {
-                c.cumulative_sats = c
-                    .cumulative_sats
-                    .checked_add(amount)
-                    .expect("BlockAmountRing: cumulative_sats overflow");
+                c.cumulative_sats = c.cumulative_sats.saturating_add(amount);
                 Some(c.cumulative_sats)
             }
             Some(c) if c.block_height > block_height => None,
@@ -114,7 +111,7 @@ impl Contract {
             .bump(block_height, amount)
             .unwrap_or(u128::MAX);
         let required = self.internal_config().get_confirmations(cumulative) + delta;
-        let actual = tip_height.saturating_sub(block_height) + 1;
+        let actual = tip_height.saturating_sub(block_height).saturating_add(1);
         require!(
             actual >= required,
             "Not enough confirmations for the block-cumulative bridge amount"
@@ -200,11 +197,11 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "cumulative_sats overflow")]
-    fn bump_overflow_panics() {
+    fn bump_overflow_saturates() {
         let mut ring = BlockAmountRing::new(4);
         ring.bump(100, u128::MAX);
-        ring.bump(100, 1);
+        assert_eq!(ring.bump(100, 1), Some(u128::MAX));
+        assert_eq!(ring.get(100), Some(u128::MAX));
     }
 
     #[test]
