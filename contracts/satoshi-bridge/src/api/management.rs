@@ -45,6 +45,10 @@ impl Contract {
             .acl_grant_role(Role::PauseManager.into(), account_id.clone())
             .unwrap();
         require!(is_success, "acl_grant_role PauseManager failed");
+        let is_success = self
+            .acl_grant_role(Role::UnpauseManager.into(), account_id.clone())
+            .unwrap();
+        require!(is_success, "acl_grant_role UnpauseManager failed");
         if !self.check_account_exists(&account_id) {
             self.internal_set_account(&account_id, Account::new(&account_id));
         }
@@ -66,6 +70,8 @@ impl Contract {
             .acl_revoke_role(Role::PauseManager.into(), account_id.clone())
             .unwrap();
         require!(is_success, "acl_revoke_role PauseManager failed");
+        // Accounts created before UnpauseManager existed may not hold this role; tolerate that.
+        self.acl_revoke_role(Role::UnpauseManager.into(), account_id.clone());
         let is_success = self.acl_revoke_super_admin(account_id.clone()).unwrap();
         require!(is_success, "acl_revoke_super_admin failed");
     }
@@ -284,13 +290,12 @@ impl Contract {
     #[access_control_any(roles(Role::DAO))]
     pub fn set_confirmations_strategy(&mut self, range_upper_bound: U128, confirmations: u8) {
         assert_one_yocto();
-        require!(
-            (2..=10).contains(&confirmations),
-            "The number of confirmations must be between 2 and 10, including both 2 and 10."
-        );
-        self.internal_mut_config()
+
+        let config = self.internal_mut_config();
+        config
             .confirmations_strategy
             .insert(range_upper_bound.0.to_string(), confirmations);
+        config.assert_valid();
         // Capacity depends on `max_tier_confirmations`; resize after the tier table changes.
         self.resize_block_amount_ring();
     }

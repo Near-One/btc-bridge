@@ -30,6 +30,7 @@ pub enum Chain {
 pub struct BranchIdUpdateBlockHeight {
     pub nu6_1_update: u32,
     pub nu6_2_update: u32,
+    pub nu6_3_update: u32,
 }
 
 #[cfg(feature = "zcash")]
@@ -39,10 +40,12 @@ impl BranchIdUpdateBlockHeight {
             Chain::ZcashMainnet => Self {
                 nu6_1_update: 3146400,
                 nu6_2_update: 3364600,
+                nu6_3_update: 3428143,
             },
             Chain::ZcashTestnet => Self {
                 nu6_1_update: 3536500,
                 nu6_2_update: 4052000,
+                nu6_3_update: 4134000,
             },
             _ => unreachable!(),
         }
@@ -52,6 +55,10 @@ impl Chain {
     #[cfg(feature = "zcash")]
     pub fn get_branch_id(&self, block_height: u32) -> BranchId {
         let block_height_update = BranchIdUpdateBlockHeight::new(self);
+        if block_height_update.nu6_3_update != 0 && block_height >= block_height_update.nu6_3_update
+        {
+            return BranchId::Nu6_3;
+        }
         if block_height_update.nu6_2_update != 0 && block_height >= block_height_update.nu6_2_update
         {
             return BranchId::Nu6_2;
@@ -85,19 +92,25 @@ pub enum Address {
     },
 }
 
+fn zcash_chain_from_network(
+    net: zcash_protocol::consensus::NetworkType,
+) -> Result<Chain, ConversionError<String>> {
+    match net {
+        zcash_protocol::consensus::NetworkType::Main => Ok(Chain::ZcashMainnet),
+        zcash_protocol::consensus::NetworkType::Test => Ok(Chain::ZcashTestnet),
+        zcash_protocol::consensus::NetworkType::Regtest => {
+            Err("Regtest network not supported".to_string().into())
+        }
+    }
+}
+
 impl zcash_address::TryFromAddress for Address {
     type Error = String;
     fn try_from_transparent_p2pkh(
         net: zcash_protocol::consensus::NetworkType,
         data: [u8; 20],
     ) -> Result<Self, ConversionError<Self::Error>> {
-        let chain = match net {
-            zcash_protocol::consensus::NetworkType::Main => Chain::ZcashMainnet,
-            zcash_protocol::consensus::NetworkType::Test => Chain::ZcashTestnet,
-            zcash_protocol::consensus::NetworkType::Regtest => {
-                return Err("Regtest network not supported".to_string().into());
-            }
-        };
+        let chain = zcash_chain_from_network(net)?;
 
         Ok(Self::P2pkh {
             hash: PubkeyHash::from_slice(&data[..]).map_err(|e| {
@@ -107,17 +120,32 @@ impl zcash_address::TryFromAddress for Address {
         })
     }
 
+    fn try_from_transparent_p2sh(
+        net: zcash_protocol::consensus::NetworkType,
+        data: [u8; 20],
+    ) -> Result<Self, ConversionError<Self::Error>> {
+        let chain = zcash_chain_from_network(net)?;
+
+        Ok(Self::P2sh {
+            hash: ScriptHash::from_slice(&data[..]).map_err(|e| {
+                ConversionError::<Self::Error>::from(format!("Invalid script hash: {e}"))
+            })?,
+            chain,
+        })
+    }
+
+    fn try_from_tex(
+        net: zcash_protocol::consensus::NetworkType,
+        data: [u8; 20],
+    ) -> Result<Self, ConversionError<Self::Error>> {
+        Self::try_from_transparent_p2pkh(net, data)
+    }
+
     fn try_from_unified(
         net: zcash_protocol::consensus::NetworkType,
         data: zcash_address::unified::Address,
     ) -> Result<Self, ConversionError<Self::Error>> {
-        let chain = match net {
-            zcash_protocol::consensus::NetworkType::Main => Chain::ZcashMainnet,
-            zcash_protocol::consensus::NetworkType::Test => Chain::ZcashTestnet,
-            zcash_protocol::consensus::NetworkType::Regtest => {
-                return Err("Regtest network not supported".to_string().into());
-            }
-        };
+        let chain = zcash_chain_from_network(net)?;
 
         Ok(Self::Unified {
             address: data,
@@ -448,6 +476,26 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_zcash_p2sh_address() {
+        for (address, chain) in [
+            ("t3JZe8uVCra9T1mot8DC99s7GVsDKFy2Xa2", Chain::ZcashMainnet),
+            ("t26YqBabLj2kpZUPd3xCBhVHucMSV83GWSw", Chain::ZcashTestnet),
+        ] {
+            let parse_address = Address::parse(address, chain.clone()).unwrap();
+            assert!(
+                matches!(parse_address, Address::P2sh { .. }),
+                "expected P2sh, got {parse_address:?}"
+            );
+
+            let script_pubkey = parse_address.script_pubkey().unwrap();
+            assert!(script_pubkey.is_p2sh(), "expected a P2SH scriptPubKey");
+
+            let address_from_script = Address::from_script(&script_pubkey, chain).unwrap();
+            assert_eq!(address_from_script.to_string(), address);
+        }
+    }
+
+    #[test]
     fn test_parse_uppercase_bech32_address() {
         // BIP-173 allows all-uppercase Bech32 strings (commonly produced by QR encoders).
         // Regression: tx 5sUQNPbKjdrYEBJmJBX47ddaMHGWsizRynz1MHujG4RB panicked on this exact address
@@ -499,6 +547,37 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_parse_tex_address() {
+        use zcash_address::{ToAddress, ZcashAddress};
+        use zcash_protocol::consensus::NetworkType;
+
+        for (chain, net) in [
+            (Chain::ZcashMainnet, NetworkType::Main),
+            (Chain::ZcashTestnet, NetworkType::Test),
+        ] {
+            let hash: [u8; 20] = [
+                0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+                0x0f, 0x10, 0x11, 0x12, 0x13, 0x14,
+            ];
+
+            let tex = ZcashAddress::from_tex(net, hash).encode();
+            assert!(tex.starts_with("tex"), "expected TEX HRP, got {tex}");
+
+            let parsed = Address::parse(&tex, chain.clone()).unwrap();
+            assert!(matches!(parsed, Address::P2pkh { .. }));
+
+            let taddr = ZcashAddress::from_transparent_p2pkh(net, hash).encode();
+            let taddr_parsed = Address::parse(&taddr, chain).unwrap();
+            assert_eq!(
+                parsed.script_pubkey().unwrap(),
+                taddr_parsed.script_pubkey().unwrap()
+            );
+
+            assert!(parsed.extract_orchard_receiver().is_err());
+        }
+    }
+
     #[cfg(feature = "zcash")]
     #[test]
     fn test_get_branch_id_activation_boundaries() {
@@ -519,7 +598,7 @@ mod tests {
             BranchId::Nu6_2
         );
 
-        // Testnet: NU6.1 at 3_536_500, NU6.2 at 4_052_000.
+        // Testnet: NU6.1 at 3_536_500, NU6.2 at 4_052_000, NU6.3 at 4_134_000.
         assert_eq!(Chain::ZcashTestnet.get_branch_id(3_536_499), BranchId::Nu6);
         assert_eq!(
             Chain::ZcashTestnet.get_branch_id(3_536_500),
@@ -533,5 +612,24 @@ mod tests {
             Chain::ZcashTestnet.get_branch_id(4_052_000),
             BranchId::Nu6_2
         );
+        assert_eq!(
+            Chain::ZcashTestnet.get_branch_id(4_133_999),
+            BranchId::Nu6_2
+        );
+        assert_eq!(
+            Chain::ZcashTestnet.get_branch_id(4_134_000),
+            BranchId::Nu6_3
+        );
+
+        // Mainnet: NU6.3 at 3_428_143.
+        assert_eq!(
+            Chain::ZcashMainnet.get_branch_id(3_428_142),
+            BranchId::Nu6_2
+        );
+        assert_eq!(
+            Chain::ZcashMainnet.get_branch_id(3_428_143),
+            BranchId::Nu6_3
+        );
+        assert_eq!(Chain::ZcashMainnet.get_branch_id(u32::MAX), BranchId::Nu6_3);
     }
 }

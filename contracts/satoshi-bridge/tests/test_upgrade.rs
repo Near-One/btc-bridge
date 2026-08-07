@@ -1,7 +1,9 @@
 mod setup;
 use near_sdk::serde_json::json;
+#[cfg(not(feature = "zcash"))]
+use satoshi_bridge::RefundRequest;
 use satoshi_bridge::{
-    Account, Config, RefundRequest, DEFAULT_REFUND_TIMELOCK_SEC, DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC,
+    Account, Config, DEFAULT_REFUND_TIMELOCK_SEC, DEFAULT_UNSAFE_REFUND_TIMELOCK_SEC,
 };
 use setup::*;
 

@@ -7,7 +7,6 @@ use bitcoin::hex::Case;
 use bitcoin::{OutPoint, TxOut};
 use near_contract_standards::fungible_token::metadata::FungibleTokenMetadata;
 use near_sdk::{
-    base64::{self, Engine},
     json_types::{Base64VecU8, U128},
     serde_json::{json, Value},
     AccountId, Gas, NearToken,
@@ -841,31 +840,6 @@ impl Context {
             .await
     }
 
-    pub async fn verify_deposit(
-        &self,
-        user: &str,
-        deposit_msg: DepositMsg,
-        tx_bytes: Vec<u8>,
-        vout: u32,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-    ) -> Result<ExecutionFinalResult> {
-        self.get_account_by_name(user)
-            .call(self.bridge_contract.id(), "verify_deposit")
-            .args_json(json!({
-                "deposit_msg": deposit_msg,
-                "tx_bytes": tx_bytes,
-                "vout": vout,
-                "tx_block_blockhash": tx_block_blockhash,
-                "tx_index": tx_index,
-                "merkle_proof": merkle_proof,
-            }))
-            .max_gas()
-            .transact()
-            .await
-    }
-
     pub async fn sign_btc_transaction(
         &self,
         user: &str,
@@ -879,48 +853,6 @@ impl Context {
                 "btc_pending_sign_id": btc_pending_sign_id,
                 "sign_index": sign_index,
                 "key_version": key_version,
-            }))
-            .max_gas()
-            .transact()
-            .await
-    }
-
-    pub async fn verify_active_utxo_management(
-        &self,
-        user: &str,
-        tx_id: &str,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-    ) -> Result<ExecutionFinalResult> {
-        self.get_account_by_name(user)
-            .call(self.bridge_contract.id(), "verify_active_utxo_management")
-            .args_json(json!({
-                "tx_id": tx_id,
-                "tx_block_blockhash": tx_block_blockhash,
-                "tx_index": tx_index,
-                "merkle_proof": merkle_proof,
-            }))
-            .max_gas()
-            .transact()
-            .await
-    }
-
-    pub async fn verify_withdraw(
-        &self,
-        user: &str,
-        tx_id: &str,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-    ) -> Result<ExecutionFinalResult> {
-        self.get_account_by_name(user)
-            .call(self.bridge_contract.id(), "verify_withdraw")
-            .args_json(json!({
-                "tx_id": tx_id,
-                "tx_block_blockhash": tx_block_blockhash,
-                "tx_index": tx_index,
-                "merkle_proof": merkle_proof,
             }))
             .max_gas()
             .transact()
@@ -963,26 +895,6 @@ impl Context {
     ) -> Result<ExecutionFinalResult> {
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "verify_withdraw_v2")
-            .args_json(json!({
-                "tx_id": tx_id,
-                "proof": proof,
-            }))
-            .max_gas()
-            .transact()
-            .await
-    }
-
-    pub async fn verify_active_utxo_management_v2(
-        &self,
-        user: &str,
-        tx_id: &str,
-        proof: Value,
-    ) -> Result<ExecutionFinalResult> {
-        self.get_account_by_name(user)
-            .call(
-                self.bridge_contract.id(),
-                "verify_active_utxo_management_v2",
-            )
             .args_json(json!({
                 "tx_id": tx_id,
                 "proof": proof,
@@ -1307,16 +1219,19 @@ impl UpgradeContext {
     }
 
     pub async fn upgrade_satoshi_bridge(&self, wasm_path: &str) -> Result<ExecutionFinalResult> {
+        let wasm_bytes = std::fs::read(wasm_path).unwrap();
+
+        // New near-plugins (≥0.5.2): up_stage_code reads raw bytes via env::input().
         let _ = self
             .root
             .call(self.previous_satoshi_bridge_contract.id(), "up_stage_code")
-            .args_borsh(std::fs::read(wasm_path).unwrap())
+            .args(wasm_bytes.clone())
             .max_gas()
             .transact()
             .await
             .unwrap();
 
-        let staged_code_hash: near_sdk::CryptoHash = self
+        let raw_hash_opt = self
             .root
             .call(
                 self.previous_satoshi_bridge_contract.id(),
@@ -1325,21 +1240,58 @@ impl UpgradeContext {
             .view()
             .await
             .unwrap()
-            .json::<Option<near_sdk::CryptoHash>>()
-            .unwrap()
+            .json::<Option<Value>>()
             .unwrap();
+
+        // Old near-plugins (≤git@6149e03): up_stage_code takes `#[serializer(borsh)] code: Vec<u8>`.
+        // Passing raw bytes causes borsh deserialization to fail silently → None returned above.
+        // Re-stage with borsh encoding for those contracts.
+        let raw_hash = match raw_hash_opt {
+            Some(v) => v,
+            None => {
+                let _ = self
+                    .root
+                    .call(self.previous_satoshi_bridge_contract.id(), "up_stage_code")
+                    .args_borsh(wasm_bytes)
+                    .max_gas()
+                    .transact()
+                    .await
+                    .unwrap();
+                self.root
+                    .call(
+                        self.previous_satoshi_bridge_contract.id(),
+                        "up_staged_code_hash",
+                    )
+                    .view()
+                    .await
+                    .unwrap()
+                    .json::<Option<Value>>()
+                    .unwrap()
+                    .unwrap()
+            }
+        };
+
+        // Old near-plugins returns [u8;32] array; up_deploy_code expects base64(hash).
+        // New near-plugins returns base58 String; up_deploy_code expects that string as-is.
+        let staged_code_hash: String = match raw_hash {
+            Value::String(s) => s,
+            Value::Array(bytes) => {
+                use near_sdk::base64::Engine as _;
+                let bytes: Vec<u8> = bytes.iter().map(|v| v.as_u64().unwrap() as u8).collect();
+                near_sdk::base64::engine::general_purpose::STANDARD.encode(&bytes)
+            }
+            other => panic!("unexpected up_staged_code_hash format: {other:?}"),
+        };
 
         self.root
             .call(self.previous_satoshi_bridge_contract.id(), "up_deploy_code")
-            .args_json(
-                json!({"hash":  base64::engine::general_purpose::STANDARD.encode(staged_code_hash),
-                "function_call_args": Some(near_plugins::upgradable::FunctionCallArgs{
-                    function_name: "migrate_state".to_string(),
-                    arguments: vec![],
-                    amount: NearToken::from_near(0),
-                    gas: Gas::from_tgas(20)
-                })}),
-            )
+            .args_json(json!({"hash": staged_code_hash,
+            "function_call_args": Some(near_plugins::upgradable::FunctionCallArgs{
+                function_name: "migrate_state".to_string(),
+                arguments: vec![],
+                amount: NearToken::from_near(0),
+                gas: Gas::from_tgas(20)
+            })}))
             .max_gas()
             .transact()
             .await
@@ -1507,57 +1459,6 @@ impl Context {
             .args_json(json!({
                 "utxo_storage_key": utxo_storage_key,
             }))
-            .max_gas()
-            .transact()
-            .await
-    }
-
-    pub async fn verify_refund_finalize(
-        &self,
-        user: &str,
-        tx_id: &str,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-    ) -> Result<ExecutionFinalResult> {
-        self.get_account_by_name(user)
-            .call(self.bridge_contract.id(), "verify_refund_finalize")
-            .args_json(json!({
-                "tx_id": tx_id,
-                "proof": {
-                    "tx_block_blockhash": tx_block_blockhash,
-                    "tx_index": tx_index,
-                    "merkle_proof": merkle_proof,
-                    "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
-                    "coinbase_merkle_proof": Vec::<String>::new(),
-                },
-            }))
-            .max_gas()
-            .transact()
-            .await
-    }
-
-    pub async fn safe_verify_deposit(
-        &self,
-        user: &str,
-        deposit_msg: DepositMsg,
-        tx_bytes: Vec<u8>,
-        vout: u32,
-        tx_block_blockhash: String,
-        tx_index: u64,
-        merkle_proof: Vec<String>,
-    ) -> Result<ExecutionFinalResult> {
-        self.get_account_by_name(user)
-            .call(self.bridge_contract.id(), "safe_verify_deposit")
-            .args_json(json!({
-                "deposit_msg": deposit_msg,
-                "tx_bytes": tx_bytes,
-                "vout": vout,
-                "tx_block_blockhash": tx_block_blockhash,
-                "tx_index": tx_index,
-                "merkle_proof": merkle_proof,
-            }))
-            .deposit(NearToken::from_millinear(2))
             .max_gas()
             .transact()
             .await

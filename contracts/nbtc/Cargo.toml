@@ -1,6 +1,6 @@
 [package]
 name = "nbtc"
-version = "0.3.0"
+version = "0.3.1"
 edition.workspace = true
 publish.workspace = true
 repository.workspace = true
@@ -9,8 +9,8 @@ repository.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [package.metadata.near.reproducible_build]
-image = "sourcescan/cargo-near:0.16.0-rust-1.86.0"
-image_digest = "sha256:3220302ebb7036c1942e772810f21edd9381edf9a339983da43487c77fbad488"
+image = "sourcescan/cargo-near:0.21.1-rust-1.96.0"
+image_digest = "sha256:ccb22bb4e677ed022d8b9d1aa1b32f0af52dd0471ef1c32e48dedbf68ee6ee17"
 passed_env = []
 container_build_command = [
     "cargo",
@@ -23,3 +23,7 @@ container_build_command = [
 [dependencies]
 near-sdk.workspace = true
 near-contract-standards.workspace = true
+
+[dev-dependencies]
+near-workspaces = { version = "0.22", features = ["unstable"] }
+tokio = { version = "1.12.0", features = ["full"] }

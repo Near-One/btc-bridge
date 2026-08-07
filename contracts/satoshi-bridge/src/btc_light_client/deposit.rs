@@ -13,11 +13,12 @@ use crate::{
     mint::{GAS_FOR_MINT_CALL, GAS_FOR_MINT_CALL_BACK},
     near, require, serde_json, AccountId, Contract, ContractExt, DepositMsg, Event, Gas, NearToken,
     PendingUTXOInfo, PostAction, Promise, PromiseOrValue, SafeDepositMsg, WrappedTransaction,
-    MAX_FT_TRANSFER_CALL_RESULT, MAX_INCLUSION_INFO_RESULT, U128, UTXO,
+    MAX_BOOL_RESULT, MAX_FT_TRANSFER_CALL_RESULT, MAX_INCLUSION_INFO_RESULT, U128, UTXO,
 };
 
 pub const GAS_FOR_VERIFY_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(130);
 pub const GAS_FOR_UNAVAILABLE_UTXO_CALL_BACK: Gas = Gas::from_tgas(20);
+pub const GAS_FOR_VERIFY_MIGRATE_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(20);
 
 impl Contract {
     pub(crate) fn internal_verify_deposit(
@@ -166,7 +167,7 @@ impl Contract {
     ) -> Promise {
         require!(
             deposit_msg.safe_deposit.is_none(),
-            "safe_deposit not supported in verify_deposit"
+            "safe_deposit not supported in the standard deposit flow"
         );
         let path = get_deposit_path(&deposit_msg);
         let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
@@ -184,7 +185,7 @@ impl Contract {
 
         let utxo = UTXO {
             path,
-            tx_bytes,
+            tx_bytes: Vec::new(),
             vout,
             balance: transaction.output()[vout].value.to_sat(),
         };
@@ -226,7 +227,7 @@ impl Contract {
         let path = get_deposit_path(&deposit_msg);
         let safe_deposit_msg = deposit_msg
             .safe_deposit
-            .unwrap_or_else(|| env::panic_str("safe_deposit is required in safe_verify_deposit"));
+            .unwrap_or_else(|| env::panic_str("safe_deposit is required in the safe deposit flow"));
 
         let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
             .expect("Deserialization tx_bytes failed");
@@ -241,16 +242,9 @@ impl Contract {
             "Invalid deposit tx_bytes"
         );
 
-        let tx_bytes = if tx_bytes.len() > 10000 {
-            env::log_str("tx_bytes length exceeds 10000, truncating to 300 bytes");
-            vec![0u8; 300]
-        } else {
-            tx_bytes
-        };
-
         let utxo = UTXO {
             path,
-            tx_bytes,
+            tx_bytes: Vec::new(),
             vout,
             balance: transaction.output()[vout].value.to_sat(),
         };
@@ -273,6 +267,60 @@ impl Contract {
             },
             deposit_msg.recipient_id,
             safe_deposit_msg,
+        )
+    }
+
+    pub(crate) fn internal_verify_migrate_deposit_entry(
+        &mut self,
+        tx_bytes: Vec<u8>,
+        vout: usize,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+        coinbase_proof: Option<(String, Vec<String>)>,
+    ) -> Promise {
+        let config = self.internal_config();
+        let transaction = WrappedTransaction::decode(&tx_bytes, &config.chain)
+            .expect("Deserialization tx_bytes failed");
+        let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
+        require!(deposit_amount > 0, "Invalid deposit_amount");
+
+        require!(
+            transaction.output()[vout].script_pubkey == config.get_change_script_pubkey(),
+            "Output is not on the change address"
+        );
+
+        let utxo = UTXO {
+            path: env::current_account_id().to_string(),
+            tx_bytes,
+            vout,
+            balance: transaction.output()[vout].value.to_sat(),
+        };
+        let tx_id = transaction.compute_txid().to_string();
+        let utxo_storage_key = generate_utxo_storage_key(
+            tx_id.clone(),
+            u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
+        );
+
+        let confirmations =
+            config.get_confirmations(deposit_amount) + self.relayer_delta_for_predecessor();
+        self.verify_transaction_inclusion_promise(
+            config.btc_light_client_account_id.clone(),
+            tx_id.clone(),
+            tx_block_blockhash,
+            tx_index,
+            merkle_proof,
+            coinbase_proof,
+            confirmations,
+        )
+        .then(
+            Self::ext(env::current_account_id())
+                .with_static_gas(GAS_FOR_VERIFY_MIGRATE_DEPOSIT_CALL_BACK)
+                .verify_migrate_deposit_callback(PendingUTXOInfo {
+                    tx_id,
+                    utxo_storage_key,
+                    utxo,
+                }),
         )
     }
 }
@@ -302,6 +350,34 @@ impl Contract {
             recipient_id: &recipient_id,
             utxo_storage_key: &pending_utxo_info.utxo_storage_key,
             amount: deposit_amount.into(),
+        }
+        .emit();
+        PromiseOrValue::Value(true)
+    }
+
+    #[private]
+    pub fn verify_migrate_deposit_callback(
+        &mut self,
+        pending_utxo_info: PendingUTXOInfo,
+    ) -> PromiseOrValue<bool> {
+        let result_bytes = env::promise_result_checked(0, MAX_BOOL_RESULT)
+            .expect("Call verify_transaction_inclusion failed");
+        let is_valid = serde_json::from_slice::<bool>(&result_bytes)
+            .expect("verify_transaction_inclusion return not bool");
+        require!(is_valid, "verify_transaction_inclusion return false");
+        require!(
+            self.data_mut()
+                .verified_deposit_utxo
+                .insert(pending_utxo_info.utxo_storage_key.clone()),
+            "Already deposit utxo"
+        );
+        self.internal_set_utxo(
+            &pending_utxo_info.utxo_storage_key,
+            pending_utxo_info.utxo.clone(),
+        );
+        Event::UtxoAdded {
+            utxo_storage_keys: vec![pending_utxo_info.utxo_storage_key],
+            balances: Some(vec![U128(pending_utxo_info.utxo.balance.into())]),
         }
         .emit();
         PromiseOrValue::Value(true)

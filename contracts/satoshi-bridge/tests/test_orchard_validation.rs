@@ -36,7 +36,7 @@ async fn test_orchard_wrong_recipient() {
         .await
         .unwrap();
 
-    check!(context.verify_deposit(
+    check!(context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -57,9 +57,11 @@ async fn test_orchard_wrong_recipient() {
             ],
         ),
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json(
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![]
+        )
     ));
 
     let utxos_keys = context
@@ -163,7 +165,7 @@ async fn test_orchard_missing_bundle() {
         .await
         .unwrap();
 
-    check!(context.verify_deposit(
+    check!(context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -184,9 +186,11 @@ async fn test_orchard_missing_bundle() {
             ],
         ),
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json(
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![]
+        )
     ));
 
     let utxos_keys = context
@@ -260,7 +264,7 @@ async fn test_orchard_bundle_in_zcash_tx() {
         .await
         .unwrap();
 
-    check!(context.verify_deposit(
+    check!(context.verify_deposit_v2(
         "relayer",
         DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -281,9 +285,11 @@ async fn test_orchard_bundle_in_zcash_tx() {
             ],
         ),
         1,
-        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-        1,
-        vec![]
+        proof_json(
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![]
+        )
     ));
 
     let utxos_keys = context

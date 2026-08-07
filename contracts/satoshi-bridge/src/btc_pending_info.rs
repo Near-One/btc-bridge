@@ -139,6 +139,10 @@ impl BTCPendingInfo {
         matches!(self.state, PendingInfoState::WithdrawCancelRbf(..))
     }
 
+    pub fn is_refund(&self) -> bool {
+        matches!(self.state, PendingInfoState::Refund(..))
+    }
+
     pub fn get_original_tx_id(&self) -> Option<&String> {
         match self.state.borrow() {
             PendingInfoState::WithdrawUserRbf(state) => Some(state.original_tx_id.borrow()),
