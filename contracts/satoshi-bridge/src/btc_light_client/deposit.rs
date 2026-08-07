@@ -1,6 +1,3 @@
-// `verify_deposit_callback` takes 8 args (extra `confirmations_delta`); the `#[near]`
-// proc-macro re-emits the signature in the ext-trait so the `clippy::too_many_arguments`
-// lint fires from inside the macro expansion and an inner `#[allow]` doesn't reach it.
 #![allow(clippy::too_many_arguments)]
 
 use near_sdk::serde_json::Value;
@@ -32,9 +29,6 @@ impl Contract {
         deposit_msg: DepositMsg,
     ) -> Promise {
         let recipient_id = deposit_msg.recipient_id.clone();
-        // Predecessor is the original relayer/user here — capture the whitelist
-        // delta before the cross-contract call. The callback runs with the contract
-        // itself as predecessor and cannot redo this check.
         let confirmations_delta = if deposit_msg.extra_msg.is_none() {
             self.relayer_delta_for_predecessor()
         } else {
@@ -131,12 +125,6 @@ impl Contract {
         }
     }
 
-    /// Parse the LC's `Option<TxInclusionInfo>` response, bump the block-amount
-    /// ring with this tx's amount, and panic if depth doesn't satisfy the
-    /// confirmations tier for the resulting cumulative.
-    ///
-    /// Single helper so the three deposit-related callbacks share identical
-    /// inclusion-check semantics.
     fn process_inclusion_and_check(
         &mut self,
         pending_utxo_info: &PendingUTXOInfo,

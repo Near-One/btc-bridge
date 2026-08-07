@@ -1,9 +1,5 @@
 use crate::{near, require, Config, Contract};
 
-/// Extra slack added to the ring capacity on top of the worst-case
-/// required-confirmations value, so a tx near the top tier still has room left
-/// to be tracked across in-flight verifies. Chosen heuristically; not tied to
-/// any protocol parameter.
 pub const BLOCK_AMOUNT_RING_CAPACITY_SLACK: usize = 5;
 
 #[near(serializers = [borsh])]
@@ -14,12 +10,9 @@ pub struct BlockAmountCell {
     pub cumulative_sats: u128,
 }
 
-/// Fixed-capacity ring buffer of cumulative bridge-related satoshi amounts per BTC block.
-/// Each slot is `cells[block_height % capacity]` and stores the block_height explicitly
-/// so a stale entry can be detected and lazily overwritten when a new block lands in the
-/// same slot. Capacity must cover any block whose confirmations could still be in question
-/// for tier checks; blocks deeper than capacity are out of the active window and the caller
-/// must require max-tier confirmations for them (which they trivially satisfy by depth).
+/// Fixed-capacity ring of cumulative bridged satoshi amounts per BTC block
+/// (slot = `block_height % capacity`), so confirmations tiers apply to the
+/// per-block sum rather than to each tx separately.
 #[near(serializers = [borsh])]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Eq))]
 pub struct BlockAmountRing {
@@ -27,10 +20,6 @@ pub struct BlockAmountRing {
 }
 
 impl BlockAmountRing {
-    /// Recommended ring capacity for `config`: large enough that ANY tx whose
-    /// block is still within the worst-case confirmations window
-    /// (`max_tier + max_delta`) can still be looked up. Blocks beyond this depth
-    /// trivially satisfy max-tier confirmations and don't need cumulative tracking.
     pub fn capacity_for(config: &Config) -> usize {
         usize::from(config.max_tier_confirmations())
             + usize::from(config.confirmations_delta)
@@ -49,16 +38,9 @@ impl BlockAmountRing {
         self.cells.len()
     }
 
-    /// Add `amount` to the cumulative bridge sats for `block_height` and return
-    /// `Some(post_bump)`.
-    ///
-    /// Returns `None` if the target slot holds a NEWER block — `block_height` is
-    /// outside the active tracking window and must not corrupt the newer block's
-    /// data. Callers should treat `None` as "out of window — require max-tier
-    /// confirmations" (which is trivially satisfied by depth at that point).
-    ///
-    /// If the slot is empty or holds an OLDER block (now out of window), it is
-    /// overwritten with `(block_height, amount)` — lazy eviction.
+    /// Returns the post-bump cumulative amount, or `None` if the slot holds a
+    /// newer block — `block_height` is then out of the active window and the
+    /// caller must require max-tier confirmations.
     pub fn bump(&mut self, block_height: u64, amount: u128) -> Option<u128> {
         let i = self.slot(block_height);
         match &mut self.cells[i] {
@@ -80,9 +62,6 @@ impl BlockAmountRing {
         }
     }
 
-    /// Cumulative bridge sats currently stored for `block_height`, or `None` if the slot
-    /// is empty or holds a different block (caller treats `None` as "out of active window —
-    /// require max-tier confirmations").
     pub fn get(&self, block_height: u64) -> Option<u128> {
         let i = self.slot(block_height);
         match &self.cells[i] {
@@ -91,9 +70,6 @@ impl BlockAmountRing {
         }
     }
 
-    /// Re-allocate to `new_capacity`, rehashing existing entries to `block_height % new_capacity`.
-    /// On collisions, the entry with the larger `block_height` (newer block) wins; older entries
-    /// are dropped. Capacity-preserving resize is a no-op.
     pub fn resize(&mut self, new_capacity: usize) {
         require!(new_capacity > 0, "BlockAmountRing capacity must be > 0");
         if new_capacity == self.cells.len() {
@@ -122,18 +98,9 @@ impl BlockAmountRing {
 }
 
 impl Contract {
-    /// Bump the block-amount ring with `amount` for `block_height` and require
-    /// that the observed depth `tip - height + 1` satisfies the confirmations
-    /// tier for the resulting cumulative amount. `delta` is the pre-computed
-    /// whitelist delta from the entry point (the callback's predecessor is
-    /// this contract, not the original relayer, so the whitelist check must
-    /// be done up-front).
-    ///
-    /// If `block_height` is outside the active ring window, the ring refuses
-    /// the bump and we fall back to max-tier — which is trivially satisfied
-    /// by depth at that point, so the check passes.
-    ///
-    /// Panics if not enough confirmations.
+    /// Panics unless the observed depth satisfies the confirmations tier for
+    /// the block's post-bump cumulative amount. Out-of-window blocks fall back
+    /// to the max tier.
     pub fn bump_and_check_confirmations(
         &mut self,
         block_height: u64,
@@ -154,9 +121,6 @@ impl Contract {
         );
     }
 
-    /// Resize the block-amount ring to match the current config's capacity.
-    /// Called after config updates that change `confirmations_delta`,
-    /// `extra_msg_confirmations_delta`, or the tier table.
     pub fn resize_block_amount_ring(&mut self) {
         let cap = BlockAmountRing::capacity_for(self.internal_config());
         self.data_mut().block_bridge_amounts.resize(cap);
@@ -202,22 +166,17 @@ mod tests {
     fn bumping_newer_block_same_slot_evicts_older() {
         let mut ring = BlockAmountRing::new(4);
         ring.bump(100, 500);
-        // 100 and 104 collide (both 100 % 4 == 0); 104 is newer → evict 100.
         assert_eq!(ring.bump(104, 999), Some(999));
         assert_eq!(ring.get(104), Some(999));
-        // The previous block's data is gone
         assert_eq!(ring.get(100), None);
     }
 
     #[test]
     fn bumping_older_block_when_newer_present_returns_none() {
         let mut ring = BlockAmountRing::new(4);
-        // 104 is newer; bumping older 100 into the same slot must not corrupt 104's data.
         ring.bump(104, 999);
         assert_eq!(ring.bump(100, 500), None);
-        // Newer block's data still intact
         assert_eq!(ring.get(104), Some(999));
-        // Older block was not stored — out of active window
         assert_eq!(ring.get(100), None);
     }
 
@@ -236,9 +195,7 @@ mod tests {
     fn get_returns_none_for_unknown_height_in_used_slot() {
         let mut ring = BlockAmountRing::new(4);
         ring.bump(100, 500);
-        // 200 hits the same slot as 100 but no data was stored for height 200
         assert_eq!(ring.get(200), None);
-        // Original entry still intact
         assert_eq!(ring.get(100), Some(500));
     }
 
@@ -255,11 +212,9 @@ mod tests {
         let mut ring = BlockAmountRing::new(1);
         ring.bump(100, 10);
         assert_eq!(ring.get(100), Some(10));
-        // Newer height evicts older
         ring.bump(101, 20);
         assert_eq!(ring.get(100), None);
         assert_eq!(ring.get(101), Some(20));
-        // Older height after newer is refused
         assert_eq!(ring.bump(100, 9), None);
         assert_eq!(ring.get(101), Some(20));
         assert_eq!(ring.get(100), None);
@@ -291,7 +246,6 @@ mod tests {
     #[test]
     fn resize_grow_no_collisions_when_new_cap_geq_height_range() {
         let mut ring = BlockAmountRing::new(4);
-        // Fill all slots with distinct heights
         ring.bump(100, 1);
         ring.bump(101, 2);
         ring.bump(102, 3);
@@ -305,13 +259,10 @@ mod tests {
     #[test]
     fn resize_shrink_keeps_newer_block_on_collision() {
         let mut ring = BlockAmountRing::new(8);
-        // 100 and 104 do NOT collide in cap=8 (100 % 8 == 4, 104 % 8 == 0).
         ring.bump(100, 500);
         ring.bump(104, 999);
-        // After shrinking to cap=4: 100 % 4 == 0, 104 % 4 == 0 — collision.
         ring.resize(4);
         assert_eq!(ring.capacity(), 4);
-        // Newer block wins
         assert_eq!(ring.get(104), Some(999));
         assert_eq!(ring.get(100), None);
     }
@@ -319,12 +270,12 @@ mod tests {
     #[test]
     fn resize_shrink_drops_only_collided_entries() {
         let mut ring = BlockAmountRing::new(8);
-        ring.bump(100, 500); // 100 % 8 == 4, 100 % 4 == 0
-        ring.bump(101, 600); // 101 % 8 == 5, 101 % 4 == 1
-        ring.bump(102, 700); // 102 % 8 == 6, 102 % 4 == 2
-        ring.bump(104, 800); // 104 % 8 == 0, 104 % 4 == 0 — will collide with 100
+        ring.bump(100, 500);
+        ring.bump(101, 600);
+        ring.bump(102, 700);
+        ring.bump(104, 800);
         ring.resize(4);
-        assert_eq!(ring.get(104), Some(800)); // newer wins over 100
+        assert_eq!(ring.get(104), Some(800));
         assert_eq!(ring.get(100), None);
         assert_eq!(ring.get(101), Some(600));
         assert_eq!(ring.get(102), Some(700));

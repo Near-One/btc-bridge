@@ -281,8 +281,6 @@ impl Contract {
     pub fn update_config(&mut self, update: ConfigUpdate) {
         assert_one_yocto();
         update.apply(self.internal_mut_config());
-        // Capacity depends on `confirmations_delta` / `extra_msg_confirmations_delta`;
-        // resize is a no-op if those didn't change.
         self.resize_block_amount_ring();
     }
 
@@ -291,14 +289,12 @@ impl Contract {
     pub fn set_confirmations_strategy(&mut self, range_upper_bound: U128, confirmations: u8) {
         assert_one_yocto();
 
-        let config = self.internal_mut_config();
-        config
+        self.internal_mut_config()
             .confirmations_strategy
             .insert(range_upper_bound.0.to_string(), confirmations);
-        // Capacity depends on `max_tier_confirmations`; resize after the tier table changes.
         self.resize_block_amount_ring();
-        
-        config.assert_valid();
+
+        self.internal_config().assert_valid();
     }
 
     #[payable]
@@ -315,9 +311,8 @@ impl Contract {
             !self.internal_config().confirmations_strategy.is_empty(),
             "confirmations_strategy must not be empty"
         );
-        // Removing the top-tier entry shrinks the ring; lower-tier removals are no-ops.
         self.resize_block_amount_ring();
 
-        config.assert_valid();
+        self.internal_config().assert_valid();
     }
 }

@@ -157,9 +157,7 @@ impl Serialize for H256 {
     }
 }
 
-/// SPV-proof args for the heights-returning variant (no confirmations field).
-/// Mirrors `btc-types::contract_args::TxInclusionProof` from
-/// Near-One/btc-light-client-contract#140.
+/// Mirrors `btc-types::contract_args::TxInclusionProof` from the light client contract.
 #[near(serializers = [borsh])]
 pub struct TxInclusionProof {
     pub tx_id: H256,
@@ -192,8 +190,7 @@ impl TxInclusionProof {
     }
 }
 
-/// Same as `TxInclusionProof` but carries the coinbase merkle proof so the LC can
-/// validate the block's merkle root (SPV hardening, mirrors `verify_transaction_inclusion_v2`).
+/// Mirrors `btc-types::contract_args::TxInclusionProofV2` from the light client contract.
 #[near(serializers = [borsh])]
 pub struct TxInclusionProofV2 {
     pub tx_id: H256,
@@ -239,8 +236,7 @@ impl TxInclusionProofV2 {
     }
 }
 
-/// SPV inclusion result with heights. Mirrors `btc-types::contract_args::TxInclusionInfo`
-/// from Near-One/btc-light-client-contract#140.
+/// Mirrors `btc-types::contract_args::TxInclusionInfo` from the light client contract.
 #[near(serializers = [borsh, json])]
 #[derive(Clone, Debug)]
 pub struct TxInclusionInfo {
@@ -298,9 +294,8 @@ impl Contract {
         }
     }
 
-    /// Untrusted-path variant: requests SPV proof + heights in one call. The
-    /// callback receives `Option<TxInclusionInfo>` and applies the
-    /// (cumulative-aware) confirmations check on this side.
+    /// The LC only proves inclusion here; the confirmations check happens in
+    /// the callback on this side.
     pub fn verify_transaction_inclusion_with_heights_promise(
         &self,
         btc_light_client_account_id: AccountId,

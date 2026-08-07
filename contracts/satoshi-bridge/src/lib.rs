@@ -146,11 +146,6 @@ pub struct ContractData {
     pub cur_reserved_protocol_fee: u128,
     pub acc_protocol_fee_for_gas: u128,
     pub refund_requests: IterableMap<String, VRefundRequest>,
-    // Fixed-capacity ring of cumulative bridge-related sats per BTC block (indexed by
-    // block_height % capacity). Used so the confirmations tier is computed against the
-    // SUM of bridge txs in a block, blocking an attacker from splitting one big deposit
-    // into many small ones to bypass the high-tier confirmations requirement.
-    // Capacity is derived from config; see `BlockAmountRing::capacity_for`.
     pub block_bridge_amounts: BlockAmountRing,
 }
 

@@ -334,10 +334,8 @@ impl Contract {
             .expect("ERR_CONFIG: contract not initialized")
     }
 
-    /// Whitelist-aware confirmations delta for the standard tier, based on the
-    /// CURRENT predecessor. Must be called at the synchronous entry point of a
-    /// verify_* function — in a callback, predecessor is the contract itself
-    /// (or the LC), not the original relayer.
+    /// Must be called at the synchronous entry point of a verify_* function —
+    /// in a callback the predecessor is the contract itself, not the original relayer.
     pub fn relayer_delta_for_predecessor(&self) -> u64 {
         if self
             .data()
@@ -350,8 +348,7 @@ impl Contract {
         }
     }
 
-    /// Whitelist-aware confirmations delta for the extra-msg tier. Same caller
-    /// constraint as [`Self::relayer_delta_for_predecessor`].
+    /// Same caller constraint as [`Self::relayer_delta_for_predecessor`].
     pub fn extra_msg_relayer_delta_for_predecessor(&self) -> u64 {
         if self
             .data()

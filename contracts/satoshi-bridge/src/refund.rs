@@ -164,10 +164,7 @@ impl Contract {
                 .expect("Deserialization tx_bytes failed");
         let tx_id = transaction.compute_txid().to_string();
 
-        // Refund-request is rare and already gated by `refund_timelock_sec`, so we
-        // skip the cumulative-amount ring entirely and just demand max-tier depth
-        // (see `Config::max_required_confirmations`). The callback doesn't need to
-        // know about the deposit amount or whitelist deltas.
+        // Refunds skip the block-amount ring; max-tier depth is required unconditionally.
         let config = self.internal_config();
         self.verify_transaction_inclusion_with_heights_promise(
             config.btc_light_client_account_id.clone(),
