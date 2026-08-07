@@ -36,7 +36,7 @@ impl Contract {
         vout: usize,
         proof: TxInclusionProof,
     ) -> Promise {
-        let coinbase_proof = Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof));
+        let coinbase_proof = (proof.coinbase_tx_id, proof.coinbase_merkle_proof);
         if deposit_msg.safe_deposit.is_some() {
             self.internal_safe_verify_deposit_entry(
                 deposit_msg,

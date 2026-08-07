@@ -24,7 +24,7 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
-        coinbase_proof: Option<(String, Vec<String>)>,
+        coinbase_proof: (String, Vec<String>),
         pending_utxo_info: PendingUTXOInfo,
         deposit_msg: DepositMsg,
     ) -> Promise {
@@ -84,7 +84,7 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
-        coinbase_proof: Option<(String, Vec<String>)>,
+        coinbase_proof: (String, Vec<String>),
         pending_utxo_info: PendingUTXOInfo,
         recipient_id: AccountId,
         deposit_msg: SafeDepositMsg,
@@ -151,7 +151,7 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
-        coinbase_proof: Option<(String, Vec<String>)>,
+        coinbase_proof: (String, Vec<String>),
     ) -> Promise {
         require!(
             deposit_msg.safe_deposit.is_none(),
@@ -205,7 +205,7 @@ impl Contract {
         tx_block_blockhash: String,
         tx_index: u64,
         merkle_proof: Vec<String>,
-        coinbase_proof: Option<(String, Vec<String>)>,
+        coinbase_proof: (String, Vec<String>),
     ) -> Promise {
         require!(
             env::attached_deposit() >= self.required_balance_for_safe_deposit(),

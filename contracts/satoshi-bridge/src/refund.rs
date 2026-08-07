@@ -172,7 +172,7 @@ impl Contract {
             proof.tx_block_blockhash,
             proof.tx_index,
             proof.merkle_proof,
-            Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
+            (proof.coinbase_tx_id, proof.coinbase_merkle_proof),
         )
         .then(
             Self::ext(env::current_account_id())
