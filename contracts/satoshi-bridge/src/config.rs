@@ -222,8 +222,8 @@ impl Config {
     pub fn max_tier_confirmations(&self) -> u8 {
         self.confirmations_strategy
             .values()
-            .copied()
             .max()
+            .copied()
             .unwrap_or(0)
     }
 
