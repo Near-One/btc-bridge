@@ -1,4 +1,3 @@
-#[cfg(not(feature = "zcash"))]
 use crate::VRefundRequest;
 use crate::{
     env, near, AccountId, BlockAmountRing, BridgeFee, Config, ContractData, HashMap, HashSet,
@@ -1006,11 +1005,10 @@ impl From<ContractDataV6> for ContractData {
             config
                 .get()
                 .as_ref()
-                .expect("ContractDataV5: config missing"),
+                .expect("ContractDataV6: config missing"),
         );
 
         Self {
-            // `config` is already the current `Config` (with `unsafe_refund_timelock_sec`).
             config,
             accounts,
             utxos,
