@@ -295,9 +295,10 @@ impl Contract {
         config
             .confirmations_strategy
             .insert(range_upper_bound.0.to_string(), confirmations);
-        config.assert_valid();
         // Capacity depends on `max_tier_confirmations`; resize after the tier table changes.
         self.resize_block_amount_ring();
+        
+        config.assert_valid();
     }
 
     #[payable]
@@ -316,5 +317,7 @@ impl Contract {
         );
         // Removing the top-tier entry shrinks the ring; lower-tier removals are no-ops.
         self.resize_block_amount_ring();
+
+        config.assert_valid();
     }
 }
