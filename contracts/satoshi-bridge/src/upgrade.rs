@@ -11,6 +11,7 @@ impl Contract {
         contract.data = match contract.data {
             VersionedContractData::V6(data) => VersionedContractData::Current(data.into()),
             VersionedContractData::Current(data) => VersionedContractData::Current(data),
+            _ => env::panic_str("Unsupported contract state version"),
         };
         contract
     }

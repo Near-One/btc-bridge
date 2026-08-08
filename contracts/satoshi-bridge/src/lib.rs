@@ -149,8 +149,17 @@ pub struct ContractData {
     pub block_bridge_amounts: BlockAmountRing,
 }
 
+/// Borsh encodes enum variants by index, so the placeholder variants must stay:
+/// they pin `V6` and `Current` to on-chain tags 6 and 7. Tags 0..=5 belong to
+/// pre-V6 layouts that are no longer deployed anywhere.
 #[near(serializers = [borsh])]
 pub enum VersionedContractData {
+    RemovedV0,
+    RemovedV1,
+    RemovedV2,
+    RemovedV3,
+    RemovedV4,
+    RemovedV5,
     V6(ContractDataV6),
     Current(ContractData),
 }
