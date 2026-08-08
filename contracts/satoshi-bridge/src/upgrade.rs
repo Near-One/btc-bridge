@@ -9,12 +9,6 @@ impl Contract {
     pub fn migrate_state() -> Self {
         let mut contract: Contract = env::state_read().expect("NOT INIT");
         contract.data = match contract.data {
-            VersionedContractData::V0(data) => VersionedContractData::Current(data.into()),
-            VersionedContractData::V1(data) => VersionedContractData::Current(data.into()),
-            VersionedContractData::V2(data) => VersionedContractData::Current(data.into()),
-            VersionedContractData::V3(data) => VersionedContractData::Current(data.into()),
-            VersionedContractData::V4(data) => VersionedContractData::Current(data.into()),
-            VersionedContractData::V5(data) => VersionedContractData::Current(data.into()),
             VersionedContractData::V6(data) => VersionedContractData::Current(data.into()),
             VersionedContractData::Current(data) => VersionedContractData::Current(data),
         };
