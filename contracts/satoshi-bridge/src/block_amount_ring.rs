@@ -98,7 +98,7 @@ impl Contract {
     /// Panics unless the observed depth satisfies the confirmations tier for
     /// the block's post-bump cumulative amount. Out-of-window blocks fall back
     /// to the max tier.
-    pub fn bump_and_check_confirmations(
+    pub(crate) fn bump_and_check_confirmations(
         &mut self,
         block_height: u64,
         tip_height: u64,
@@ -118,7 +118,7 @@ impl Contract {
         );
     }
 
-    pub fn resize_block_amount_ring(&mut self) {
+    pub(crate) fn resize_block_amount_ring(&mut self) {
         let cap = BlockAmountRing::capacity_for(self.internal_config());
         self.data_mut().block_bridge_amounts.resize(cap);
     }

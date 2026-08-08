@@ -336,7 +336,7 @@ impl Contract {
 
     /// Must be called at the synchronous entry point of a verify_* function —
     /// in a callback the predecessor is the contract itself, not the original relayer.
-    pub fn relayer_delta_for_predecessor(&self) -> u64 {
+    pub(crate) fn relayer_delta_for_predecessor(&self) -> u64 {
         if self
             .data()
             .relayer_white_list
@@ -349,7 +349,7 @@ impl Contract {
     }
 
     /// Same caller constraint as [`Self::relayer_delta_for_predecessor`].
-    pub fn extra_msg_relayer_delta_for_predecessor(&self) -> u64 {
+    pub(crate) fn extra_msg_relayer_delta_for_predecessor(&self) -> u64 {
         if self
             .data()
             .extra_msg_relayer_white_list
