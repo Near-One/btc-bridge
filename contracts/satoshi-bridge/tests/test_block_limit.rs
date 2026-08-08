@@ -45,6 +45,15 @@ async fn setup_two_tier_context(
         &context,
         "set_confirmations_strategy",
         json!({
+            "range_upper_bound": "10000000",
+            "confirmations": HIGH_TIER_CONFIRMATIONS,
+        }),
+    )
+    .await;
+    dao_call(
+        &context,
+        "set_confirmations_strategy",
+        json!({
             "range_upper_bound": LOW_TIER_UPPER_BOUND.to_string(),
             "confirmations": LOW_TIER_CONFIRMATIONS,
         }),

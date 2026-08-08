@@ -129,6 +129,23 @@ impl Config {
                 .all(|v| confirmations_valid_range.contains(v)),
             "Invalid confirmations_strategy"
         );
+        let mut tiers = self
+            .confirmations_strategy
+            .iter()
+            .map(|(bound, confirmations)| {
+                (
+                    bound
+                        .parse::<u128>()
+                        .unwrap_or_else(|_| env::panic_str("Invalid confirmations_strategy key")),
+                    *confirmations,
+                )
+            })
+            .collect::<Vec<_>>();
+        tiers.sort_unstable_by_key(|(bound, _)| *bound);
+        require!(
+            tiers.windows(2).all(|pair| pair[0].1 <= pair[1].1),
+            "confirmations_strategy must be non-decreasing"
+        );
         self.deposit_bridge_fee.assert_valid();
         self.withdraw_bridge_fee.assert_valid();
         require!(
@@ -432,6 +449,47 @@ mod tests {
         unit_env
             .contract
             .set_confirmations_strategy(U128(20_000_000), 101);
+    }
+
+    #[test]
+    #[should_panic(expected = "confirmations_strategy must be non-decreasing")]
+    fn test_set_confirmations_strategy_non_monotonic_panics() {
+        let mut unit_env = init_unit_env();
+        testing_env!(unit_env
+            .context
+            .predecessor_account_id(owner_id())
+            .attached_deposit(NearToken::from_yoctonear(1))
+            .build());
+
+        unit_env.contract.set_confirmations_strategy(U128(5_000), 3);
+    }
+
+    #[test]
+    fn test_get_confirmations_max_fallback_is_max_tier() {
+        let mut unit_env = init_unit_env();
+        testing_env!(unit_env
+            .context
+            .predecessor_account_id(owner_id())
+            .attached_deposit(NearToken::from_yoctonear(1))
+            .build());
+
+        unit_env
+            .contract
+            .set_confirmations_strategy(U128(10_000_000), 10);
+        unit_env
+            .contract
+            .set_confirmations_strategy(U128(10_000), 3);
+        unit_env
+            .contract
+            .set_confirmations_strategy(U128(50_000), 10);
+        unit_env
+            .contract
+            .remove_confirmations_strategy(U128(10_000_000));
+
+        let config = unit_env.contract.internal_config();
+        assert_eq!(config.get_confirmations(u128::MAX), 10);
+        assert_eq!(u64::from(config.max_tier_confirmations()), 10);
+        assert_eq!(config.get_confirmations(5_000), 3);
     }
 
     // Regression: a Zcash unified address with no transparent receiver (shielded-only,
