@@ -23,6 +23,9 @@ const HIGH_TIER_CONFIRMATIONS: u64 = 10;
 
 const BASE_BLOCK_HEIGHT: u64 = 100;
 
+// Must match `confirmations_delta` in the test config (`Context::new`).
+const RELAYER_CONFIRMATIONS_DELTA: u64 = 1;
+
 async fn dao_call(context: &Context, method: &str, args: near_sdk::serde_json::Value) {
     context
         .root
@@ -38,6 +41,13 @@ async fn dao_call(context: &Context, method: &str, args: near_sdk::serde_json::V
 
 async fn setup_two_tier_context(
     worker: &near_workspaces::Worker<near_workspaces::network::Sandbox>,
+) -> (Context, String) {
+    setup_two_tier_context_with(worker, true).await
+}
+
+async fn setup_two_tier_context_with(
+    worker: &near_workspaces::Worker<near_workspaces::network::Sandbox>,
+    whitelist_relayer: bool,
 ) -> (Context, String) {
     let context = Context::new(worker, Some(CHAIN.to_string())).await;
 
@@ -82,12 +92,14 @@ async fn setup_two_tier_context(
     )
     .await;
 
-    dao_call(
-        &context,
-        "extend_relayer_white_list",
-        json!({ "relayer_ids": [context.relayer.id()] }),
-    )
-    .await;
+    if whitelist_relayer {
+        dao_call(
+            &context,
+            "extend_relayer_white_list",
+            json!({ "relayer_ids": [context.relayer.id()] }),
+        )
+        .await;
+    }
 
     let deposit_address = context
         .get_user_deposit_address(alice_deposit_msg(&context))
@@ -312,6 +324,60 @@ async fn test_ring_wraparound_evicts_old_block_and_falls_back_to_max_tier() {
 
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 24_000);
     assert_eq!(context.get_utxos_paged().await.unwrap().len(), 4);
+}
+
+#[tokio::test]
+async fn test_non_whitelisted_relayer_requires_confirmations_delta() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let (context, deposit_address) = setup_two_tier_context_with(&worker, false).await;
+
+    set_heights(
+        &context,
+        BASE_BLOCK_HEIGHT,
+        BASE_BLOCK_HEIGHT + LOW_TIER_CONFIRMATIONS - 1,
+    )
+    .await;
+    check!(
+        verify_deposit(&context, &deposit_address, 5000, 1),
+        NOT_ENOUGH_CONFIRMATIONS_ERR
+    );
+
+    set_heights(
+        &context,
+        BASE_BLOCK_HEIGHT,
+        BASE_BLOCK_HEIGHT + LOW_TIER_CONFIRMATIONS + RELAYER_CONFIRMATIONS_DELTA - 1,
+    )
+    .await;
+    check!(verify_deposit(&context, &deposit_address, 5000, 1));
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 5000);
+}
+
+#[tokio::test]
+async fn test_non_whitelisted_relayer_delta_applies_to_high_tier() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let (context, deposit_address) = setup_two_tier_context_with(&worker, false).await;
+
+    set_heights(
+        &context,
+        BASE_BLOCK_HEIGHT,
+        BASE_BLOCK_HEIGHT + HIGH_TIER_CONFIRMATIONS - 1,
+    )
+    .await;
+    check!(
+        verify_deposit(&context, &deposit_address, 25_000, 1),
+        NOT_ENOUGH_CONFIRMATIONS_ERR
+    );
+
+    set_heights(
+        &context,
+        BASE_BLOCK_HEIGHT,
+        BASE_BLOCK_HEIGHT + HIGH_TIER_CONFIRMATIONS + RELAYER_CONFIRMATIONS_DELTA - 1,
+    )
+    .await;
+    check!(verify_deposit(&context, &deposit_address, 25_000, 1));
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 25_000);
 }
 
 #[tokio::test]
