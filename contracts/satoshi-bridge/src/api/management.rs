@@ -281,6 +281,7 @@ impl Contract {
     pub fn update_config(&mut self, update: ConfigUpdate) {
         assert_one_yocto();
         update.apply(self.internal_mut_config());
+        self.resize_block_amount_ring();
     }
 
     #[payable]
@@ -288,12 +289,12 @@ impl Contract {
     pub fn set_confirmations_strategy(&mut self, range_upper_bound: U128, confirmations: u8) {
         assert_one_yocto();
 
-        let config = self.internal_mut_config();
-        config
+        self.internal_mut_config()
             .confirmations_strategy
             .insert(range_upper_bound.0.to_string(), confirmations);
+        self.resize_block_amount_ring();
 
-        config.assert_valid()
+        self.internal_config().assert_valid();
     }
 
     #[payable]
@@ -310,5 +311,8 @@ impl Contract {
             !self.internal_config().confirmations_strategy.is_empty(),
             "confirmations_strategy must not be empty"
         );
+        self.resize_block_amount_ring();
+
+        self.internal_config().assert_valid();
     }
 }

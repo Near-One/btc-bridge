@@ -23,6 +23,7 @@ pub mod bitcoin_utils;
 #[cfg(feature = "zcash")]
 pub mod zcash_utils;
 
+pub mod block_amount_ring;
 pub mod btc_light_client;
 pub mod btc_pending_info;
 pub mod chain_signature;
@@ -46,6 +47,7 @@ pub mod utxo;
 
 pub use crate::account::*;
 pub use crate::api::*;
+pub use crate::block_amount_ring::BlockAmountRing;
 pub use crate::btc_pending_info::*;
 pub use crate::chain_signature::*;
 pub use crate::config::*;
@@ -144,6 +146,7 @@ pub struct ContractData {
     pub cur_reserved_protocol_fee: u128,
     pub acc_protocol_fee_for_gas: u128,
     pub refund_requests: IterableMap<String, VRefundRequest>,
+    pub block_bridge_amounts: BlockAmountRing,
 }
 
 #[near(serializers = [borsh])]
@@ -154,6 +157,7 @@ pub enum VersionedContractData {
     V3(ContractDataV3),
     V4(ContractDataV4),
     V5(ContractDataV5),
+    V6(ContractDataV6),
     Current(ContractData),
 }
 
@@ -190,6 +194,7 @@ impl Contract {
             config.change_address.is_none(),
             "Init change_address must be None"
         );
+        let block_bridge_amounts = BlockAmountRing::new(BlockAmountRing::capacity_for(&config));
         let mut contract = Self {
             data: VersionedContractData::Current(ContractData {
                 config: LazyOption::new(StorageKey::Config, Some(config)),
@@ -210,6 +215,7 @@ impl Contract {
                 pending_tx_limits: IterableMap::new(StorageKey::PendingTxLimits),
                 lost_found: IterableMap::new(StorageKey::LostFound),
                 refund_requests: IterableMap::new(StorageKey::RefundRequests),
+                block_bridge_amounts,
                 acc_collected_protocol_fee: 0,
                 cur_available_protocol_fee: 0,
                 acc_claimed_protocol_fee: 0,

@@ -129,6 +129,23 @@ impl Config {
                 .all(|v| confirmations_valid_range.contains(v)),
             "Invalid confirmations_strategy"
         );
+        let mut tiers = self
+            .confirmations_strategy
+            .iter()
+            .map(|(bound, confirmations)| {
+                (
+                    bound
+                        .parse::<u128>()
+                        .unwrap_or_else(|_| env::panic_str("Invalid confirmations_strategy key")),
+                    *confirmations,
+                )
+            })
+            .collect::<Vec<_>>();
+        tiers.sort_unstable_by_key(|(bound, _)| *bound);
+        require!(
+            tiers.windows(2).all(|pair| pair[0].1 <= pair[1].1),
+            "confirmations_strategy must be non-decreasing"
+        );
         self.deposit_bridge_fee.assert_valid();
         self.withdraw_bridge_fee.assert_valid();
         require!(
@@ -217,6 +234,22 @@ impl Config {
                 .get(&max_key.to_string())
                 .unwrap(),
         )
+    }
+
+    pub fn max_tier_confirmations(&self) -> u8 {
+        self.confirmations_strategy
+            .values()
+            .max()
+            .copied()
+            .unwrap_or(0)
+    }
+
+    pub fn max_required_confirmations(&self) -> u64 {
+        u64::from(self.max_tier_confirmations())
+            + u64::from(std::cmp::max(
+                self.confirmations_delta,
+                self.extra_msg_confirmations_delta,
+            ))
     }
 }
 
@@ -318,29 +351,23 @@ impl Contract {
             .expect("ERR_CONFIG: contract not initialized")
     }
 
-    pub fn get_confirmations(&self, config: &Config, satoshi_amount: u128) -> u64 {
-        if self
-            .data()
-            .relayer_white_list
-            // Use predecessor_account_id to support both users and proxy protocols.
-            .contains(&env::predecessor_account_id())
-        {
-            config.get_confirmations(satoshi_amount)
+    pub(crate) fn relayer_delta(&self, relayer_account_id: &AccountId) -> u64 {
+        if self.data().relayer_white_list.contains(relayer_account_id) {
+            0
         } else {
-            config.get_confirmations(satoshi_amount) + u64::from(config.confirmations_delta)
+            u64::from(self.internal_config().confirmations_delta)
         }
     }
 
-    pub fn get_extra_msg_confirmations(&self, config: &Config, satoshi_amount: u128) -> u64 {
+    pub(crate) fn extra_msg_relayer_delta(&self, relayer_account_id: &AccountId) -> u64 {
         if self
             .data()
             .extra_msg_relayer_white_list
-            .contains(&env::predecessor_account_id())
+            .contains(relayer_account_id)
         {
-            config.get_confirmations(satoshi_amount)
+            0
         } else {
-            config.get_confirmations(satoshi_amount)
-                + u64::from(config.extra_msg_confirmations_delta)
+            u64::from(self.internal_config().extra_msg_confirmations_delta)
         }
     }
 }
@@ -415,6 +442,47 @@ mod tests {
         unit_env
             .contract
             .set_confirmations_strategy(U128(20_000_000), 101);
+    }
+
+    #[test]
+    #[should_panic(expected = "confirmations_strategy must be non-decreasing")]
+    fn test_set_confirmations_strategy_non_monotonic_panics() {
+        let mut unit_env = init_unit_env();
+        testing_env!(unit_env
+            .context
+            .predecessor_account_id(owner_id())
+            .attached_deposit(NearToken::from_yoctonear(1))
+            .build());
+
+        unit_env.contract.set_confirmations_strategy(U128(5_000), 3);
+    }
+
+    #[test]
+    fn test_get_confirmations_max_fallback_is_max_tier() {
+        let mut unit_env = init_unit_env();
+        testing_env!(unit_env
+            .context
+            .predecessor_account_id(owner_id())
+            .attached_deposit(NearToken::from_yoctonear(1))
+            .build());
+
+        unit_env
+            .contract
+            .set_confirmations_strategy(U128(10_000_000), 10);
+        unit_env
+            .contract
+            .set_confirmations_strategy(U128(10_000), 3);
+        unit_env
+            .contract
+            .set_confirmations_strategy(U128(50_000), 10);
+        unit_env
+            .contract
+            .remove_confirmations_strategy(U128(10_000_000));
+
+        let config = unit_env.contract.internal_config();
+        assert_eq!(config.get_confirmations(u128::MAX), 10);
+        assert_eq!(u64::from(config.max_tier_confirmations()), 10);
+        assert_eq!(config.get_confirmations(5_000), 3);
     }
 
     // Regression: a Zcash unified address with no transparent receiver (shielded-only,
