@@ -30,9 +30,9 @@ impl Contract {
     ) -> Promise {
         let recipient_id = deposit_msg.recipient_id.clone();
         let confirmations_delta = if deposit_msg.extra_msg.is_none() {
-            self.relayer_delta_for_predecessor()
+            self.relayer_delta(&env::predecessor_account_id())
         } else {
-            self.extra_msg_relayer_delta_for_predecessor()
+            self.extra_msg_relayer_delta(&env::predecessor_account_id())
         };
         let config = self.internal_config();
         let promise = self.verify_transaction_inclusion_with_heights_promise(
@@ -89,7 +89,7 @@ impl Contract {
         recipient_id: AccountId,
         deposit_msg: SafeDepositMsg,
     ) -> Promise {
-        let confirmations_delta = self.relayer_delta_for_predecessor();
+        let confirmations_delta = self.relayer_delta(&env::predecessor_account_id());
         let config = self.internal_config();
         let promise = self.verify_transaction_inclusion_with_heights_promise(
             config.btc_light_client_account_id.clone(),
@@ -290,8 +290,8 @@ impl Contract {
             u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
         );
 
-        let confirmations =
-            config.get_confirmations(deposit_amount) + self.relayer_delta_for_predecessor();
+        let confirmations = config.get_confirmations(deposit_amount)
+            + self.relayer_delta(&env::predecessor_account_id());
         self.verify_transaction_inclusion_promise(
             config.btc_light_client_account_id.clone(),
             tx_id.clone(),

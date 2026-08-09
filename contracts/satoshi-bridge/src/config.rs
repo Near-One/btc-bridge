@@ -351,26 +351,19 @@ impl Contract {
             .expect("ERR_CONFIG: contract not initialized")
     }
 
-    /// Must be called at the synchronous entry point of a verify_* function —
-    /// in a callback the predecessor is the contract itself, not the original relayer.
-    pub(crate) fn relayer_delta_for_predecessor(&self) -> u64 {
-        if self
-            .data()
-            .relayer_white_list
-            .contains(&env::predecessor_account_id())
-        {
+    pub(crate) fn relayer_delta(&self, relayer_account_id: &AccountId) -> u64 {
+        if self.data().relayer_white_list.contains(relayer_account_id) {
             0
         } else {
             u64::from(self.internal_config().confirmations_delta)
         }
     }
 
-    /// Same caller constraint as [`Self::relayer_delta_for_predecessor`].
-    pub(crate) fn extra_msg_relayer_delta_for_predecessor(&self) -> u64 {
+    pub(crate) fn extra_msg_relayer_delta(&self, relayer_account_id: &AccountId) -> u64 {
         if self
             .data()
             .extra_msg_relayer_white_list
-            .contains(&env::predecessor_account_id())
+            .contains(relayer_account_id)
         {
             0
         } else {
