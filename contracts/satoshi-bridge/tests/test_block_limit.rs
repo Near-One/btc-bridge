@@ -410,3 +410,195 @@ async fn test_tier_boundary_amount_falls_into_higher_tier() {
         LOW_TIER_UPPER_BOUND
     );
 }
+
+#[tokio::test]
+async fn test_ring_grow_preserves_block_cumulative() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let (context, deposit_address) = setup_two_tier_context(&worker).await;
+
+    set_heights(
+        &context,
+        BASE_BLOCK_HEIGHT,
+        BASE_BLOCK_HEIGHT + LOW_TIER_CONFIRMATIONS - 1,
+    )
+    .await;
+    check!(verify_deposit(&context, &deposit_address, 6000, 1));
+    check!(
+        verify_deposit(&context, &deposit_address, 6000, 2),
+        NOT_ENOUGH_CONFIRMATIONS_ERR
+    );
+
+    dao_call(
+        &context,
+        "update_config",
+        json!({ "update": { "extra_msg_confirmations_delta": 6 } }),
+    )
+    .await;
+
+    check!(
+        verify_deposit(&context, &deposit_address, 6000, 2),
+        NOT_ENOUGH_CONFIRMATIONS_ERR
+    );
+
+    set_heights(
+        &context,
+        BASE_BLOCK_HEIGHT,
+        BASE_BLOCK_HEIGHT + HIGH_TIER_CONFIRMATIONS - 1,
+    )
+    .await;
+    check!(verify_deposit(&context, &deposit_address, 6000, 2));
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 12_000);
+}
+
+#[tokio::test]
+async fn test_tier_boundary_update_applies_to_existing_cumulative() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let (context, deposit_address) = setup_two_tier_context(&worker).await;
+
+    set_heights(
+        &context,
+        BASE_BLOCK_HEIGHT,
+        BASE_BLOCK_HEIGHT + LOW_TIER_CONFIRMATIONS - 1,
+    )
+    .await;
+    check!(verify_deposit(&context, &deposit_address, 6000, 1));
+    check!(
+        verify_deposit(&context, &deposit_address, 6000, 2),
+        NOT_ENOUGH_CONFIRMATIONS_ERR
+    );
+
+    dao_call(
+        &context,
+        "set_confirmations_strategy",
+        json!({
+            "range_upper_bound": "20000",
+            "confirmations": LOW_TIER_CONFIRMATIONS,
+        }),
+    )
+    .await;
+
+    check!(verify_deposit(&context, &deposit_address, 6000, 2));
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 12_000);
+    assert_eq!(context.get_utxos_paged().await.unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_ring_shrink_merges_collided_blocks() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let (context, deposit_address) = setup_two_tier_context(&worker).await;
+
+    let config = context.get_bridge_config().await.unwrap();
+    let capacity_before = u64::try_from(BlockAmountRing::capacity_for(&config)).unwrap();
+    // Dropping both deltas (1 + 1 in the test config) shrinks the ring by 2.
+    let capacity_after = capacity_before - 2;
+    let old_height = BASE_BLOCK_HEIGHT;
+    let new_height = BASE_BLOCK_HEIGHT + capacity_after;
+
+    set_heights(
+        &context,
+        old_height,
+        old_height + LOW_TIER_CONFIRMATIONS - 1,
+    )
+    .await;
+    check!(verify_deposit(&context, &deposit_address, 6000, 1));
+    check!(
+        verify_deposit(&context, &deposit_address, 6000, 2),
+        NOT_ENOUGH_CONFIRMATIONS_ERR
+    );
+
+    set_heights(
+        &context,
+        new_height,
+        new_height + LOW_TIER_CONFIRMATIONS - 1,
+    )
+    .await;
+    check!(verify_deposit(&context, &deposit_address, 6000, 3));
+    check!(
+        verify_deposit(&context, &deposit_address, 6000, 4),
+        NOT_ENOUGH_CONFIRMATIONS_ERR
+    );
+
+    dao_call(
+        &context,
+        "update_config",
+        json!({ "update": { "confirmations_delta": 0, "extra_msg_confirmations_delta": 0 } }),
+    )
+    .await;
+
+    set_heights(
+        &context,
+        old_height,
+        new_height + LOW_TIER_CONFIRMATIONS - 1,
+    )
+    .await;
+    check!(verify_deposit(&context, &deposit_address, 6000, 2));
+
+    set_heights(
+        &context,
+        new_height,
+        new_height + LOW_TIER_CONFIRMATIONS - 1,
+    )
+    .await;
+    check!(
+        verify_deposit(&context, &deposit_address, 6000, 4),
+        NOT_ENOUGH_CONFIRMATIONS_ERR
+    );
+    check!(verify_deposit(&context, &deposit_address, 3000, 5));
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 21_000);
+}
+
+#[tokio::test]
+async fn test_ring_grow_forgotten_block_restarts_from_zero() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let (context, deposit_address) = setup_two_tier_context(&worker).await;
+
+    let config = context.get_bridge_config().await.unwrap();
+    let capacity = u64::try_from(BlockAmountRing::capacity_for(&config)).unwrap();
+    let evicting_height = BASE_BLOCK_HEIGHT + capacity;
+    // The raised top tier must exceed the old capacity, otherwise the forgotten
+    // block's depth alone satisfies it and the under-count is not observable.
+    let raised_tier = capacity + 13;
+
+    set_heights(
+        &context,
+        BASE_BLOCK_HEIGHT,
+        BASE_BLOCK_HEIGHT + LOW_TIER_CONFIRMATIONS - 1,
+    )
+    .await;
+    check!(verify_deposit(&context, &deposit_address, 6000, 1));
+
+    set_heights(
+        &context,
+        evicting_height,
+        evicting_height + LOW_TIER_CONFIRMATIONS - 1,
+    )
+    .await;
+    check!(verify_deposit(&context, &deposit_address, 6000, 2));
+
+    dao_call(
+        &context,
+        "set_confirmations_strategy",
+        json!({
+            "range_upper_bound": HIGH_TIER_UPPER_BOUND.to_string(),
+            "confirmations": raised_tier,
+        }),
+    )
+    .await;
+
+    set_heights(
+        &context,
+        BASE_BLOCK_HEIGHT,
+        evicting_height + LOW_TIER_CONFIRMATIONS - 1,
+    )
+    .await;
+    check!(verify_deposit(&context, &deposit_address, 6000, 3));
+    check!(
+        verify_deposit(&context, &deposit_address, 6000, 4),
+        NOT_ENOUGH_CONFIRMATIONS_ERR
+    );
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 18_000);
+}
