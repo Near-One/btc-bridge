@@ -85,8 +85,15 @@ impl Contract {
         self.internal_config().clone()
     }
 
-    pub fn get_required_confirmations(&self, block_height: u64, amount: U128) -> u64 {
+    pub fn get_required_confirmations(
+        &self,
+        block_height: u64,
+        amount: U128,
+        relayer_account_id: Option<AccountId>,
+        has_extra_msg: bool,
+    ) -> u64 {
         self.required_confirmations(block_height, amount.0)
+            + self.confirmations_delta_for(relayer_account_id.as_ref(), has_extra_msg)
     }
 
     pub fn get_account(&self, account_id: &AccountId) -> Option<Account> {

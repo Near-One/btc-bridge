@@ -335,6 +335,9 @@ mod tests {
             .predecessor_account_id(crate::owner_id())
             .attached_deposit(crate::NearToken::from_yoctonear(1))
             .build());
+        let update: crate::ConfigUpdate =
+            crate::serde_json::from_str(r#"{ "confirmations_delta": 0 }"#).unwrap();
+        unit_env.contract.update_config(update);
         unit_env
             .contract
             .set_confirmations_strategy(crate::U128(10_000), 2);
@@ -345,13 +348,13 @@ mod tests {
         assert_eq!(
             unit_env
                 .contract
-                .get_required_confirmations(100, crate::U128(5_000)),
+                .get_required_confirmations(100, crate::U128(5_000), None, false),
             2
         );
         assert_eq!(
             unit_env
                 .contract
-                .get_required_confirmations(100, crate::U128(20_000)),
+                .get_required_confirmations(100, crate::U128(20_000), None, false),
             6
         );
 
@@ -361,14 +364,84 @@ mod tests {
         assert_eq!(
             unit_env
                 .contract
-                .get_required_confirmations(100, crate::U128(5_000)),
+                .get_required_confirmations(100, crate::U128(5_000), None, false),
             6
         );
         assert_eq!(
             unit_env
                 .contract
-                .get_required_confirmations(101, crate::U128(5_000)),
+                .get_required_confirmations(101, crate::U128(5_000), None, false),
             2
+        );
+    }
+
+    #[test]
+    fn get_required_confirmations_includes_relayer_delta() {
+        let mut unit_env = crate::init_unit_env();
+        crate::testing_env!(unit_env
+            .context
+            .predecessor_account_id(crate::owner_id())
+            .attached_deposit(crate::NearToken::from_yoctonear(1))
+            .build());
+        let update: crate::ConfigUpdate = crate::serde_json::from_str(
+            r#"{ "confirmations_delta": 3, "extra_msg_confirmations_delta": 5 }"#,
+        )
+        .unwrap();
+        unit_env.contract.update_config(update);
+
+        let base = 2;
+        let amount = crate::U128(5_000);
+        let relayer = crate::user_id();
+
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(100, amount, None, false),
+            base + 3
+        );
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(100, amount, None, true),
+            base + 5
+        );
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(100, amount, Some(relayer.clone()), false),
+            base + 3
+        );
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(100, amount, Some(relayer.clone()), true),
+            base + 5
+        );
+
+        unit_env
+            .contract
+            .extend_relayer_white_list(vec![relayer.clone()]);
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(100, amount, Some(relayer.clone()), false),
+            base
+        );
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(100, amount, Some(relayer.clone()), true),
+            base + 5
+        );
+
+        unit_env
+            .contract
+            .extend_extra_msg_relayer_white_list(vec![relayer.clone()]);
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(100, amount, Some(relayer), true),
+            base
         );
     }
 
