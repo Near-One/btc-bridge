@@ -85,6 +85,10 @@ impl Contract {
         self.internal_config().clone()
     }
 
+    pub fn get_required_confirmations(&self, block_height: u64, amount: U128) -> u64 {
+        self.required_confirmations(block_height, amount.0)
+    }
+
     pub fn get_account(&self, account_id: &AccountId) -> Option<Account> {
         self.data().accounts.get(account_id).map(Account::from)
     }

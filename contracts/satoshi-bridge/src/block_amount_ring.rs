@@ -67,6 +67,17 @@ impl BlockAmountRing {
         }
     }
 
+    pub fn peek(&self, block_height: u64, amount: u128) -> Option<u128> {
+        let i = self.slot(block_height);
+        match &self.cells[i] {
+            Some(c) if c.block_height == block_height => {
+                Some(c.cumulative_sats.saturating_add(amount))
+            }
+            Some(c) if c.block_height > block_height => None,
+            _ => Some(amount),
+        }
+    }
+
     pub fn resize(&mut self, new_capacity: usize) {
         require!(new_capacity > 0, "BlockAmountRing capacity must be > 0");
         if new_capacity == self.cells.len() {
@@ -121,6 +132,15 @@ impl Contract {
     pub(crate) fn resize_block_amount_ring(&mut self) {
         let cap = BlockAmountRing::capacity_for(self.internal_config());
         self.data_mut().block_bridge_amounts.resize(cap);
+    }
+
+    pub(crate) fn required_confirmations(&self, block_height: u64, amount: u128) -> u64 {
+        let cumulative = self
+            .data()
+            .block_bridge_amounts
+            .peek(block_height, amount)
+            .unwrap_or(u128::MAX);
+        self.internal_config().get_confirmations(cumulative)
     }
 }
 
@@ -283,6 +303,73 @@ mod tests {
     fn resize_to_zero_panics() {
         let mut ring = BlockAmountRing::new(4);
         ring.resize(0);
+    }
+
+    #[test]
+    fn peek_matches_bump_without_mutation() {
+        let mut ring = BlockAmountRing::new(4);
+        assert_eq!(ring.peek(100, 500), Some(500));
+        assert_eq!(ring.get(100), None);
+
+        ring.bump(100, 500);
+        assert_eq!(ring.peek(100, 250), Some(750));
+        assert_eq!(ring.get(100), Some(500));
+
+        assert_eq!(ring.peek(96, 10), None);
+        assert_eq!(ring.peek(104, 10), Some(10));
+        assert_eq!(ring.get(100), Some(500));
+    }
+
+    #[test]
+    fn peek_overflow_saturates() {
+        let mut ring = BlockAmountRing::new(4);
+        ring.bump(100, u128::MAX);
+        assert_eq!(ring.peek(100, 1), Some(u128::MAX));
+    }
+
+    #[test]
+    fn get_required_confirmations_applies_tier_to_cumulative() {
+        let mut unit_env = crate::init_unit_env();
+        crate::testing_env!(unit_env
+            .context
+            .predecessor_account_id(crate::owner_id())
+            .attached_deposit(crate::NearToken::from_yoctonear(1))
+            .build());
+        unit_env
+            .contract
+            .set_confirmations_strategy(crate::U128(10_000), 2);
+        unit_env
+            .contract
+            .set_confirmations_strategy(crate::U128(10_000_000), 6);
+
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(100, crate::U128(5_000)),
+            2
+        );
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(100, crate::U128(20_000)),
+            6
+        );
+
+        unit_env
+            .contract
+            .bump_and_check_confirmations(100, 110, 8_000, 0);
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(100, crate::U128(5_000)),
+            6
+        );
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(101, crate::U128(5_000)),
+            2
+        );
     }
 
     #[test]
