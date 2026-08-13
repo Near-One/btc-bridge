@@ -27,7 +27,7 @@ a Merkle proof, the BTC Light Client verifies it, and the connector mints nBTC t
 `recipient_id`. The deposit UTXO joins the bridge pool.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'actorTextColor': '#000000', 'actorLineColor': '#333333', 'signalColor': '#333333', 'signalTextColor': '#000000', 'noteBkgColor': '#fff9c4', 'noteTextColor': '#000000', 'messageFontSize': '14px'}}}%%
+%%{init: {'theme': 'base', 'themeCSS': 'background-color: #ffffff;', 'themeVariables': {'actorTextColor': '#000000', 'actorLineColor': '#333333', 'signalColor': '#333333', 'signalTextColor': '#000000', 'noteBkgColor': '#fff9c4', 'noteTextColor': '#000000', 'messageFontSize': '14px'}}}%%
 sequenceDiagram
     box rgb(224, 224, 224) Off-chain
         participant U as User
@@ -69,7 +69,7 @@ builds the PSBT; the relayer then requests an MPC signature for each input
 confirmation the nBTC is burned.
 
 ```mermaid
-%%{init: {'theme': 'base', 'themeVariables': {'actorTextColor': '#000000', 'actorLineColor': '#333333', 'signalColor': '#333333', 'signalTextColor': '#000000', 'noteBkgColor': '#fff9c4', 'noteTextColor': '#000000', 'messageFontSize': '14px'}}}%%
+%%{init: {'theme': 'base', 'themeCSS': 'background-color: #ffffff;', 'themeVariables': {'actorTextColor': '#000000', 'actorLineColor': '#333333', 'signalColor': '#333333', 'signalTextColor': '#000000', 'noteBkgColor': '#fff9c4', 'noteTextColor': '#000000', 'messageFontSize': '14px'}}}%%
 sequenceDiagram
     box rgb(224, 224, 224) Off-chain
         participant U as User
