@@ -113,4 +113,3 @@ sequenceDiagram
 - [NEAR Chain Signatures](https://docs.near.org/chain-abstraction/chain-signatures) — MPC key derivation and signing
 - [Key Architecture](https://github.com/Near-One/btc-bridge/blob/omni-main/CLAUDE.md#key-architecture) — contracts and trust model
 - [`get_user_deposit_address`](https://github.com/Near-One/btc-bridge/blob/e5666eaa16055cf484ab9a539ade0f454845f24c/contracts/satoshi-bridge/src/api/bridge.rs#L283) — deposit address derivation
-- Detailed diagrams: [deposit-flow.md](deposit-flow.md), [safe-deposit-omni-flow.md](safe-deposit-omni-flow.md), [withdraw-omni-flow.md](withdraw-omni-flow.md)
