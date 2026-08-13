@@ -121,7 +121,7 @@ a check, and it's where trust enters the picture.
 ## 4. The key doesn't exist in one piece
 
 There is no server with the bridge's private key on it, and no person who could be persuaded to hand
-it over. The key is split across eight independent operators, and each one holds a fragment that is
+it over. The key is split across N independent operators, and each one holds a fragment that is
 useless on its own.
 
 ```mermaid
