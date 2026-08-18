@@ -370,6 +370,23 @@ impl Contract {
             u64::from(self.internal_config().extra_msg_confirmations_delta)
         }
     }
+
+    pub(crate) fn confirmations_delta_for(
+        &self,
+        relayer_account_id: Option<&AccountId>,
+        has_extra_msg: bool,
+    ) -> u64 {
+        match relayer_account_id {
+            Some(relayer_account_id) if has_extra_msg => {
+                self.extra_msg_relayer_delta(relayer_account_id)
+            }
+            Some(relayer_account_id) => self.relayer_delta(relayer_account_id),
+            None if has_extra_msg => {
+                u64::from(self.internal_config().extra_msg_confirmations_delta)
+            }
+            None => u64::from(self.internal_config().confirmations_delta),
+        }
+    }
 }
 
 #[cfg(test)]
