@@ -348,13 +348,13 @@ mod tests {
         assert_eq!(
             unit_env
                 .contract
-                .get_required_confirmations(100, crate::U128(5_000), None, false),
+                .get_required_confirmations(100, crate::U128(5_000), None, None),
             2
         );
         assert_eq!(
             unit_env
                 .contract
-                .get_required_confirmations(100, crate::U128(20_000), None, false),
+                .get_required_confirmations(100, crate::U128(20_000), None, None),
             6
         );
 
@@ -364,13 +364,13 @@ mod tests {
         assert_eq!(
             unit_env
                 .contract
-                .get_required_confirmations(100, crate::U128(5_000), None, false),
+                .get_required_confirmations(100, crate::U128(5_000), None, None),
             6
         );
         assert_eq!(
             unit_env
                 .contract
-                .get_required_confirmations(101, crate::U128(5_000), None, false),
+                .get_required_confirmations(101, crate::U128(5_000), None, None),
             2
         );
     }
@@ -396,25 +396,28 @@ mod tests {
         assert_eq!(
             unit_env
                 .contract
-                .get_required_confirmations(100, amount, None, false),
+                .get_required_confirmations(100, amount, None, None),
             base + 3
         );
         assert_eq!(
             unit_env
                 .contract
-                .get_required_confirmations(100, amount, None, true),
+                .get_required_confirmations(100, amount, None, Some(true)),
             base + 5
         );
         assert_eq!(
             unit_env
                 .contract
-                .get_required_confirmations(100, amount, Some(relayer.clone()), false),
+                .get_required_confirmations(100, amount, Some(relayer.clone()), None),
             base + 3
         );
         assert_eq!(
-            unit_env
-                .contract
-                .get_required_confirmations(100, amount, Some(relayer.clone()), true),
+            unit_env.contract.get_required_confirmations(
+                100,
+                amount,
+                Some(relayer.clone()),
+                Some(true)
+            ),
             base + 5
         );
 
@@ -424,13 +427,16 @@ mod tests {
         assert_eq!(
             unit_env
                 .contract
-                .get_required_confirmations(100, amount, Some(relayer.clone()), false),
+                .get_required_confirmations(100, amount, Some(relayer.clone()), None),
             base
         );
         assert_eq!(
-            unit_env
-                .contract
-                .get_required_confirmations(100, amount, Some(relayer.clone()), true),
+            unit_env.contract.get_required_confirmations(
+                100,
+                amount,
+                Some(relayer.clone()),
+                Some(true)
+            ),
             base + 5
         );
 
@@ -440,7 +446,7 @@ mod tests {
         assert_eq!(
             unit_env
                 .contract
-                .get_required_confirmations(100, amount, Some(relayer), true),
+                .get_required_confirmations(100, amount, Some(relayer), Some(true)),
             base
         );
     }
