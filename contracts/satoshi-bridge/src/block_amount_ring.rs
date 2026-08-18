@@ -461,4 +461,185 @@ mod tests {
         ring.resize(8);
         assert_eq!(ring.get(100), Some(600));
     }
+
+    mod dao_resize {
+        use crate::block_amount_ring::BLOCK_AMOUNT_RING_CAPACITY_SLACK;
+        use crate::*;
+
+        // The unit-env fixture config: strategy {10000000: 2}, confirmations_delta = 1,
+        // extra_msg_confirmations_delta = 1 → capacity = 2 + 1 + 1 + slack.
+        const FIXTURE_CAPACITY: usize = 2 + 1 + 1 + BLOCK_AMOUNT_RING_CAPACITY_SLACK;
+
+        fn dao_env() -> UnitEnv {
+            let mut unit_env = init_unit_env();
+            testing_env!(unit_env
+                .context
+                .predecessor_account_id(owner_id())
+                .attached_deposit(NearToken::from_yoctonear(1))
+                .build());
+            unit_env
+        }
+
+        fn ring_capacity(contract: &Contract) -> usize {
+            contract.data().block_bridge_amounts.capacity()
+        }
+
+        #[test]
+        fn set_confirmations_strategy_resizes_ring_and_preserves_entries() {
+            let mut unit_env = dao_env();
+            assert_eq!(ring_capacity(&unit_env.contract), FIXTURE_CAPACITY);
+            unit_env
+                .contract
+                .data_mut()
+                .block_bridge_amounts
+                .bump(100, 500);
+
+            unit_env
+                .contract
+                .set_confirmations_strategy(U128(20_000_000), 6);
+
+            let expected = 6 + 1 + 1 + BLOCK_AMOUNT_RING_CAPACITY_SLACK;
+            assert_eq!(ring_capacity(&unit_env.contract), expected);
+            assert_eq!(
+                ring_capacity(&unit_env.contract),
+                BlockAmountRing::capacity_for(unit_env.contract.internal_config())
+            );
+            assert_eq!(
+                unit_env.contract.data().block_bridge_amounts.get(100),
+                Some(500)
+            );
+        }
+
+        #[test]
+        fn remove_confirmations_strategy_shrinks_ring_keeping_newer_on_collision() {
+            let mut unit_env = dao_env();
+            unit_env
+                .contract
+                .set_confirmations_strategy(U128(20_000_000), 6);
+            let grown_capacity = ring_capacity(&unit_env.contract);
+            assert!(grown_capacity > FIXTURE_CAPACITY);
+
+            // 9 and 18 occupy distinct slots at the grown capacity (13) but the
+            // same slot at the fixture capacity (9), so the shrink must collide.
+            unit_env
+                .contract
+                .data_mut()
+                .block_bridge_amounts
+                .bump(9, 100);
+            unit_env
+                .contract
+                .data_mut()
+                .block_bridge_amounts
+                .bump(18, 200);
+
+            unit_env
+                .contract
+                .remove_confirmations_strategy(U128(20_000_000));
+
+            assert_eq!(ring_capacity(&unit_env.contract), FIXTURE_CAPACITY);
+            assert_eq!(
+                ring_capacity(&unit_env.contract),
+                BlockAmountRing::capacity_for(unit_env.contract.internal_config())
+            );
+            assert_eq!(
+                unit_env.contract.data().block_bridge_amounts.get(18),
+                Some(200)
+            );
+            assert_eq!(unit_env.contract.data().block_bridge_amounts.get(9), None);
+        }
+
+        #[test]
+        fn update_config_deltas_resize_ring() {
+            let mut unit_env = dao_env();
+            assert_eq!(ring_capacity(&unit_env.contract), FIXTURE_CAPACITY);
+            unit_env.contract.data_mut().block_bridge_amounts.bump(7, 1);
+
+            let update: ConfigUpdate =
+                serde_json::from_str(r#"{ "confirmations_delta": 4 }"#).unwrap();
+            unit_env.contract.update_config(update);
+            assert_eq!(
+                ring_capacity(&unit_env.contract),
+                2 + 4 + 1 + BLOCK_AMOUNT_RING_CAPACITY_SLACK
+            );
+
+            let update: ConfigUpdate =
+                serde_json::from_str(r#"{ "extra_msg_confirmations_delta": 3 }"#).unwrap();
+            unit_env.contract.update_config(update);
+            assert_eq!(
+                ring_capacity(&unit_env.contract),
+                2 + 4 + 3 + BLOCK_AMOUNT_RING_CAPACITY_SLACK
+            );
+            assert_eq!(
+                ring_capacity(&unit_env.contract),
+                BlockAmountRing::capacity_for(unit_env.contract.internal_config())
+            );
+
+            let update: ConfigUpdate = serde_json::from_str(
+                r#"{ "confirmations_delta": 0, "extra_msg_confirmations_delta": 0 }"#,
+            )
+            .unwrap();
+            unit_env.contract.update_config(update);
+            assert_eq!(
+                ring_capacity(&unit_env.contract),
+                2 + BLOCK_AMOUNT_RING_CAPACITY_SLACK
+            );
+            assert_eq!(
+                ring_capacity(&unit_env.contract),
+                BlockAmountRing::capacity_for(unit_env.contract.internal_config())
+            );
+            assert_eq!(
+                unit_env.contract.data().block_bridge_amounts.get(7),
+                Some(1)
+            );
+        }
+
+        #[test]
+        fn update_config_without_capacity_inputs_keeps_ring() {
+            let mut unit_env = dao_env();
+            assert_eq!(ring_capacity(&unit_env.contract), FIXTURE_CAPACITY);
+            unit_env
+                .contract
+                .data_mut()
+                .block_bridge_amounts
+                .bump(5, 42);
+
+            let update: ConfigUpdate =
+                serde_json::from_str(r#"{ "min_deposit_amount": "1000" }"#).unwrap();
+            unit_env.contract.update_config(update);
+
+            assert_eq!(ring_capacity(&unit_env.contract), FIXTURE_CAPACITY);
+            assert_eq!(
+                unit_env.contract.data().block_bridge_amounts.get(5),
+                Some(42)
+            );
+        }
+
+        #[test]
+        fn set_confirmations_strategy_middle_tier_keeps_ring() {
+            let mut unit_env = dao_env();
+            unit_env
+                .contract
+                .set_confirmations_strategy(U128(20_000_000), 6);
+            let grown_capacity = ring_capacity(&unit_env.contract);
+            unit_env
+                .contract
+                .data_mut()
+                .block_bridge_amounts
+                .bump(11, 300);
+
+            unit_env
+                .contract
+                .set_confirmations_strategy(U128(15_000_000), 4);
+
+            assert_eq!(ring_capacity(&unit_env.contract), grown_capacity);
+            assert_eq!(
+                ring_capacity(&unit_env.contract),
+                BlockAmountRing::capacity_for(unit_env.contract.internal_config())
+            );
+            assert_eq!(
+                unit_env.contract.data().block_bridge_amounts.get(11),
+                Some(300)
+            );
+        }
+    }
 }
