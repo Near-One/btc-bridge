@@ -210,30 +210,41 @@ impl Config {
         self.chain.clone()
     }
 
-    pub fn get_confirmations(&self, satoshi_amount: u128) -> u64 {
+    /// Tiers as `(range_upper_bound, confirmations)`, ordered by bound. Hoist it
+    /// out of loops over amounts: the stored form has to be parsed and sorted on
+    /// every call.
+    pub fn sorted_confirmations_tiers(&self) -> Vec<(u128, u64)> {
         require!(
             !self.confirmations_strategy.is_empty(),
             "confirmations_strategy is empty"
         );
         // The key is constrained to U64 during assignment, so it won't panic.
-        let mut keys = self
+        let mut tiers = self
             .confirmations_strategy
-            .keys()
-            .map(|k| k.parse::<u128>().unwrap())
+            .iter()
+            .map(|(bound, confirmations)| {
+                (bound.parse::<u128>().unwrap(), u64::from(*confirmations))
+            })
             .collect::<Vec<_>>();
-        keys.sort_unstable();
-        for key in &keys {
-            if *key > satoshi_amount {
-                return u64::from(*self.confirmations_strategy.get(&key.to_string()).unwrap());
-            }
-        }
-        let max_key = keys.last().unwrap();
-        u64::from(
-            *self
-                .confirmations_strategy
-                .get(&max_key.to_string())
-                .unwrap(),
-        )
+        tiers.sort_unstable();
+        tiers
+    }
+
+    /// Confirmations the first tier above `satoshi_amount` asks for, falling back
+    /// to the top tier for amounts past every bound.
+    pub fn tier_confirmations(tiers: &[(u128, u64)], satoshi_amount: u128) -> u64 {
+        tiers
+            .iter()
+            .find(|(bound, _)| *bound > satoshi_amount)
+            .or_else(|| tiers.last())
+            .map_or_else(
+                || env::panic_str("confirmations_strategy is empty"),
+                |(_, confirmations)| *confirmations,
+            )
+    }
+
+    pub fn get_confirmations(&self, satoshi_amount: u128) -> u64 {
+        Self::tier_confirmations(&self.sorted_confirmations_tiers(), satoshi_amount)
     }
 
     pub fn max_tier_confirmations(&self) -> u8 {

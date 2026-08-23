@@ -92,11 +92,9 @@ impl Contract {
         relayer_account_id: Option<AccountId>,
         has_extra_msg: Option<bool>,
     ) -> u64 {
-        self.required_confirmations(block_height, amount.0)
-            + self.confirmations_delta_for(
-                relayer_account_id.as_ref(),
-                has_extra_msg.unwrap_or(false),
-            )
+        let delta = self
+            .confirmations_delta_for(relayer_account_id.as_ref(), has_extra_msg.unwrap_or(false));
+        self.required_confirmations(block_height, amount.0, delta)
     }
 
     pub fn get_account(&self, account_id: &AccountId) -> Option<Account> {

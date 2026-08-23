@@ -11,8 +11,9 @@ pub struct BlockAmountCell {
 }
 
 /// Fixed-capacity ring of cumulative bridged satoshi amounts per BTC block
-/// (slot = `block_height % capacity`), so confirmations tiers apply to the
-/// per-block sum rather than to each tx separately.
+/// (slot = `block_height % capacity`), so confirmations tiers apply to the total
+/// bridged from a rolling window of blocks rather than to each tx, or each
+/// block, separately.
 #[near(serializers = [borsh])]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Eq))]
 pub struct BlockAmountRing {
@@ -67,15 +68,21 @@ impl BlockAmountRing {
         }
     }
 
-    pub fn peek(&self, block_height: u64, amount: u128) -> Option<u128> {
-        let i = self.slot(block_height);
-        match &self.cells[i] {
-            Some(c) if c.block_height == block_height => {
-                Some(c.cumulative_sats.saturating_add(amount))
+    /// Running totals of the amounts recorded for the windows
+    /// `[tip_height - k + 1, tip_height]`, yielded for every window size `k`
+    /// from `1` to `max_window`. Blocks the ring no longer remembers, and blocks
+    /// before genesis for a window reaching past it, contribute nothing.
+    pub fn window_totals(
+        &self,
+        tip_height: u64,
+        max_window: u64,
+    ) -> impl Iterator<Item = u128> + '_ {
+        (1..=max_window).scan(0u128, move |total, k| {
+            if let Some(height) = tip_height.checked_sub(k - 1) {
+                *total = total.saturating_add(self.get(height).unwrap_or(0));
             }
-            Some(c) if c.block_height > block_height => None,
-            _ => Some(amount),
-        }
+            Some(*total)
+        })
     }
 
     pub fn resize(&mut self, new_capacity: usize) {
@@ -106,9 +113,8 @@ impl BlockAmountRing {
 }
 
 impl Contract {
-    /// Panics unless the observed depth satisfies the confirmations tier for
-    /// the block's post-bump cumulative amount. Out-of-window blocks fall back
-    /// to the max tier.
+    /// Panics unless bridging `amount` keeps every rolling window of blocks
+    /// within the tier that its own depth buys, then records the amount.
     pub(crate) fn bump_and_check_confirmations(
         &mut self,
         block_height: u64,
@@ -116,31 +122,86 @@ impl Contract {
         amount: u128,
         delta: u64,
     ) {
-        let cumulative = self
-            .data_mut()
-            .block_bridge_amounts
-            .bump(block_height, amount)
-            .unwrap_or(u128::MAX);
-        let required = self.internal_config().get_confirmations(cumulative) + delta;
-        let actual = tip_height.saturating_sub(block_height).saturating_add(1);
+        let tiers = self.internal_config().sorted_confirmations_tiers();
         require!(
-            actual >= required,
-            "Not enough confirmations for the block-cumulative bridge amount"
+            self.confirmations_window_satisfied(&tiers, block_height, tip_height, amount, delta),
+            "Not enough confirmations for the rolling-window bridge amount"
         );
+        // Recorded even when the block is already past every window. The write is
+        // dropped only when a newer block holds the slot, which puts this one at
+        // least a full ring behind the tip — further back than any window reaches.
+        self.data_mut()
+            .block_bridge_amounts
+            .bump(block_height, amount);
     }
 
+    /// Capacity tracks the widest window, so under a fixed config no height a
+    /// window reads can have been evicted. Growing it is the exception: the wider
+    /// window immediately reaches heights the smaller ring had already dropped,
+    /// which then count as zero until the tip moves past them.
     pub(crate) fn resize_block_amount_ring(&mut self) {
         let cap = BlockAmountRing::capacity_for(self.internal_config());
         self.data_mut().block_bridge_amounts.resize(cap);
     }
 
-    pub(crate) fn required_confirmations(&self, block_height: u64, amount: u128) -> u64 {
-        let cumulative = self
-            .data()
-            .block_bridge_amounts
-            .peek(block_height, amount)
-            .unwrap_or(u128::MAX);
-        self.internal_config().get_confirmations(cumulative)
+    /// Minimum confirmations (`delta` included) at which `amount` from
+    /// `block_height` clears every rolling window, as of now. Anyone bridging
+    /// into a neighbouring block raises it again, up to `max_window`, since the
+    /// windows are a shared budget.
+    pub(crate) fn required_confirmations(
+        &self,
+        block_height: u64,
+        amount: u128,
+        delta: u64,
+    ) -> u64 {
+        let max_window = self.max_confirmations_window(delta);
+        let tiers = self.internal_config().sorted_confirmations_tiers();
+        // The `max_window` window is satisfied by every amount the tier table can
+        // rate, so the search never has to look past it.
+        (1..max_window)
+            .find(|depth| {
+                self.confirmations_window_satisfied(
+                    &tiers,
+                    block_height,
+                    block_height.saturating_add(depth - 1),
+                    amount,
+                    delta,
+                )
+            })
+            .unwrap_or(max_window)
+    }
+
+    /// Bridging `amount` from `block_height` puts it at risk of every reorg at
+    /// least `depth = tip_height - block_height + 1` blocks deep, so each window
+    /// `[tip_height - k + 1, tip_height]` with `k >= depth` must keep its total
+    /// within the tier that `k` confirmations buy. Shallower windows do not
+    /// contain `block_height` and are left alone; blocks deeper than the widest
+    /// window are unconstrained, as the tier table cannot ask for more.
+    fn confirmations_window_satisfied(
+        &self,
+        tiers: &[(u128, u64)],
+        block_height: u64,
+        tip_height: u64,
+        amount: u128,
+        delta: u64,
+    ) -> bool {
+        let max_window = self.max_confirmations_window(delta);
+        let depth = tip_height.saturating_sub(block_height).saturating_add(1);
+        (1..=max_window)
+            .zip(
+                self.data()
+                    .block_bridge_amounts
+                    .window_totals(tip_height, max_window),
+            )
+            .all(|(k, bridged)| {
+                k < depth
+                    || Config::tier_confirmations(tiers, bridged.saturating_add(amount)) + delta
+                        <= k
+            })
+    }
+
+    fn max_confirmations_window(&self, delta: u64) -> u64 {
+        u64::from(self.internal_config().max_tier_confirmations()) + delta
     }
 }
 
@@ -306,29 +367,59 @@ mod tests {
     }
 
     #[test]
-    fn peek_matches_bump_without_mutation() {
-        let mut ring = BlockAmountRing::new(4);
-        assert_eq!(ring.peek(100, 500), Some(500));
-        assert_eq!(ring.get(100), None);
-
-        ring.bump(100, 500);
-        assert_eq!(ring.peek(100, 250), Some(750));
-        assert_eq!(ring.get(100), Some(500));
-
-        assert_eq!(ring.peek(96, 10), None);
-        assert_eq!(ring.peek(104, 10), Some(10));
-        assert_eq!(ring.get(100), Some(500));
+    fn window_totals_accumulate_backwards_from_the_tip() {
+        let mut ring = BlockAmountRing::new(8);
+        ring.bump(100, 5);
+        ring.bump(102, 7);
+        ring.bump(103, 1);
+        assert_eq!(
+            ring.window_totals(103, 4).collect::<Vec<_>>(),
+            vec![1, 8, 8, 13]
+        );
     }
 
     #[test]
-    fn peek_overflow_saturates() {
+    fn window_totals_are_empty_for_an_untouched_ring() {
+        let ring = BlockAmountRing::new(4);
+        assert_eq!(
+            ring.window_totals(100, 3).collect::<Vec<_>>(),
+            vec![0, 0, 0]
+        );
+    }
+
+    #[test]
+    fn window_totals_ignore_blocks_the_ring_forgot() {
+        let mut ring = BlockAmountRing::new(4);
+        ring.bump(100, 5);
+        // Height 104 takes over slot 0 and evicts 100.
+        ring.bump(104, 7);
+        assert_eq!(
+            ring.window_totals(104, 5).collect::<Vec<_>>(),
+            vec![7, 7, 7, 7, 7]
+        );
+    }
+
+    #[test]
+    fn window_totals_stop_at_genesis() {
+        let mut ring = BlockAmountRing::new(4);
+        ring.bump(1, 5);
+        assert_eq!(ring.window_totals(1, 3).collect::<Vec<_>>(), vec![5, 5, 5]);
+    }
+
+    #[test]
+    fn window_totals_overflow_saturates() {
         let mut ring = BlockAmountRing::new(4);
         ring.bump(100, u128::MAX);
-        assert_eq!(ring.peek(100, 1), Some(u128::MAX));
+        ring.bump(99, 5);
+        assert_eq!(
+            ring.window_totals(100, 2).collect::<Vec<_>>(),
+            vec![u128::MAX, u128::MAX]
+        );
     }
 
-    #[test]
-    fn get_required_confirmations_applies_tier_to_cumulative() {
+    // Tiers {10_000 -> 2 confirmations, 10_000_000 -> 6}, no relayer delta, so
+    // the widest rolling window is 6 blocks.
+    fn two_tier_env() -> crate::UnitEnv {
         let mut unit_env = crate::init_unit_env();
         crate::testing_env!(unit_env
             .context
@@ -344,6 +435,12 @@ mod tests {
         unit_env
             .contract
             .set_confirmations_strategy(crate::U128(10_000_000), 6);
+        unit_env
+    }
+
+    #[test]
+    fn get_required_confirmations_applies_tier_to_rolling_window() {
+        let mut unit_env = two_tier_env();
 
         assert_eq!(
             unit_env
@@ -361,17 +458,93 @@ mod tests {
         unit_env
             .contract
             .bump_and_check_confirmations(100, 110, 8_000, 0);
+        // 5_000 more from block 100 puts 13_000 in every window that holds it.
         assert_eq!(
             unit_env
                 .contract
                 .get_required_confirmations(100, crate::U128(5_000), None, None),
             6
         );
+        // Block 101 shares windows with block 100: at depth 5 the 6-block window
+        // holding both is 6 deep, which the 13_000 tier accepts.
         assert_eq!(
             unit_env
                 .contract
                 .get_required_confirmations(101, crate::U128(5_000), None, None),
+            5
+        );
+        // Far enough ahead, block 100 has left every window.
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(106, crate::U128(5_000), None, None),
             2
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Not enough confirmations for the rolling-window bridge amount")]
+    fn consecutive_blocks_cannot_reuse_the_low_tier() {
+        let mut unit_env = two_tier_env();
+        // 8_000 is under the 10_000 low tier, so 2 confirmations are enough...
+        unit_env
+            .contract
+            .bump_and_check_confirmations(100, 101, 8_000, 0);
+        // ...but repeating it one block later would leave 16_000 exposed to a
+        // 3-block reorg, which only the 6-confirmation tier covers.
+        unit_env
+            .contract
+            .bump_and_check_confirmations(101, 102, 8_000, 0);
+    }
+
+    #[test]
+    fn consecutive_blocks_pass_once_the_shared_window_is_deep_enough() {
+        let mut unit_env = two_tier_env();
+        unit_env
+            .contract
+            .bump_and_check_confirmations(100, 101, 8_000, 0);
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(101, crate::U128(8_000), None, None),
+            5
+        );
+        unit_env
+            .contract
+            .bump_and_check_confirmations(101, 105, 8_000, 0);
+        assert_eq!(
+            unit_env.contract.data().block_bridge_amounts.get(101),
+            Some(8_000)
+        );
+    }
+
+    #[test]
+    fn block_deeper_than_the_widest_window_is_unconstrained() {
+        let mut unit_env = two_tier_env();
+        // Way over the top tier, but 7 blocks deep: no window reaches it.
+        unit_env
+            .contract
+            .bump_and_check_confirmations(100, 106, 50_000_000, 0);
+        // Still recorded, so a tip regression cannot lose track of it.
+        assert_eq!(
+            unit_env.contract.data().block_bridge_amounts.get(100),
+            Some(50_000_000)
+        );
+    }
+
+    #[test]
+    fn relayer_delta_widens_the_window_and_the_requirement() {
+        let mut unit_env = two_tier_env();
+        unit_env
+            .contract
+            .bump_and_check_confirmations(100, 101, 8_000, 0);
+        // Same deposit as `consecutive_blocks_pass_once_...`, but each tier costs
+        // one extra confirmation for a non-whitelisted relayer.
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(101, crate::U128(8_000), None, Some(true)),
+            6
         );
     }
 
