@@ -187,7 +187,6 @@ impl Contract {
         amount: u128,
         delta: u64,
     ) -> bool {
-        let max_window = self.max_confirmations_window(delta);
         let depth = tip_height.saturating_sub(block_height).saturating_add(1);
         let (sums, top_height) = self.data().block_bridge_amounts.prefix_sums();
         let recorded_from = |height: u64| {
@@ -196,11 +195,19 @@ impl Contract {
                 .unwrap_or(usize::MAX)
                 .min(sums.len() - 1)]
         };
-        let above_tip = recorded_from(tip_height.saturating_add(1));
-        (depth..=max_window).all(|k| {
-            let bridged = recorded_from(tip_height.saturating_sub(k - 1)).saturating_sub(above_tip);
-            Config::tier_confirmations(tiers, bridged.saturating_add(amount)) + delta <= k
-        })
+        let mut prev_bound = 0;
+        for (bound, confirmations) in tiers {
+            let required = confirmations + delta;
+            if required > depth {
+                let window_low = tip_height.saturating_sub(required - 2);
+                let bridged = recorded_from(window_low);
+                if bridged.saturating_add(amount) >= prev_bound {
+                    return false;
+                }
+            }
+            prev_bound = *bound;
+        }
+        true
     }
 
     fn max_confirmations_window(&self, delta: u64) -> u64 {
