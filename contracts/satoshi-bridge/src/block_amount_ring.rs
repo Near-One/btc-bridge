@@ -68,17 +68,32 @@ impl BlockAmountRing {
         }
     }
 
-    pub fn window_totals(
-        &self,
-        tip_height: u64,
-        max_window: u64,
-    ) -> impl Iterator<Item = u128> + '_ {
-        (1..=max_window).scan(0u128, move |total, k| {
-            if let Some(height) = tip_height.checked_sub(k - 1) {
-                *total = total.saturating_add(self.get(height).unwrap_or(0));
+    pub fn prefix_sums(&self) -> (Vec<u128>, u64) {
+        let cap = u64::try_from(self.cells.len()).expect("capacity fits u64");
+        let top_height = self
+            .cells
+            .iter()
+            .flatten()
+            .map(|c| c.block_height)
+            .max()
+            .unwrap_or(0)
+            .max(cap - 1);
+        let mut slot = self.slot(top_height);
+        let mut height = top_height;
+        let mut total = 0u128;
+        let mut sums = Vec::with_capacity(self.cells.len() + 1);
+        sums.push(0);
+        for _ in 0..self.cells.len() {
+            if let Some(cell) = &self.cells[slot] {
+                if cell.block_height == height {
+                    total = total.saturating_add(cell.cumulative_sats);
+                }
             }
-            Some(*total)
-        })
+            sums.push(total);
+            height = height.saturating_sub(1);
+            slot = slot.checked_sub(1).unwrap_or(self.cells.len() - 1);
+        }
+        (sums, top_height)
     }
 
     pub fn resize(&mut self, new_capacity: usize) {
@@ -164,17 +179,18 @@ impl Contract {
     ) -> bool {
         let max_window = self.max_confirmations_window(delta);
         let depth = tip_height.saturating_sub(block_height).saturating_add(1);
-        (1..=max_window)
-            .zip(
-                self.data()
-                    .block_bridge_amounts
-                    .window_totals(tip_height, max_window),
-            )
-            .all(|(k, bridged)| {
-                k < depth
-                    || Config::tier_confirmations(tiers, bridged.saturating_add(amount)) + delta
-                        <= k
-            })
+        let (sums, top_height) = self.data().block_bridge_amounts.prefix_sums();
+        let recorded_from = |height: u64| {
+            let back = top_height.saturating_add(1).saturating_sub(height);
+            sums[usize::try_from(back)
+                .unwrap_or(usize::MAX)
+                .min(sums.len() - 1)]
+        };
+        let above_tip = recorded_from(tip_height.saturating_add(1));
+        (depth..=max_window).all(|k| {
+            let bridged = recorded_from(tip_height.saturating_sub(k - 1)).saturating_sub(above_tip);
+            Config::tier_confirmations(tiers, bridged.saturating_add(amount)) + delta <= k
+        })
     }
 
     fn max_confirmations_window(&self, delta: u64) -> u64 {
@@ -344,53 +360,55 @@ mod tests {
     }
 
     #[test]
-    fn window_totals_accumulate_backwards_from_the_tip() {
+    fn prefix_sums_accumulate_backwards_from_the_top() {
         let mut ring = BlockAmountRing::new(8);
         ring.bump(100, 5);
         ring.bump(102, 7);
         ring.bump(103, 1);
         assert_eq!(
-            ring.window_totals(103, 4).collect::<Vec<_>>(),
-            vec![1, 8, 8, 13]
+            ring.prefix_sums(),
+            (vec![0, 1, 8, 8, 13, 13, 13, 13, 13], 103)
         );
     }
 
     #[test]
-    fn window_totals_are_empty_for_an_untouched_ring() {
+    fn prefix_sums_are_zero_for_an_untouched_ring() {
         let ring = BlockAmountRing::new(4);
-        assert_eq!(
-            ring.window_totals(100, 3).collect::<Vec<_>>(),
-            vec![0, 0, 0]
-        );
+        assert_eq!(ring.prefix_sums(), (vec![0, 0, 0, 0, 0], 3));
     }
 
     #[test]
-    fn window_totals_ignore_blocks_the_ring_forgot() {
+    fn prefix_sums_ignore_blocks_the_ring_forgot() {
         let mut ring = BlockAmountRing::new(4);
         ring.bump(100, 5);
         ring.bump(104, 7);
-        assert_eq!(
-            ring.window_totals(104, 5).collect::<Vec<_>>(),
-            vec![7, 7, 7, 7, 7]
-        );
+        assert_eq!(ring.prefix_sums(), (vec![0, 7, 7, 7, 7], 104));
     }
 
     #[test]
-    fn window_totals_stop_at_genesis() {
+    fn prefix_sums_skip_blocks_behind_the_window() {
         let mut ring = BlockAmountRing::new(4);
-        ring.bump(1, 5);
-        assert_eq!(ring.window_totals(1, 3).collect::<Vec<_>>(), vec![5, 5, 5]);
+        ring.bump(100, 5);
+        ring.bump(105, 7);
+        assert_eq!(ring.prefix_sums(), (vec![0, 7, 7, 7, 7], 105));
     }
 
     #[test]
-    fn window_totals_overflow_saturates() {
+    fn prefix_sums_clamp_top_height_near_genesis() {
+        let mut ring = BlockAmountRing::new(4);
+        ring.bump(0, 3);
+        ring.bump(1, 5);
+        assert_eq!(ring.prefix_sums(), (vec![0, 0, 0, 5, 8], 3));
+    }
+
+    #[test]
+    fn prefix_sums_overflow_saturates() {
         let mut ring = BlockAmountRing::new(4);
         ring.bump(100, u128::MAX);
         ring.bump(99, 5);
-        assert_eq!(
-            ring.window_totals(100, 2).collect::<Vec<_>>(),
-            vec![u128::MAX, u128::MAX]
-        );
+        let mut expected = vec![u128::MAX; 5];
+        expected[0] = 0;
+        assert_eq!(ring.prefix_sums(), (expected, 100));
     }
 
     fn two_tier_env() -> crate::UnitEnv {
