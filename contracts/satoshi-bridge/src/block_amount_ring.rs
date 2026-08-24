@@ -154,19 +154,29 @@ impl Contract {
         amount: u128,
         delta: u64,
     ) -> u64 {
-        let max_window = self.max_confirmations_window(delta);
         let tiers = self.internal_config().sorted_confirmations_tiers();
-        (1..max_window)
-            .find(|depth| {
-                self.confirmations_window_satisfied(
-                    &tiers,
-                    block_height,
-                    block_height.saturating_add(depth - 1),
-                    amount,
-                    delta,
-                )
-            })
-            .unwrap_or(max_window)
+        let max_confirmations = self.max_confirmations_window(delta);
+        let (sums, top_height) = self.data().block_bridge_amounts.prefix_sums();
+        let last = u64::try_from(sums.len() - 1).expect("capacity fits u64");
+        let mut tier = 0;
+        let mut required = 0;
+        for j in 0..=max_confirmations {
+            let height = block_height.saturating_sub(j);
+            let i = top_height
+                .saturating_add(1)
+                .saturating_sub(height)
+                .min(last);
+            let bridged =
+                sums[usize::try_from(i).expect("index fits usize")].saturating_add(amount);
+            while tier + 1 < tiers.len() && tiers[tier].0 <= bridged {
+                tier += 1;
+            }
+            required = required.max((tiers[tier].1 + delta).saturating_sub(j));
+            if max_confirmations.saturating_sub(j + 1) <= required {
+                break;
+            }
+        }
+        required
     }
 
     fn confirmations_window_satisfied(
@@ -467,6 +477,30 @@ mod tests {
                 .contract
                 .get_required_confirmations(106, crate::U128(5_000), None, None),
             2
+        );
+    }
+
+    #[test]
+    fn get_required_confirmations_checks_every_window_against_its_own_tier() {
+        let mut unit_env = two_tier_env();
+        unit_env
+            .contract
+            .set_confirmations_strategy(crate::U128(100_000), 5);
+        unit_env
+            .contract
+            .bump_and_check_confirmations(99, 110, 150_000, 0);
+
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(100, crate::U128(5_000), None, None),
+            5
+        );
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(101, crate::U128(5_000), None, None),
+            4
         );
     }
 
