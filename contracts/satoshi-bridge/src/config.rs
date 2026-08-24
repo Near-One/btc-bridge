@@ -210,9 +210,6 @@ impl Config {
         self.chain.clone()
     }
 
-    /// Tiers as `(range_upper_bound, confirmations)`, ordered by bound. Hoist it
-    /// out of loops over amounts: the stored form has to be parsed and sorted on
-    /// every call.
     pub fn sorted_confirmations_tiers(&self) -> Vec<(u128, u64)> {
         require!(
             !self.confirmations_strategy.is_empty(),
@@ -230,8 +227,6 @@ impl Config {
         tiers
     }
 
-    /// Confirmations the first tier above `satoshi_amount` asks for, falling back
-    /// to the top tier for amounts past every bound.
     pub fn tier_confirmations(tiers: &[(u128, u64)], satoshi_amount: u128) -> u64 {
         tiers
             .iter()

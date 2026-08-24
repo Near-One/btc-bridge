@@ -68,10 +68,6 @@ impl BlockAmountRing {
         }
     }
 
-    /// Running totals of the amounts recorded for the windows
-    /// `[tip_height - k + 1, tip_height]`, yielded for every window size `k`
-    /// from `1` to `max_window`. Blocks the ring no longer remembers, and blocks
-    /// before genesis for a window reaching past it, contribute nothing.
     pub fn window_totals(
         &self,
         tip_height: u64,
@@ -127,27 +123,16 @@ impl Contract {
             self.confirmations_window_satisfied(&tiers, block_height, tip_height, amount, delta),
             "Not enough confirmations for the rolling-window bridge amount"
         );
-        // Recorded even when the block is already past every window. The write is
-        // dropped only when a newer block holds the slot, which puts this one at
-        // least a full ring behind the tip — further back than any window reaches.
         self.data_mut()
             .block_bridge_amounts
             .bump(block_height, amount);
     }
 
-    /// Capacity tracks the widest window, so under a fixed config no height a
-    /// window reads can have been evicted. Growing it is the exception: the wider
-    /// window immediately reaches heights the smaller ring had already dropped,
-    /// which then count as zero until the tip moves past them.
     pub(crate) fn resize_block_amount_ring(&mut self) {
         let cap = BlockAmountRing::capacity_for(self.internal_config());
         self.data_mut().block_bridge_amounts.resize(cap);
     }
 
-    /// Minimum confirmations (`delta` included) at which `amount` from
-    /// `block_height` clears every rolling window, as of now. Anyone bridging
-    /// into a neighbouring block raises it again, up to `max_window`, since the
-    /// windows are a shared budget.
     pub(crate) fn required_confirmations(
         &self,
         block_height: u64,
@@ -156,8 +141,6 @@ impl Contract {
     ) -> u64 {
         let max_window = self.max_confirmations_window(delta);
         let tiers = self.internal_config().sorted_confirmations_tiers();
-        // The `max_window` window is satisfied by every amount the tier table can
-        // rate, so the search never has to look past it.
         (1..max_window)
             .find(|depth| {
                 self.confirmations_window_satisfied(
@@ -171,12 +154,6 @@ impl Contract {
             .unwrap_or(max_window)
     }
 
-    /// Bridging `amount` from `block_height` puts it at risk of every reorg at
-    /// least `depth = tip_height - block_height + 1` blocks deep, so each window
-    /// `[tip_height - k + 1, tip_height]` with `k >= depth` must keep its total
-    /// within the tier that `k` confirmations buy. Shallower windows do not
-    /// contain `block_height` and are left alone; blocks deeper than the widest
-    /// window are unconstrained, as the tier table cannot ask for more.
     fn confirmations_window_satisfied(
         &self,
         tiers: &[(u128, u64)],
@@ -391,7 +368,6 @@ mod tests {
     fn window_totals_ignore_blocks_the_ring_forgot() {
         let mut ring = BlockAmountRing::new(4);
         ring.bump(100, 5);
-        // Height 104 takes over slot 0 and evicts 100.
         ring.bump(104, 7);
         assert_eq!(
             ring.window_totals(104, 5).collect::<Vec<_>>(),
@@ -417,8 +393,6 @@ mod tests {
         );
     }
 
-    // Tiers {10_000 -> 2 confirmations, 10_000_000 -> 6}, no relayer delta, so
-    // the widest rolling window is 6 blocks.
     fn two_tier_env() -> crate::UnitEnv {
         let mut unit_env = crate::init_unit_env();
         crate::testing_env!(unit_env
@@ -458,22 +432,18 @@ mod tests {
         unit_env
             .contract
             .bump_and_check_confirmations(100, 110, 8_000, 0);
-        // 5_000 more from block 100 puts 13_000 in every window that holds it.
         assert_eq!(
             unit_env
                 .contract
                 .get_required_confirmations(100, crate::U128(5_000), None, None),
             6
         );
-        // Block 101 shares windows with block 100: at depth 5 the 6-block window
-        // holding both is 6 deep, which the 13_000 tier accepts.
         assert_eq!(
             unit_env
                 .contract
                 .get_required_confirmations(101, crate::U128(5_000), None, None),
             5
         );
-        // Far enough ahead, block 100 has left every window.
         assert_eq!(
             unit_env
                 .contract
@@ -486,12 +456,9 @@ mod tests {
     #[should_panic(expected = "Not enough confirmations for the rolling-window bridge amount")]
     fn consecutive_blocks_cannot_reuse_the_low_tier() {
         let mut unit_env = two_tier_env();
-        // 8_000 is under the 10_000 low tier, so 2 confirmations are enough...
         unit_env
             .contract
             .bump_and_check_confirmations(100, 101, 8_000, 0);
-        // ...but repeating it one block later would leave 16_000 exposed to a
-        // 3-block reorg, which only the 6-confirmation tier covers.
         unit_env
             .contract
             .bump_and_check_confirmations(101, 102, 8_000, 0);
@@ -521,11 +488,9 @@ mod tests {
     #[test]
     fn block_deeper_than_the_widest_window_is_unconstrained() {
         let mut unit_env = two_tier_env();
-        // Way over the top tier, but 7 blocks deep: no window reaches it.
         unit_env
             .contract
             .bump_and_check_confirmations(100, 106, 50_000_000, 0);
-        // Still recorded, so a tip regression cannot lose track of it.
         assert_eq!(
             unit_env.contract.data().block_bridge_amounts.get(100),
             Some(50_000_000)
@@ -538,8 +503,6 @@ mod tests {
         unit_env
             .contract
             .bump_and_check_confirmations(100, 101, 8_000, 0);
-        // Same deposit as `consecutive_blocks_pass_once_...`, but each tier costs
-        // one extra confirmation for a non-whitelisted relayer.
         assert_eq!(
             unit_env
                 .contract

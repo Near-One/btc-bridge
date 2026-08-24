@@ -254,7 +254,6 @@ async fn test_consecutive_blocks_cannot_reuse_the_low_tier() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let (context, deposit_address) = setup_two_tier_context(&worker).await;
 
-    // 6000 on its own is a low-tier amount, so 3 confirmations are enough.
     set_heights(
         &context,
         BASE_BLOCK_HEIGHT,
@@ -263,8 +262,6 @@ async fn test_consecutive_blocks_cannot_reuse_the_low_tier() {
     .await;
     check!(verify_deposit(&context, &deposit_address, 6000, 1));
 
-    // Repeating it in the next block would leave 12_000 exposed to a 4-block
-    // reorg, which only the high tier covers.
     set_heights(
         &context,
         BASE_BLOCK_HEIGHT + 1,
@@ -276,8 +273,6 @@ async fn test_consecutive_blocks_cannot_reuse_the_low_tier() {
         NOT_ENOUGH_CONFIRMATIONS_ERR
     );
 
-    // It passes once the window holding both blocks is high-tier deep, i.e. when
-    // the older of the two blocks is `HIGH_TIER_CONFIRMATIONS` deep.
     set_heights(
         &context,
         BASE_BLOCK_HEIGHT + 1,
@@ -286,7 +281,6 @@ async fn test_consecutive_blocks_cannot_reuse_the_low_tier() {
     .await;
     check!(verify_deposit(&context, &deposit_address, 6000, 2));
 
-    // Same story one block further along.
     set_heights(
         &context,
         BASE_BLOCK_HEIGHT + 2,
@@ -298,8 +292,6 @@ async fn test_consecutive_blocks_cannot_reuse_the_low_tier() {
         NOT_ENOUGH_CONFIRMATIONS_ERR
     );
 
-    // Block 100 has aged out of the widest window by now, so only blocks 101 and
-    // 102 share it: 12_000, which the high-tier depth accepts.
     set_heights(
         &context,
         BASE_BLOCK_HEIGHT + 2,
@@ -352,8 +344,6 @@ async fn test_block_deeper_than_the_widest_window_is_unconstrained() {
     .await;
     check!(verify_deposit(&context, &deposit_address, 6000, 3));
 
-    // Back at the original height, now a full ring behind the tip: no window
-    // reaches it, so the tier table cannot ask for more confirmations.
     set_heights(
         &context,
         BASE_BLOCK_HEIGHT,
@@ -602,8 +592,6 @@ async fn test_ring_grow_undercounts_an_evicted_block() {
     // that depth alone satisfies it and the under-count is not observable.
     let raised_tier = capacity + 13;
 
-    // A middle tier that separates the amount the ring remembers (12_000) from
-    // the amount it should have remembered (18_000).
     dao_call(
         &context,
         "set_confirmations_strategy",
@@ -640,10 +628,6 @@ async fn test_ring_grow_undercounts_an_evicted_block() {
     )
     .await;
 
-    // The raised tier makes the window wide enough to cover both heights again,
-    // but the ring no longer remembers the first 6000: it sees 12_000 (low tier,
-    // accepted) where the true exposure is 18_000 (top tier, which this depth
-    // would not satisfy).
     set_heights(
         &context,
         BASE_BLOCK_HEIGHT,
@@ -651,7 +635,6 @@ async fn test_ring_grow_undercounts_an_evicted_block() {
     )
     .await;
     check!(verify_deposit(&context, &deposit_address, 6000, 3));
-    // One more and even the under-count reaches the top tier.
     check!(
         verify_deposit(&context, &deposit_address, 6000, 4),
         NOT_ENOUGH_CONFIRMATIONS_ERR
