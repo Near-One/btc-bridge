@@ -89,6 +89,16 @@ impl Contract {
             .unavailable_utxos
             .insert(utxo_storage_key.to_owned(), utxo.into());
     }
+
+    pub fn internal_set_utxo_in_progress(&mut self, utxo_storage_key: &str, status: UTXOStatus) {
+        self.data_mut()
+            .utxos_in_progress
+            .insert(utxo_storage_key.to_owned(), status);
+    }
+
+    pub fn internal_remove_utxo_in_progress(&mut self, utxo_storage_key: &str) {
+        self.data_mut().utxos_in_progress.remove(utxo_storage_key);
+    }
 }
 
 #[near(serializers = [json])]
@@ -100,4 +110,11 @@ pub struct PendingUTXOInfo {
 
 pub fn out_point_to_utxo_storage_key(out_point: &OutPoint) -> String {
     generate_utxo_storage_key(out_point.txid.to_string(), out_point.vout)
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub enum UTXOStatus {
+    DepositInProgress(VUTXO),
 }

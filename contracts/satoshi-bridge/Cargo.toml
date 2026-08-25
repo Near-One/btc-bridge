@@ -1,6 +1,6 @@
 [package]
 name = "satoshi-bridge"
-version = "0.9.5"
+version = "0.9.6"
 edition.workspace = true
 publish.workspace = true
 repository.workspace = true
@@ -58,6 +58,6 @@ bs58 = "0.5"
 near-account-id-v1 = { package = "near-account-id", version = "1" }
 
 [features]
-default = []
+default = ["zcash"]
 zcash = ["zcash_primitives", "zcash_transparent", "orchard", "sapling-crypto", "zcash_script"]
 bitcoin = []

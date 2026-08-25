@@ -1,5 +1,6 @@
 use near_sdk::serde_json::Value;
 
+use crate::utxo::UTXOStatus;
 use crate::{
     burn::GAS_FOR_BURN_CALL,
     deposit_msg::get_deposit_path,
@@ -365,6 +366,10 @@ impl Contract {
                 .insert(pending_utxo_info.utxo_storage_key.clone()),
             "Already deposit utxo"
         );
+        self.internal_set_utxo_in_progress(
+            &pending_utxo_info.utxo_storage_key,
+            UTXOStatus::DepositInProgress(pending_utxo_info.utxo.clone().into()),
+        );
         self.internal_mint_promise(
             recipient_id,
             mint_amount,
@@ -395,6 +400,10 @@ impl Contract {
                 .insert(pending_utxo_info.utxo_storage_key.clone()),
             "Already deposit utxo"
         );
+        self.internal_set_utxo_in_progress(
+            &pending_utxo_info.utxo_storage_key,
+            UTXOStatus::DepositInProgress(pending_utxo_info.utxo.clone().into()),
+        );
 
         let msg = (!msg.is_empty())
             .then(|| inject_utxo_id_in_msg(msg, &pending_utxo_info.utxo_storage_key));
@@ -420,6 +429,8 @@ impl Contract {
     ) -> bool {
         let is_success = !is_refund_required();
         let relayer_account_id = env::signer_account_id();
+
+        self.internal_remove_utxo_in_progress(&pending_utxo_info.utxo_storage_key);
 
         if is_success {
             Event::UtxoAdded {
