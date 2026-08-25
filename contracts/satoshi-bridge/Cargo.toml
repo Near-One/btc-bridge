@@ -58,6 +58,6 @@ bs58 = "0.5"
 near-account-id-v1 = { package = "near-account-id", version = "1" }
 
 [features]
-default = ["zcash"]
+default = []
 zcash = ["zcash_primitives", "zcash_transparent", "orchard", "sapling-crypto", "zcash_script"]
 bitcoin = []
