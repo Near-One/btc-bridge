@@ -150,9 +150,8 @@ impl Contract {
         amount: u128,
         delta: u64,
     ) {
-        let tiers = self.internal_config().sorted_confirmations_tiers();
         require!(
-            self.confirmations_window_satisfied(&tiers, block_height, tip_height, amount, delta),
+            self.confirmations_window_satisfied(block_height, tip_height, amount, delta),
             "Not enough confirmations for the rolling-window bridge amount"
         );
         self.data_mut()
@@ -193,16 +192,16 @@ impl Contract {
 
     fn confirmations_window_satisfied(
         &self,
-        tiers: &[(u128, u64)],
         block_height: u64,
         tip_height: u64,
         amount: u128,
         delta: u64,
     ) -> bool {
+        let tiers = self.internal_config().sorted_confirmations_tiers();
         let depth = tip_height.saturating_sub(block_height).saturating_add(1);
         let sums = self.data().block_bridge_amounts.prefix_sums();
         let mut prev_bound = 0;
-        for (bound, confirmations) in tiers {
+        for (bound, confirmations) in &tiers {
             let required = confirmations + delta;
             if required > depth {
                 let window_low = tip_height.saturating_sub(required - 2);
