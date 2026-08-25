@@ -176,28 +176,46 @@ impl Contract {
         self.data_mut().block_bridge_amounts.resize(cap);
     }
 
+    /// The minimum number of confirmations a deposit of `amount` from
+    /// `block_height` needs to pass `confirmations_window_satisfied`, given
+    /// what is already bridged from the surrounding blocks and the `delta`.
     pub(crate) fn required_confirmations(
         &self,
         block_height: u64,
         amount: u128,
         delta: u64,
     ) -> u64 {
-        let tiers = self.internal_config().sorted_confirmations_tiers();
-        let max_confirmations = self.max_confirmations_window(delta);
+        let limits = self.internal_config().risk_limits(delta);
         let sums = self.data().block_bridge_amounts.prefix_sums();
-        let mut tier = 0;
+        let bridged = |blocks_below: u64| {
+            sums.recorded_from(block_height.saturating_sub(blocks_below))
+                .saturating_add(amount)
+        };
+        // Each limit constrains us on its own. For a limit, find how many
+        // blocks below `block_height` can still join before the total stops
+        // fitting into `allowed_total`: the number `j` such that `j` blocks
+        // below ours (with ours and the new amount) no longer fit while
+        // `j - 1` still do. `j == 0` means even our own block does not fit;
+        // `j == 3` means two blocks below ours can join and a third cannot.
+        //
+        // So the `j - 1`-th block below ours needs `max_confirmations`
+        // confirmations, and ours, `j - 1` blocks higher, needs
+        // `max_confirmations + 1 - j`.
+        //
+        // The answer is the maximum over the limits.
+        //
+        // Limits grow in both `allowed_total` and `max_confirmations`, and
+        // the window totals grow with `j`, so `j` never has to move back
+        // between limits: one pass with two pointers. Past
+        // `max_confirmations` the limit asks nothing of our block, so `j`
+        // stops there.
+        let mut j = 0;
         let mut required = 0;
-        for j in 0..=max_confirmations {
-            let bridged = sums
-                .recorded_from(block_height.saturating_sub(j))
-                .saturating_add(amount);
-            while tier + 1 < tiers.len() && tiers[tier].0 <= bridged {
-                tier += 1;
+        for limit in &limits {
+            while j <= limit.max_confirmations && bridged(j) < limit.allowed_total {
+                j += 1;
             }
-            required = required.max((tiers[tier].1 + delta).saturating_sub(j));
-            if max_confirmations.saturating_sub(j + 1) <= required {
-                break;
-            }
+            required = required.max((limit.max_confirmations + 1).saturating_sub(j));
         }
         required
     }
@@ -211,56 +229,28 @@ impl Contract {
         amount: u128,
         delta: u64,
     ) -> bool {
-        // Each tier says how much we are willing to risk on blocks that have
-        // not yet reached its confirmation count. Tiers `3 -> 10_000`,
-        // `10 -> 100_000`, `25 -> 1_000_000` read as:
-        // - blocks with fewer than 3 confirmations must hold nothing;
-        // - blocks with fewer than 10 confirmations must hold less than
-        //   10_000 in total;
-        // - blocks with fewer than 25 confirmations must hold less than
-        //   100_000 in total;
-        // - with 25 confirmations and more, any amount goes (the top tier is
-        //   a fallback).
-        let tiers = self.internal_config().sorted_confirmations_tiers();
         let depth = confirmations(block_height, tip_height);
         // `sums.recorded_from(height)` tells how much in total was bridged
         // from `height` up to the tip inclusive.
         let sums = self.data().block_bridge_amounts.prefix_sums();
-        // Check that the new amount satisfies every such limit. Each limit
-        // comes from a pair of adjacent tiers: with `3 -> 10_000` followed by
-        // `10 -> 100_000`, the blocks with at most 9 confirmations must hold,
-        // together with the new `amount`, less than 10_000 — the bound of the
-        // previous tier, which is why `prev_bound` is carried along.
-        let mut prev_bound = 0;
-        for (bound, confirmations) in &tiers {
-            // The confirmations this tier actually demands: a non-zero
-            // `delta` shifts the whole ladder, so with `delta = 2` the
-            // example above acts as `5 -> 10_000`, `12 -> 100_000`,
-            // `27 -> 1_000_000`.
-            let required = confirmations + delta;
-            // A tier limits the blocks with at most `required - 1`
-            // confirmations, so a block with `depth >= required` has outgrown
-            // it: a limit on up to 9 confirmations (`required == 10`) says
-            // nothing about a block that already has 15.
-            if required > depth {
-                // Everything the tier limits adds up in the prefix sum of its
-                // deepest block — the one with `required - 1` confirmations.
-                // E.g. when the new amount lands on the block with 4
-                // confirmations and the limit allows 10_000 on blocks with up
-                // to 9 confirmations, we take the total recorded from the
-                // block with 9 confirmations and add the new amount to it.
-                let window_low = height_with_confirmations(required - 1, tip_height);
-                if sums.recorded_from(window_low).saturating_add(amount) >= prev_bound {
-                    return false;
-                }
-            }
-            prev_bound = *bound;
-        }
-        true
-    }
-
-    fn max_confirmations_window(&self, delta: u64) -> u64 {
-        u64::from(self.internal_config().max_tier_confirmations()) + delta
+        self.internal_config()
+            .risk_limits(delta)
+            .iter()
+            .all(|limit| {
+                // A block with more confirmations than the limit covers has
+                // outgrown it. Otherwise everything the limit covers adds up
+                // in the prefix sum of its deepest block — the one with
+                // exactly `max_confirmations` confirmations — and that total
+                // plus the new amount must stay within the allowance.
+                depth > limit.max_confirmations
+                    || sums
+                        .recorded_from(height_with_confirmations(
+                            limit.max_confirmations,
+                            tip_height,
+                        ))
+                        .saturating_add(amount)
+                        < limit.allowed_total
+            })
     }
 }
 
