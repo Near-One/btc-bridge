@@ -140,6 +140,18 @@ impl PrefixSums {
     }
 }
 
+/// Confirmations `block_height` has when the chain tip is `tip_height`:
+/// the tip itself counts as one.
+fn confirmations(block_height: u64, tip_height: u64) -> u64 {
+    tip_height.saturating_sub(block_height).saturating_add(1)
+}
+
+/// The block height that has exactly `confirmations` confirmations when the
+/// chain tip is `tip_height`.
+fn height_with_confirmations(confirmations: u64, tip_height: u64) -> u64 {
+    tip_height.saturating_sub(confirmations.saturating_sub(1))
+}
+
 impl Contract {
     /// Panics unless bridging `amount` keeps every rolling window of blocks
     /// within the tier that its own depth buys, then records the amount.
@@ -190,6 +202,8 @@ impl Contract {
         required
     }
 
+    /// Checks that bridging `amount` from `block_height` would keep the
+    /// bridged totals within every risk limit of the confirmations strategy.
     fn confirmations_window_satisfied(
         &self,
         block_height: u64,
@@ -197,14 +211,45 @@ impl Contract {
         amount: u128,
         delta: u64,
     ) -> bool {
+        // Each tier says how much we are willing to risk on blocks that have
+        // not yet reached its confirmation count. Tiers `3 -> 10_000`,
+        // `10 -> 100_000`, `25 -> 1_000_000` read as:
+        // - blocks with fewer than 3 confirmations must hold nothing;
+        // - blocks with fewer than 10 confirmations must hold less than
+        //   10_000 in total;
+        // - blocks with fewer than 25 confirmations must hold less than
+        //   100_000 in total;
+        // - with 25 confirmations and more, any amount goes (the top tier is
+        //   a fallback).
         let tiers = self.internal_config().sorted_confirmations_tiers();
-        let depth = tip_height.saturating_sub(block_height).saturating_add(1);
+        let depth = confirmations(block_height, tip_height);
+        // `sums.recorded_from(height)` tells how much in total was bridged
+        // from `height` up to the tip inclusive.
         let sums = self.data().block_bridge_amounts.prefix_sums();
+        // Check that the new amount satisfies every such limit. Each limit
+        // comes from a pair of adjacent tiers: with `3 -> 10_000` followed by
+        // `10 -> 100_000`, the blocks with at most 9 confirmations must hold,
+        // together with the new `amount`, less than 10_000 — the bound of the
+        // previous tier, which is why `prev_bound` is carried along.
         let mut prev_bound = 0;
         for (bound, confirmations) in &tiers {
+            // The confirmations this tier actually demands: a non-zero
+            // `delta` shifts the whole ladder, so with `delta = 2` the
+            // example above acts as `5 -> 10_000`, `12 -> 100_000`,
+            // `27 -> 1_000_000`.
             let required = confirmations + delta;
+            // A tier limits the blocks with at most `required - 1`
+            // confirmations, so a block with `depth >= required` has outgrown
+            // it: a limit on up to 9 confirmations (`required == 10`) says
+            // nothing about a block that already has 15.
             if required > depth {
-                let window_low = tip_height.saturating_sub(required - 2);
+                // Everything the tier limits adds up in the prefix sum of its
+                // deepest block — the one with `required - 1` confirmations.
+                // E.g. when the new amount lands on the block with 4
+                // confirmations and the limit allows 10_000 on blocks with up
+                // to 9 confirmations, we take the total recorded from the
+                // block with 9 confirmations and add the new amount to it.
+                let window_low = height_with_confirmations(required - 1, tip_height);
                 if sums.recorded_from(window_low).saturating_add(amount) >= prev_bound {
                     return false;
                 }
