@@ -68,9 +68,9 @@ impl BlockAmountRing {
         }
     }
 
-    pub fn prefix_sums(&self) -> (Vec<u128>, u64) {
+    pub fn prefix_sums(&self) -> PrefixSums {
         let cap = u64::try_from(self.cells.len()).expect("capacity fits u64");
-        let top_height = self
+        let anchor_height = self
             .cells
             .iter()
             .flatten()
@@ -78,8 +78,8 @@ impl BlockAmountRing {
             .max()
             .unwrap_or(0)
             .max(cap - 1);
-        let mut slot = self.slot(top_height);
-        let mut height = top_height;
+        let mut slot = self.slot(anchor_height);
+        let mut height = anchor_height;
         let mut total = 0u128;
         let mut sums = Vec::with_capacity(self.cells.len() + 1);
         sums.push(0);
@@ -93,7 +93,10 @@ impl BlockAmountRing {
             height = height.saturating_sub(1);
             slot = slot.checked_sub(1).unwrap_or(self.cells.len() - 1);
         }
-        (sums, top_height)
+        PrefixSums {
+            sums,
+            anchor_height,
+        }
     }
 
     pub fn resize(&mut self, new_capacity: usize) {
@@ -120,6 +123,20 @@ impl BlockAmountRing {
     fn slot(&self, block_height: u64) -> usize {
         let cap = u64::try_from(self.capacity()).expect("capacity fits u64");
         usize::try_from(block_height % cap).expect("slot index fits usize")
+    }
+}
+
+pub struct PrefixSums {
+    sums: Vec<u128>,
+    anchor_height: u64,
+}
+
+impl PrefixSums {
+    pub fn recorded_from(&self, height: u64) -> u128 {
+        let back = self.anchor_height.saturating_add(1).saturating_sub(height);
+        self.sums[usize::try_from(back)
+            .unwrap_or(usize::MAX)
+            .min(self.sums.len() - 1)]
     }
 }
 
@@ -156,18 +173,13 @@ impl Contract {
     ) -> u64 {
         let tiers = self.internal_config().sorted_confirmations_tiers();
         let max_confirmations = self.max_confirmations_window(delta);
-        let (sums, top_height) = self.data().block_bridge_amounts.prefix_sums();
-        let last = u64::try_from(sums.len() - 1).expect("capacity fits u64");
+        let sums = self.data().block_bridge_amounts.prefix_sums();
         let mut tier = 0;
         let mut required = 0;
         for j in 0..=max_confirmations {
-            let height = block_height.saturating_sub(j);
-            let i = top_height
-                .saturating_add(1)
-                .saturating_sub(height)
-                .min(last);
-            let bridged =
-                sums[usize::try_from(i).expect("index fits usize")].saturating_add(amount);
+            let bridged = sums
+                .recorded_from(block_height.saturating_sub(j))
+                .saturating_add(amount);
             while tier + 1 < tiers.len() && tiers[tier].0 <= bridged {
                 tier += 1;
             }
@@ -188,20 +200,13 @@ impl Contract {
         delta: u64,
     ) -> bool {
         let depth = tip_height.saturating_sub(block_height).saturating_add(1);
-        let (sums, top_height) = self.data().block_bridge_amounts.prefix_sums();
-        let recorded_from = |height: u64| {
-            let back = top_height.saturating_add(1).saturating_sub(height);
-            sums[usize::try_from(back)
-                .unwrap_or(usize::MAX)
-                .min(sums.len() - 1)]
-        };
+        let sums = self.data().block_bridge_amounts.prefix_sums();
         let mut prev_bound = 0;
         for (bound, confirmations) in tiers {
             let required = confirmations + delta;
             if required > depth {
                 let window_low = tip_height.saturating_sub(required - 2);
-                let bridged = recorded_from(window_low);
-                if bridged.saturating_add(amount) >= prev_bound {
+                if sums.recorded_from(window_low).saturating_add(amount) >= prev_bound {
                     return false;
                 }
             }
@@ -382,16 +387,17 @@ mod tests {
         ring.bump(100, 5);
         ring.bump(102, 7);
         ring.bump(103, 1);
-        assert_eq!(
-            ring.prefix_sums(),
-            (vec![0, 1, 8, 8, 13, 13, 13, 13, 13], 103)
-        );
+        let sums = ring.prefix_sums();
+        assert_eq!(sums.sums, vec![0, 1, 8, 8, 13, 13, 13, 13, 13]);
+        assert_eq!(sums.anchor_height, 103);
     }
 
     #[test]
     fn prefix_sums_are_zero_for_an_untouched_ring() {
         let ring = BlockAmountRing::new(4);
-        assert_eq!(ring.prefix_sums(), (vec![0, 0, 0, 0, 0], 3));
+        let sums = ring.prefix_sums();
+        assert_eq!(sums.sums, vec![0, 0, 0, 0, 0]);
+        assert_eq!(sums.anchor_height, 3);
     }
 
     #[test]
@@ -399,7 +405,9 @@ mod tests {
         let mut ring = BlockAmountRing::new(4);
         ring.bump(100, 5);
         ring.bump(104, 7);
-        assert_eq!(ring.prefix_sums(), (vec![0, 7, 7, 7, 7], 104));
+        let sums = ring.prefix_sums();
+        assert_eq!(sums.sums, vec![0, 7, 7, 7, 7]);
+        assert_eq!(sums.anchor_height, 104);
     }
 
     #[test]
@@ -407,15 +415,19 @@ mod tests {
         let mut ring = BlockAmountRing::new(4);
         ring.bump(100, 5);
         ring.bump(105, 7);
-        assert_eq!(ring.prefix_sums(), (vec![0, 7, 7, 7, 7], 105));
+        let sums = ring.prefix_sums();
+        assert_eq!(sums.sums, vec![0, 7, 7, 7, 7]);
+        assert_eq!(sums.anchor_height, 105);
     }
 
     #[test]
-    fn prefix_sums_clamp_top_height_near_genesis() {
+    fn prefix_sums_clamp_anchor_height_near_genesis() {
         let mut ring = BlockAmountRing::new(4);
         ring.bump(0, 3);
         ring.bump(1, 5);
-        assert_eq!(ring.prefix_sums(), (vec![0, 0, 0, 5, 8], 3));
+        let sums = ring.prefix_sums();
+        assert_eq!(sums.sums, vec![0, 0, 0, 5, 8]);
+        assert_eq!(sums.anchor_height, 3);
     }
 
     #[test]
@@ -425,7 +437,21 @@ mod tests {
         ring.bump(99, 5);
         let mut expected = vec![u128::MAX; 5];
         expected[0] = 0;
-        assert_eq!(ring.prefix_sums(), (expected, 100));
+        let sums = ring.prefix_sums();
+        assert_eq!(sums.sums, expected);
+        assert_eq!(sums.anchor_height, 100);
+    }
+
+    #[test]
+    fn recorded_from_reads_totals_by_height() {
+        let mut ring = BlockAmountRing::new(4);
+        ring.bump(100, 5);
+        ring.bump(99, 7);
+        let sums = ring.prefix_sums();
+        assert_eq!(sums.recorded_from(101), 0);
+        assert_eq!(sums.recorded_from(100), 5);
+        assert_eq!(sums.recorded_from(99), 12);
+        assert_eq!(sums.recorded_from(0), 12);
     }
 
     fn two_tier_env() -> crate::UnitEnv {
