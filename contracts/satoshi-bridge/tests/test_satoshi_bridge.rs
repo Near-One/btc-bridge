@@ -2841,6 +2841,82 @@ async fn test_verify_deposit_v2() {
     assert_eq!(context.get_utxos_paged().await.unwrap().len(), 1);
 }
 
+// `complete_failed_deposit_mint` is the DAO's manual recovery for a deposit whose
+// `mint_callback` failed after the nBTC had already been minted. It must only ever accept a
+// genuine, already-verified deposit output that is not registered yet.
+#[tokio::test]
+async fn test_complete_failed_deposit_mint() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: None,
+    };
+    let alice_btc_deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "e1e1069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f50",
+            1,
+            None,
+        )],
+        vec![
+            (alice_btc_deposit_address.as_str(), 50000),
+            (TARGET_ADDRESS, 50000),
+        ],
+    );
+
+    // A deposit that was never verified was never minted either, so there is nothing to complete.
+    let outcome = context
+        .complete_failed_deposit_mint("root", deposit_msg.clone(), tx_bytes.clone(), 0)
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("Deposit is not verified"),
+        "complete_failed_deposit_mint should reject an unverified deposit"
+    );
+
+    check!(context.verify_deposit_v2(
+        "relayer",
+        deposit_msg.clone(),
+        tx_bytes.clone(),
+        0,
+        mock_proof()
+    ));
+    assert_eq!(context.get_utxos_paged().await.unwrap().len(), 1);
+
+    // The mint callback succeeded here, so the UTXO is already in the available set.
+    let outcome = context
+        .complete_failed_deposit_mint("root", deposit_msg.clone(), tx_bytes.clone(), 0)
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("UTXO already registered"),
+        "complete_failed_deposit_mint should not register the same UTXO twice"
+    );
+
+    // An output that does not pay the deposit address cannot be passed off as a deposit.
+    let outcome = context
+        .complete_failed_deposit_mint("root", deposit_msg.clone(), tx_bytes.clone(), 1)
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("Invalid deposit tx_bytes"),
+        "complete_failed_deposit_mint should reject an output of a foreign address"
+    );
+
+    // Only the DAO may recover a deposit.
+    let outcome = context
+        .complete_failed_deposit_mint("alice", deposit_msg, tx_bytes, 0)
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("Insufficient permissions"),
+        "complete_failed_deposit_mint should be restricted to the DAO"
+    );
+}
+
 #[tokio::test]
 async fn test_safe_verify_deposit_v2() {
     let worker = near_workspaces::sandbox().await.unwrap();

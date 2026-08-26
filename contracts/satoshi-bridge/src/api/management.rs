@@ -1,9 +1,10 @@
 use crate::{
-    assert_one_yocto, env, near, require, AccessControllable, Account, AccountId, ConfigUpdate,
-    Contract, ContractExt, HashSet, Promise, Role, U128,
+    assert_one_yocto, env, get_deposit_path, near, require, AccessControllable, Account, AccountId,
+    ConfigUpdate, Contract, ContractExt, DepositMsg, Event, HashSet, Promise, Role, U128,
 };
 
 use near_plugins::access_control_any;
+use near_sdk::json_types::Base64VecU8;
 
 #[near]
 impl Contract {
@@ -294,6 +295,52 @@ impl Contract {
             .insert(range_upper_bound.0.to_string(), confirmations);
 
         config.assert_valid()
+    }
+
+    /// Register the UTXO of a deposit whose `mint_callback` failed after nBTC was already minted.
+    #[payable]
+    #[access_control_any(roles(Role::DAO))]
+    pub fn complete_failed_deposit_mint(
+        &mut self,
+        deposit_msg: DepositMsg,
+        tx_bytes: Base64VecU8,
+        vout: usize,
+    ) -> String {
+        assert_one_yocto();
+        let pending_utxo_info = self.internal_build_deposit_utxo_info(
+            get_deposit_path(&deposit_msg),
+            &tx_bytes.0,
+            vout,
+        );
+        let utxo_storage_key = pending_utxo_info.utxo_storage_key;
+
+        require!(
+            self.data()
+                .verified_deposit_utxo
+                .contains(&utxo_storage_key),
+            "Deposit is not verified"
+        );
+        require!(
+            !self.data().utxos.contains_key(&utxo_storage_key),
+            "UTXO already registered"
+        );
+        require!(
+            !self
+                .data()
+                .unavailable_utxos
+                .contains_key(&utxo_storage_key),
+            "UTXO is unavailable"
+        );
+        // A refund spends the very same output, so the UTXO must not be claimed by one.
+        require!(
+            !self.data().refund_requests.contains_key(&utxo_storage_key),
+            "UTXO is claimed by a refund"
+        );
+
+        self.internal_set_utxo(&utxo_storage_key, pending_utxo_info.utxo);
+        self.internal_remove_utxo_in_progress(&utxo_storage_key);
+
+        utxo_storage_key
     }
 
     #[payable]
