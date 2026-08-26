@@ -1,6 +1,6 @@
 use crate::{
     assert_one_yocto, env, get_deposit_path, near, require, AccessControllable, Account, AccountId,
-    ConfigUpdate, Contract, ContractExt, DepositMsg, Event, HashSet, Promise, Role, U128,
+    ConfigUpdate, Contract, ContractExt, DepositMsg, HashSet, Promise, Role, U128,
 };
 
 use near_plugins::access_control_any;
