@@ -1,3 +1,4 @@
+use crate::utxo::UTXOStatus;
 use crate::RefundRequest;
 use crate::{
     env, near, u128_dec_format, AccessControllable, Account, AccountId, BTCPendingInfo, Config,
@@ -172,6 +173,24 @@ impl Contract {
         utxo_storage_keys
             .into_iter()
             .map(|key| (key.clone(), self.data().utxos.get(&key).map(Into::into)))
+            .collect()
+    }
+
+    pub fn get_utxos_in_progress_paged(
+        &self,
+        from_index: Option<usize>,
+        limit: Option<usize>,
+    ) -> HashMap<String, UTXOStatus> {
+        let len = usize::try_from(self.data().utxos_in_progress.len())
+            .unwrap_or_else(|_| env::panic_str("Too many utxos_in_progress"));
+        let skip_n = from_index.unwrap_or(0);
+        let take_n = limit.unwrap_or(len - skip_n);
+        self.data()
+            .utxos_in_progress
+            .iter()
+            .skip(skip_n)
+            .take(take_n)
+            .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
     }
 

@@ -52,6 +52,7 @@ impl Contract {
         pending_utxo_info: PendingUTXOInfo,
     ) -> bool {
         let is_success = is_promise_success();
+        self.internal_remove_utxo_in_progress(&pending_utxo_info.utxo_storage_key);
         if is_success {
             if !self.check_account_exists(&recipient_id) {
                 self.internal_set_account(&recipient_id, Account::new(&recipient_id));
