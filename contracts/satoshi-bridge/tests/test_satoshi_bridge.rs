@@ -2873,7 +2873,7 @@ async fn test_complete_failed_deposit_mint() {
 
     // A deposit that was never verified was never minted either, so there is nothing to complete.
     let outcome = context
-        .complete_failed_deposit_mint("root", deposit_msg.clone(), tx_bytes.clone(), 0)
+        .complete_failed_deposit_mint("root", deposit_msg.clone(), tx_bytes.clone(), 0, 0)
         .await;
     assert!(
         tool_err_msg(&outcome).contains("Deposit is not verified"),
@@ -2891,7 +2891,7 @@ async fn test_complete_failed_deposit_mint() {
 
     // The mint callback succeeded here, so the UTXO is already in the available set.
     let outcome = context
-        .complete_failed_deposit_mint("root", deposit_msg.clone(), tx_bytes.clone(), 0)
+        .complete_failed_deposit_mint("root", deposit_msg.clone(), tx_bytes.clone(), 0, 0)
         .await;
     assert!(
         tool_err_msg(&outcome).contains("UTXO already registered"),
@@ -2900,7 +2900,7 @@ async fn test_complete_failed_deposit_mint() {
 
     // An output that does not pay the deposit address cannot be passed off as a deposit.
     let outcome = context
-        .complete_failed_deposit_mint("root", deposit_msg.clone(), tx_bytes.clone(), 1)
+        .complete_failed_deposit_mint("root", deposit_msg.clone(), tx_bytes.clone(), 1, 0)
         .await;
     assert!(
         tool_err_msg(&outcome).contains("Invalid deposit tx_bytes"),
@@ -2909,7 +2909,7 @@ async fn test_complete_failed_deposit_mint() {
 
     // Only the DAO may recover a deposit.
     let outcome = context
-        .complete_failed_deposit_mint("alice", deposit_msg, tx_bytes, 0)
+        .complete_failed_deposit_mint("alice", deposit_msg, tx_bytes, 0, 0)
         .await;
     assert!(
         tool_err_msg(&outcome).contains("Insufficient permissions"),

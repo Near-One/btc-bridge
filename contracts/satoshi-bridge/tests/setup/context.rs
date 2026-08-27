@@ -675,6 +675,7 @@ impl Context {
         deposit_msg: DepositMsg,
         tx_bytes: Vec<u8>,
         vout: u32,
+        protocol_fee: u128,
     ) -> Result<ExecutionFinalResult> {
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "complete_failed_deposit_mint")
@@ -682,6 +683,7 @@ impl Context {
                 "deposit_msg": deposit_msg,
                 "tx_bytes": Base64VecU8(tx_bytes),
                 "vout": vout,
+                "protocol_fee": U128(protocol_fee),
             }))
             .max_gas()
             .deposit(NearToken::from_yoctonear(1))

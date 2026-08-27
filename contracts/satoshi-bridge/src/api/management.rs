@@ -1,6 +1,6 @@
 use crate::{
     assert_one_yocto, env, get_deposit_path, near, require, AccessControllable, Account, AccountId,
-    ConfigUpdate, Contract, ContractExt, DepositMsg, HashSet, Promise, Role, U128,
+    ConfigUpdate, Contract, ContractExt, DepositMsg, Event, HashSet, Promise, Role, U128,
 };
 
 use near_plugins::access_control_any;
@@ -305,6 +305,7 @@ impl Contract {
         deposit_msg: DepositMsg,
         tx_bytes: Base64VecU8,
         vout: usize,
+        protocol_fee: U128,
     ) -> String {
         assert_one_yocto();
         let pending_utxo_info = self.internal_build_deposit_utxo_info(
@@ -337,8 +338,25 @@ impl Contract {
             "UTXO is claimed by a refund"
         );
 
+        let recipient_id = deposit_msg.recipient_id.clone();
+        let balance = pending_utxo_info.utxo.balance;
+
         self.internal_set_utxo(&utxo_storage_key, pending_utxo_info.utxo);
         self.internal_remove_utxo_in_progress(&utxo_storage_key);
+
+        if !self.check_account_exists(&recipient_id) {
+            self.internal_set_account(&recipient_id, Account::new(&recipient_id));
+        }
+        if protocol_fee.0 > 0 {
+            self.data_mut().acc_collected_protocol_fee += protocol_fee.0;
+            self.data_mut().cur_available_protocol_fee += protocol_fee.0;
+        }
+
+        Event::UtxoAdded {
+            utxo_storage_keys: vec![utxo_storage_key.clone()],
+            balances: Some(vec![U128::from(u128::from(balance))]),
+        }
+        .emit();
 
         utxo_storage_key
     }
