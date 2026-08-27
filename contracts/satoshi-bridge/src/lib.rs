@@ -98,6 +98,7 @@ enum StorageKey {
     ExtraMsgRelayerWhiteList,
     PendingTxLimits,
     RefundRequests,
+    UTXOsInProgress,
 }
 
 #[derive(AccessControlRole, Deserialize, Serialize, Copy, Clone)]
@@ -130,6 +131,7 @@ pub struct ContractData {
     pub config: LazyOption<Config>,
     pub accounts: IterableMap<AccountId, VAccount>,
     pub utxos: IterableMap<String, VUTXO>,
+    pub utxos_in_progress: IterableMap<String, UTXOStatus>,
     pub unavailable_utxos: IterableMap<String, VUTXO>,
     pub verified_deposit_utxo: LookupSet<String>,
     pub btc_pending_infos: IterableMap<String, VBTCPendingInfo>,
@@ -158,6 +160,7 @@ pub enum VersionedContractData {
     V4(ContractDataV4),
     V5(ContractDataV5),
     V6(ContractDataV6),
+    V7(ContractDataV7),
     Current(ContractData),
 }
 
@@ -200,6 +203,7 @@ impl Contract {
                 config: LazyOption::new(StorageKey::Config, Some(config)),
                 accounts: IterableMap::new(StorageKey::Accounts),
                 utxos: IterableMap::new(StorageKey::UTXOs),
+                utxos_in_progress: IterableMap::new(StorageKey::UTXOsInProgress),
                 unavailable_utxos: IterableMap::new(StorageKey::UnavailableUTXOs),
                 verified_deposit_utxo: LookupSet::new(StorageKey::VerifiedDepositUtxos),
                 btc_pending_infos: IterableMap::new(StorageKey::BTCPendingInfos),

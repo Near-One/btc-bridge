@@ -2,6 +2,7 @@
 
 use near_sdk::serde_json::Value;
 
+use crate::utxo::UTXOStatus;
 use crate::{
     btc_light_client::TxInclusionInfo,
     burn::GAS_FOR_BURN_CALL,
@@ -143,6 +144,42 @@ impl Contract {
         );
     }
 
+    pub(crate) fn internal_build_deposit_utxo_info(
+        &self,
+        path: String,
+        tx_bytes: &[u8],
+        vout: usize,
+    ) -> PendingUTXOInfo {
+        let transaction = WrappedTransaction::decode(tx_bytes, &self.internal_config().chain)
+            .expect("Deserialization tx_bytes failed");
+        let balance = transaction.output()[vout].value.to_sat();
+        require!(balance > 0, "Invalid deposit_amount");
+        let deposit_address = self.generate_utxo_chain_address(&path);
+        let deposit_address_script_pubkey = deposit_address
+            .script_pubkey()
+            .expect("Invalid deposit address");
+        require!(
+            deposit_address_script_pubkey == transaction.output()[vout].script_pubkey,
+            "Invalid deposit tx_bytes"
+        );
+
+        let tx_id = transaction.compute_txid().to_string();
+        let utxo_storage_key = generate_utxo_storage_key(
+            tx_id.clone(),
+            u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
+        );
+        PendingUTXOInfo {
+            tx_id,
+            utxo_storage_key,
+            utxo: UTXO {
+                path,
+                tx_bytes: Vec::new(),
+                vout,
+                balance,
+            },
+        }
+    }
+
     pub(crate) fn internal_verify_deposit_entry(
         &mut self,
         deposit_msg: DepositMsg,
@@ -158,41 +195,16 @@ impl Contract {
             "safe_deposit not supported in the standard deposit flow"
         );
         let path = get_deposit_path(&deposit_msg);
-        let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
-            .expect("Deserialization tx_bytes failed");
-        let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
-        require!(deposit_amount > 0, "Invalid deposit_amount");
-        let deposit_address = self.generate_utxo_chain_address(&path);
-        let deposit_address_script_pubkey = deposit_address
-            .script_pubkey()
-            .expect("Invalid deposit address");
-        require!(
-            deposit_address_script_pubkey == transaction.output()[vout].script_pubkey,
-            "Invalid deposit tx_bytes"
-        );
+        let pending_utxo_info = self.internal_build_deposit_utxo_info(path, &tx_bytes, vout);
+        let deposit_amount = u128::from(pending_utxo_info.utxo.balance);
 
-        let utxo = UTXO {
-            path,
-            tx_bytes: Vec::new(),
-            vout,
-            balance: transaction.output()[vout].value.to_sat(),
-        };
-        let tx_id = transaction.compute_txid().to_string();
-        let utxo_storage_key = generate_utxo_storage_key(
-            tx_id.clone(),
-            u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
-        );
         self.internal_verify_deposit(
             deposit_amount,
             tx_block_blockhash,
             tx_index,
             merkle_proof,
             coinbase_proof,
-            PendingUTXOInfo {
-                tx_id,
-                utxo_storage_key,
-                utxo,
-            },
+            pending_utxo_info,
             deposit_msg,
         )
     }
@@ -217,30 +229,8 @@ impl Contract {
             .safe_deposit
             .unwrap_or_else(|| env::panic_str("safe_deposit is required in the safe deposit flow"));
 
-        let transaction = WrappedTransaction::decode(&tx_bytes, &self.internal_config().chain)
-            .expect("Deserialization tx_bytes failed");
-        let deposit_amount = transaction.output()[vout].value.to_sat().into();
-        require!(deposit_amount > 0, "Invalid deposit_amount");
-        let deposit_address = self.generate_utxo_chain_address(&path);
-        let deposit_address_script_pubkey = deposit_address
-            .script_pubkey()
-            .expect("Invalid deposit address");
-        require!(
-            deposit_address_script_pubkey == transaction.output()[vout].script_pubkey,
-            "Invalid deposit tx_bytes"
-        );
-
-        let utxo = UTXO {
-            path,
-            tx_bytes: Vec::new(),
-            vout,
-            balance: transaction.output()[vout].value.to_sat(),
-        };
-        let tx_id = transaction.compute_txid().to_string();
-        let utxo_storage_key = generate_utxo_storage_key(
-            tx_id.clone(),
-            u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
-        );
+        let pending_utxo_info = self.internal_build_deposit_utxo_info(path, &tx_bytes, vout);
+        let deposit_amount = u128::from(pending_utxo_info.utxo.balance);
 
         self.internal_safe_verify_deposit(
             deposit_amount,
@@ -248,11 +238,7 @@ impl Contract {
             tx_index,
             merkle_proof,
             coinbase_proof,
-            PendingUTXOInfo {
-                tx_id,
-                utxo_storage_key,
-                utxo,
-            },
+            pending_utxo_info,
             deposit_msg.recipient_id,
             safe_deposit_msg,
         )
@@ -389,6 +375,10 @@ impl Contract {
                 .insert(pending_utxo_info.utxo_storage_key.clone()),
             "Already deposit utxo"
         );
+        self.internal_set_utxo_in_progress(
+            &pending_utxo_info.utxo_storage_key,
+            UTXOStatus::DepositInProgress(pending_utxo_info.utxo.clone().into()),
+        );
         self.internal_mint_promise(
             recipient_id,
             mint_amount,
@@ -416,6 +406,10 @@ impl Contract {
                 .insert(pending_utxo_info.utxo_storage_key.clone()),
             "Already deposit utxo"
         );
+        self.internal_set_utxo_in_progress(
+            &pending_utxo_info.utxo_storage_key,
+            UTXOStatus::DepositInProgress(pending_utxo_info.utxo.clone().into()),
+        );
 
         let msg = (!msg.is_empty())
             .then(|| inject_utxo_id_in_msg(msg, &pending_utxo_info.utxo_storage_key));
@@ -441,6 +435,8 @@ impl Contract {
     ) -> bool {
         let is_success = !is_refund_required();
         let relayer_account_id = env::signer_account_id();
+
+        self.internal_remove_utxo_in_progress(&pending_utxo_info.utxo_storage_key);
 
         if is_success {
             Event::UtxoAdded {
