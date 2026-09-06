@@ -700,6 +700,12 @@ impl Context {
         vout: u32,
         balance: u128,
     ) -> Result<ExecutionFinalResult> {
+        // The safe flow pays for the recipient's token storage, the standard flow does not.
+        let deposit = if deposit_msg.safe_deposit.is_some() {
+            self.required_balance_for_safe_deposit().await.unwrap()
+        } else {
+            NearToken::from_yoctonear(1)
+        };
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "dao_verify_deposit")
             .args_json(json!({
@@ -710,7 +716,7 @@ impl Context {
                 "balance": U128(balance),
             }))
             .max_gas()
-            .deposit(NearToken::from_yoctonear(1))
+            .deposit(deposit)
             .transact()
             .await
     }

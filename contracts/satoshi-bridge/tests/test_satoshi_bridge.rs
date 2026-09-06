@@ -3066,6 +3066,60 @@ async fn test_dao_verify_deposit() {
     );
 }
 
+// The DAO path honours `deposit_msg.safe_deposit` exactly as `verify_deposit_v2` does: no
+// bridge fee is charged, and a mint that cannot land credits nothing at all.
+#[tokio::test]
+async fn test_dao_verify_deposit_safe() {
+    const DAO_TX_ID: &str = "3f2a91c0b4e7d85619af0c3b7e2d4a86f0159c3bd7e84a2610fbc95d3e7a1846";
+    const BOB_TX_ID: &str = "77c4e0195ab3d62f8410cbe37d95a2064f1e83bd0c5a97e2416db830f95c2ea7";
+
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
+        refund_address: None,
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    // The safe flow mints only into an account that is already registered for token storage.
+    let bob_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("bob").sdk_id(),
+        ..deposit_msg.clone()
+    };
+    let bob_address = context
+        .get_user_deposit_address(bob_msg.clone())
+        .await
+        .unwrap();
+    check!(context.dao_verify_deposit("root", bob_msg, &bob_address, BOB_TX_ID, 0, 50000));
+    assert_eq!(context.ft_balance_of("bob").await.unwrap().0, 0);
+    assert!(
+        context.get_utxos_paged().await.unwrap().is_empty(),
+        "a safe deposit whose mint failed must not register a UTXO"
+    );
+
+    check!(context.storage_deposit("nbtc", "alice"));
+    check!(context.dao_verify_deposit(
+        "root",
+        deposit_msg,
+        &deposit_address,
+        DAO_TX_ID,
+        0,
+        50000
+    ));
+
+    // No bridge fee in the safe flow, so the whole output is minted.
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 50000);
+    let utxos = context.get_utxos_paged().await.unwrap();
+    assert_eq!(utxos.len(), 1);
+    assert!(utxos.contains_key(&format!("{DAO_TX_ID}@0")));
+}
+
 #[tokio::test]
 async fn test_safe_verify_deposit_v2() {
     let worker = near_workspaces::sandbox().await.unwrap();

@@ -258,18 +258,19 @@ impl Contract {
     /// without a proof nothing shows the transaction is on the mainchain. The inclusion proof
     /// and the transaction bytes are exactly what this method replaces, so the caller vouches
     /// for `tx_id`, `vout` and `balance`.
+    ///
+    /// `deposit_msg.safe_deposit` selects the flow, exactly as it does in `verify_deposit_v2`:
+    /// `None` charges the deposit fee and routes a failed mint to lost & found, `Some(..)`
+    /// charges no fee, requires the storage deposit to be attached, and reverts if the mint
+    /// fails.
     pub(crate) fn internal_dao_verify_deposit(
         &mut self,
-        deposit_msg: DepositMsg,
+        mut deposit_msg: DepositMsg,
         deposit_address: String,
         tx_id: String,
         vout: u32,
         balance: u64,
     ) -> Promise {
-        require!(
-            deposit_msg.safe_deposit.is_none(),
-            "safe_deposit not supported in the standard deposit flow"
-        );
         require!(balance > 0, "Invalid deposit_amount");
         require!(
             tx_id.len() == 64 && tx_id.bytes().all(|b| b.is_ascii_hexdigit()),
@@ -310,6 +311,43 @@ impl Contract {
             deposit_amount >= config.min_deposit_amount,
             "Deposit amount is less than the minimum"
         );
+
+        if let Some(safe_deposit_msg) = deposit_msg.safe_deposit.take() {
+            require!(
+                env::attached_deposit() >= self.required_balance_for_safe_deposit(),
+                "Insufficient deposit for storage"
+            );
+            let recipient_id = deposit_msg.recipient_id;
+            require!(
+                self.data_mut()
+                    .verified_deposit_utxo
+                    .insert(pending_utxo_info.utxo_storage_key.clone()),
+                "Already deposit utxo"
+            );
+            self.internal_set_utxo_in_progress(
+                &pending_utxo_info.utxo_storage_key,
+                UTXOStatus::DepositInProgress(pending_utxo_info.utxo.clone().into()),
+            );
+
+            let msg = (!safe_deposit_msg.msg.is_empty()).then(|| {
+                inject_utxo_id_in_msg(safe_deposit_msg.msg, &pending_utxo_info.utxo_storage_key)
+            });
+            // The safe flow charges no bridge fee, so the whole output is minted.
+            return ext_nbtc::ext(self.internal_config().nbtc_account_id.clone())
+                .with_static_gas(GAS_FOR_MINT_CALL)
+                .with_attached_deposit(NearToken::from_yoctonear(1))
+                .safe_mint(recipient_id.clone(), deposit_amount.into(), msg)
+                .then(
+                    Self::ext(env::current_account_id())
+                        .with_static_gas(GAS_FOR_MINT_CALL_BACK)
+                        .safe_mint_callback(
+                            recipient_id,
+                            deposit_amount.into(),
+                            pending_utxo_info,
+                        ),
+                );
+        }
+
         let deposit_fee = config.deposit_bridge_fee.get_fee(deposit_amount);
         let mint_amount = deposit_amount - deposit_fee;
         let (protocol_fee, relayer_fee) = config

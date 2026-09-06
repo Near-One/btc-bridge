@@ -372,6 +372,10 @@ impl Contract {
     /// recipient, the fees and the UTXO's derivation path. `deposit_address` is the address the
     /// output being credited paid to, and it must match the one `deposit_msg` derives. The
     /// relayer fee goes to the signer, as it does for a relayer-submitted deposit.
+    ///
+    /// `deposit_msg.safe_deposit` selects the flow just as it does in `verify_deposit_v2`: the
+    /// safe flow needs `required_balance_for_safe_deposit` attached for the recipient's token
+    /// storage, so only the standard flow is held to the usual one-yocto guard.
     #[payable]
     #[access_control_any(roles(Role::DAO))]
     pub fn dao_verify_deposit(
@@ -382,7 +386,9 @@ impl Contract {
         vout: u32,
         balance: U128,
     ) -> Promise {
-        assert_one_yocto();
+        if deposit_msg.safe_deposit.is_none() {
+            assert_one_yocto();
+        }
         let balance =
             u64::try_from(balance.0).unwrap_or_else(|_| env::panic_str("balance overflow"));
         self.internal_dao_verify_deposit(deposit_msg, deposit_address, tx_id, vout, balance)
