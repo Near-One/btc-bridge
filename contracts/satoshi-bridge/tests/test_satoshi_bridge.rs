@@ -2917,6 +2917,155 @@ async fn test_complete_failed_deposit_mint() {
     );
 }
 
+// `dao_verify_deposit` credits a deposit from values the DAO supplies directly, for
+// transactions the standard flow cannot deserialize within the gas limit. It has to end up
+// with exactly the UTXO and the mint that `verify_deposit_v2` would have produced.
+#[tokio::test]
+async fn test_dao_verify_deposit() {
+    const DAO_TX_ID: &str = "9d4c1ab6d4f5f3f5cf5a6f4e5b0f1cbf4b8f2c1d0e9a8b7c6d5e4f3a2b1c0d9e";
+
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: None,
+    };
+    let alice_btc_deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    // A fully proven deposit of the same size for the same recipient, to compare against.
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "e1e1069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f50",
+            1,
+            None,
+        )],
+        vec![
+            (alice_btc_deposit_address.as_str(), 50000),
+            (TARGET_ADDRESS, 50000),
+        ],
+    );
+    check!(context.verify_deposit_v2("relayer", deposit_msg.clone(), tx_bytes, 0, mock_proof()));
+    let reference = context
+        .get_utxos_paged()
+        .await
+        .unwrap()
+        .values()
+        .next()
+        .unwrap()
+        .clone();
+    let minted_by_proof = context.ft_balance_of("alice").await.unwrap().0;
+
+    let outcome = context
+        .dao_verify_deposit(
+            "alice",
+            deposit_msg.clone(),
+            &alice_btc_deposit_address,
+            DAO_TX_ID,
+            0,
+            50000,
+        )
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("Insufficient permissions"),
+        "dao_verify_deposit should be restricted to the DAO"
+    );
+
+    let outcome = context
+        .dao_verify_deposit(
+            "root",
+            deposit_msg.clone(),
+            &alice_btc_deposit_address,
+            "not-a-txid",
+            0,
+            50000,
+        )
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("Invalid tx_id"),
+        "dao_verify_deposit should reject a malformed tx_id"
+    );
+
+    // A payment to a foreign address cannot be credited to alice's deposit_msg.
+    let outcome = context
+        .dao_verify_deposit(
+            "root",
+            deposit_msg.clone(),
+            TARGET_ADDRESS,
+            DAO_TX_ID,
+            0,
+            50000,
+        )
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("deposit_address does not match deposit_msg"),
+        "dao_verify_deposit should reject an address that deposit_msg does not derive"
+    );
+
+    // The minimum deposit amount still applies (20000 in this fixture).
+    let outcome = context
+        .dao_verify_deposit(
+            "root",
+            deposit_msg.clone(),
+            &alice_btc_deposit_address,
+            DAO_TX_ID,
+            0,
+            10000,
+        )
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("Deposit amount is less than the minimum"),
+        "dao_verify_deposit should reject a deposit below the minimum"
+    );
+
+    check!(context.dao_verify_deposit(
+        "root",
+        deposit_msg.clone(),
+        &alice_btc_deposit_address,
+        DAO_TX_ID,
+        0,
+        50000
+    ));
+
+    let utxos = context.get_utxos_paged().await.unwrap();
+    assert_eq!(utxos.len(), 2);
+    let dao_utxo = utxos
+        .get(&format!("{DAO_TX_ID}@0"))
+        .expect("the DAO deposit UTXO should be registered under tx_id@vout");
+    assert_eq!(
+        dao_utxo.path, reference.path,
+        "the DAO deposit must derive the same spending path as a proven one"
+    );
+    assert_eq!(dao_utxo.balance, reference.balance);
+    assert_eq!(dao_utxo.vout, 0);
+    assert_eq!(
+        context.ft_balance_of("alice").await.unwrap().0 - minted_by_proof,
+        minted_by_proof,
+        "the DAO deposit must mint the same amount as the proven deposit of the same size"
+    );
+
+    // The same output cannot be credited twice.
+    let outcome = context
+        .dao_verify_deposit(
+            "root",
+            deposit_msg,
+            &alice_btc_deposit_address,
+            DAO_TX_ID,
+            0,
+            50000,
+        )
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("Already deposit utxo"),
+        "dao_verify_deposit should not credit the same output twice"
+    );
+}
+
 #[tokio::test]
 async fn test_safe_verify_deposit_v2() {
     let worker = near_workspaces::sandbox().await.unwrap();

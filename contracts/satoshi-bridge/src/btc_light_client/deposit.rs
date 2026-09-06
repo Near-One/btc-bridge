@@ -244,6 +244,101 @@ impl Contract {
         )
     }
 
+    /// Credits a deposit from values the caller supplies directly, for transactions that
+    /// cannot go through `verify_deposit_v2` — a Zcash deposit whose shielded bundle does not
+    /// fit into the gas limit, say, since the standard flow has to deserialize and re-hash the
+    /// whole transaction just to recover `tx_id` and the output.
+    ///
+    /// `deposit_msg` is validated as usual, and `deposit_address` — the address the caller read
+    /// off the output being credited — must be the one it derives to, so a `deposit_msg` that
+    /// belongs to a different recipient than the payment is rejected.
+    ///
+    /// What is *not* checked is the link between that address and the transaction: without
+    /// `tx_bytes` nothing here proves that output `vout` of `tx_id` pays `balance` to it, and
+    /// without a proof nothing shows the transaction is on the mainchain. The inclusion proof
+    /// and the transaction bytes are exactly what this method replaces, so the caller vouches
+    /// for `tx_id`, `vout` and `balance`.
+    pub(crate) fn internal_dao_verify_deposit(
+        &mut self,
+        deposit_msg: DepositMsg,
+        deposit_address: String,
+        tx_id: String,
+        vout: u32,
+        balance: u64,
+    ) -> Promise {
+        require!(
+            deposit_msg.safe_deposit.is_none(),
+            "safe_deposit not supported in the standard deposit flow"
+        );
+        require!(balance > 0, "Invalid deposit_amount");
+        require!(
+            tx_id.len() == 64 && tx_id.bytes().all(|b| b.is_ascii_hexdigit()),
+            "Invalid tx_id"
+        );
+
+        let path = get_deposit_path(&deposit_msg);
+        // Compared as script pubkeys, like the standard flow compares them against the output,
+        // so an alternative encoding of the same address is still accepted.
+        let derived_script_pubkey = self
+            .generate_utxo_chain_address(&path)
+            .script_pubkey()
+            .expect("Invalid deposit address");
+        let paid_script_pubkey =
+            crate::network::Address::parse(&deposit_address, self.internal_config().chain.clone())
+                .expect("Invalid deposit address")
+                .script_pubkey()
+                .expect("Invalid deposit address");
+        require!(
+            derived_script_pubkey == paid_script_pubkey,
+            "deposit_address does not match deposit_msg"
+        );
+
+        let pending_utxo_info = PendingUTXOInfo {
+            utxo_storage_key: generate_utxo_storage_key(tx_id.clone(), vout),
+            tx_id,
+            utxo: UTXO {
+                path,
+                tx_bytes: Vec::new(),
+                vout: vout as usize,
+                balance,
+            },
+        };
+
+        let deposit_amount = u128::from(balance);
+        let config = self.internal_config();
+        require!(
+            deposit_amount >= config.min_deposit_amount,
+            "Deposit amount is less than the minimum"
+        );
+        let deposit_fee = config.deposit_bridge_fee.get_fee(deposit_amount);
+        let mint_amount = deposit_amount - deposit_fee;
+        let (protocol_fee, relayer_fee) = config
+            .deposit_bridge_fee
+            .get_protocol_and_relayer_fee(deposit_fee);
+
+        let recipient_id = deposit_msg.recipient_id.clone();
+        let post_actions = self.check_deposit_msg(deposit_msg, mint_amount);
+
+        require!(
+            self.data_mut()
+                .verified_deposit_utxo
+                .insert(pending_utxo_info.utxo_storage_key.clone()),
+            "Already deposit utxo"
+        );
+        self.internal_set_utxo_in_progress(
+            &pending_utxo_info.utxo_storage_key,
+            UTXOStatus::DepositInProgress(pending_utxo_info.utxo.clone().into()),
+        );
+        self.internal_mint_promise(
+            recipient_id,
+            mint_amount.into(),
+            protocol_fee.into(),
+            relayer_fee.into(),
+            pending_utxo_info,
+            post_actions,
+        )
+    }
+
     pub(crate) fn internal_verify_migrate_deposit_entry(
         &mut self,
         tx_bytes: Vec<u8>,

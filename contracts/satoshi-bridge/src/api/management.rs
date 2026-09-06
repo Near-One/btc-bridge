@@ -362,6 +362,32 @@ impl Contract {
         utxo_storage_key
     }
 
+    /// Credit a deposit without `tx_bytes` and without an inclusion proof, for a transaction
+    /// that cannot be pushed through `verify_deposit_v2` — a Zcash deposit with a large
+    /// shielded bundle, for instance, where deserializing and re-hashing the whole transaction
+    /// exceeds the gas limit.
+    ///
+    /// The DAO supplies what the standard flow would derive and prove (`tx_id`, `vout`,
+    /// `balance`) and vouches for it; `deposit_msg` is validated as usual and determines the
+    /// recipient, the fees and the UTXO's derivation path. `deposit_address` is the address the
+    /// output being credited paid to, and it must match the one `deposit_msg` derives. The
+    /// relayer fee goes to the signer, as it does for a relayer-submitted deposit.
+    #[payable]
+    #[access_control_any(roles(Role::DAO))]
+    pub fn dao_verify_deposit(
+        &mut self,
+        deposit_msg: DepositMsg,
+        deposit_address: String,
+        tx_id: String,
+        vout: u32,
+        balance: U128,
+    ) -> Promise {
+        assert_one_yocto();
+        let balance =
+            u64::try_from(balance.0).unwrap_or_else(|_| env::panic_str("balance overflow"));
+        self.internal_dao_verify_deposit(deposit_msg, deposit_address, tx_id, vout, balance)
+    }
+
     #[payable]
     #[access_control_any(roles(Role::DAO))]
     pub fn remove_confirmations_strategy(&mut self, range_upper_bound: U128) {
