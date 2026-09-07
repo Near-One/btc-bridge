@@ -244,25 +244,11 @@ impl Contract {
         )
     }
 
-    /// Credits a deposit from values the caller supplies directly, for transactions that
-    /// cannot go through `verify_deposit_v2` — a Zcash deposit whose shielded bundle does not
-    /// fit into the gas limit, say, since the standard flow has to deserialize and re-hash the
-    /// whole transaction just to recover `tx_id` and the output.
-    ///
-    /// `deposit_msg` is validated as usual, and `deposit_address` — the address the caller read
-    /// off the output being credited — must be the one it derives to, so a `deposit_msg` that
-    /// belongs to a different recipient than the payment is rejected.
-    ///
-    /// What is *not* checked is the link between that address and the transaction: without
-    /// `tx_bytes` nothing here proves that output `vout` of `tx_id` pays `balance` to it, and
-    /// without a proof nothing shows the transaction is on the mainchain. The inclusion proof
-    /// and the transaction bytes are exactly what this method replaces, so the caller vouches
-    /// for `tx_id`, `vout` and `balance`.
-    ///
-    /// `deposit_msg.safe_deposit` selects the flow, exactly as it does in `verify_deposit_v2`:
-    /// `None` charges the deposit fee and routes a failed mint to lost & found, `Some(..)`
-    /// charges no fee, requires the storage deposit to be attached, and reverts if the mint
-    /// fails.
+    /// Credits a deposit from values the caller supplies instead of from `tx_bytes` and an
+    /// inclusion proof, which is what this replaces: nothing here proves that output `vout` of
+    /// `tx_id` pays `balance` to `deposit_address`, or that the transaction is on the
+    /// mainchain. `deposit_msg` is validated as usual and must derive `deposit_address`;
+    /// `deposit_msg.safe_deposit` selects the flow as it does in `verify_deposit_v2`.
     pub(crate) fn internal_dao_verify_deposit(
         &mut self,
         mut deposit_msg: DepositMsg,
@@ -278,8 +264,7 @@ impl Contract {
         );
 
         let path = get_deposit_path(&deposit_msg);
-        // Compared as script pubkeys, like the standard flow compares them against the output,
-        // so an alternative encoding of the same address is still accepted.
+        // Compared as script pubkeys, so an alternative encoding of the same address is accepted.
         let derived_script_pubkey = self
             .generate_utxo_chain_address(&path)
             .script_pubkey()
@@ -340,11 +325,7 @@ impl Contract {
                 .then(
                     Self::ext(env::current_account_id())
                         .with_static_gas(GAS_FOR_MINT_CALL_BACK)
-                        .safe_mint_callback(
-                            recipient_id,
-                            deposit_amount.into(),
-                            pending_utxo_info,
-                        ),
+                        .safe_mint_callback(recipient_id, deposit_amount.into(), pending_utxo_info),
                 );
         }
 

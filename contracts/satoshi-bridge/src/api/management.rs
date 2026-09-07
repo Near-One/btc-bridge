@@ -363,19 +363,11 @@ impl Contract {
     }
 
     /// Credit a deposit without `tx_bytes` and without an inclusion proof, for a transaction
-    /// that cannot be pushed through `verify_deposit_v2` — a Zcash deposit with a large
-    /// shielded bundle, for instance, where deserializing and re-hashing the whole transaction
-    /// exceeds the gas limit.
+    /// `verify_deposit_v2` cannot handle within the gas limit (a Zcash deposit with a large
+    /// shielded bundle). The DAO vouches for `tx_id`, `vout` and `balance`.
     ///
-    /// The DAO supplies what the standard flow would derive and prove (`tx_id`, `vout`,
-    /// `balance`) and vouches for it; `deposit_msg` is validated as usual and determines the
-    /// recipient, the fees and the UTXO's derivation path. `deposit_address` is the address the
-    /// output being credited paid to, and it must match the one `deposit_msg` derives. The
-    /// relayer fee goes to the signer, as it does for a relayer-submitted deposit.
-    ///
-    /// `deposit_msg.safe_deposit` selects the flow just as it does in `verify_deposit_v2`: the
-    /// safe flow needs `required_balance_for_safe_deposit` attached for the recipient's token
-    /// storage, so only the standard flow is held to the usual one-yocto guard.
+    /// The safe flow needs `required_balance_for_safe_deposit` attached for the recipient's
+    /// token storage, so only the standard flow is held to the one-yocto guard.
     #[payable]
     #[access_control_any(roles(Role::DAO))]
     pub fn dao_verify_deposit(
