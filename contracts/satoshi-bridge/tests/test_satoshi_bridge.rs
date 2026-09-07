@@ -2917,9 +2917,8 @@ async fn test_complete_failed_deposit_mint() {
     );
 }
 
-// `dao_verify_deposit` credits a deposit from values the DAO supplies directly, for
-// transactions the standard flow cannot deserialize within the gas limit. It has to end up
-// with exactly the UTXO and the mint that `verify_deposit_v2` would have produced.
+// `dao_verify_deposit` must end up with exactly the UTXO and the mint that
+// `verify_deposit_v2` would have produced.
 #[tokio::test]
 async fn test_dao_verify_deposit() {
     const DAO_TX_ID: &str = "9d4c1ab6d4f5f3f5cf5a6f4e5b0f1cbf4b8f2c1d0e9a8b7c6d5e4f3a2b1c0d9e";
@@ -3066,8 +3065,8 @@ async fn test_dao_verify_deposit() {
     );
 }
 
-// The DAO path honours `deposit_msg.safe_deposit` exactly as `verify_deposit_v2` does: no
-// bridge fee is charged, and a mint that cannot land credits nothing at all.
+// The DAO path honours `safe_deposit` as `verify_deposit_v2` does: no bridge fee, and a mint
+// that cannot land credits nothing at all.
 #[tokio::test]
 async fn test_dao_verify_deposit_safe() {
     const DAO_TX_ID: &str = "3f2a91c0b4e7d85619af0c3b7e2d4a86f0159c3bd7e84a2610fbc95d3e7a1846";
@@ -3104,14 +3103,7 @@ async fn test_dao_verify_deposit_safe() {
     );
 
     check!(context.storage_deposit("nbtc", "alice"));
-    check!(context.dao_verify_deposit(
-        "root",
-        deposit_msg,
-        &deposit_address,
-        DAO_TX_ID,
-        0,
-        50000
-    ));
+    check!(context.dao_verify_deposit("root", deposit_msg, &deposit_address, DAO_TX_ID, 0, 50000));
 
     // No bridge fee in the safe flow, so the whole output is minted.
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 50000);
