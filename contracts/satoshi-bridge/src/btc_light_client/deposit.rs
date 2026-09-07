@@ -1,5 +1,8 @@
 #![allow(clippy::too_many_arguments)]
 
+use core::str::FromStr;
+
+use bitcoin::Txid;
 use near_sdk::serde_json::Value;
 
 use crate::utxo::UTXOStatus;
@@ -258,10 +261,11 @@ impl Contract {
         balance: u64,
     ) -> Promise {
         require!(balance > 0, "Invalid deposit_amount");
-        require!(
-            tx_id.len() == 64 && tx_id.bytes().all(|b| b.is_ascii_hexdigit()),
-            "Invalid tx_id"
-        );
+        // Round-trip through `Txid` so the key is spelled the way every other producer of a
+        // UTXO storage key spells it.
+        let tx_id = Txid::from_str(&tx_id)
+            .unwrap_or_else(|_| env::panic_str("Invalid tx_id"))
+            .to_string();
 
         let path = get_deposit_path(&deposit_msg);
         // Compared as script pubkeys, so an alternative encoding of the same address is accepted.
@@ -289,6 +293,31 @@ impl Contract {
                 balance,
             },
         };
+
+        // `verified_deposit_utxo` does not cover every output the bridge tracks — withdraw
+        // change outputs never enter it — so check the maps too.
+        let utxo_storage_key = &pending_utxo_info.utxo_storage_key;
+        require!(
+            !self.data().verified_deposit_utxo.contains(utxo_storage_key),
+            "Already deposit utxo"
+        );
+        require!(
+            !self.data().utxos.contains_key(utxo_storage_key),
+            "UTXO already registered"
+        );
+        require!(
+            !self.data().utxos_in_progress.contains_key(utxo_storage_key),
+            "UTXO deposit is in progress"
+        );
+        require!(
+            !self.data().unavailable_utxos.contains_key(utxo_storage_key),
+            "UTXO is unavailable"
+        );
+        // A refund spends the very same output.
+        require!(
+            !self.data().refund_requests.contains_key(utxo_storage_key),
+            "UTXO is claimed by a refund"
+        );
 
         let deposit_amount = u128::from(balance);
         let config = self.internal_config();
@@ -643,8 +672,23 @@ fn inject_utxo_id_in_msg(msg: String, utxo_id: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::{FromStr, Txid};
     use crate::btc_light_client::deposit::inject_utxo_id_in_msg;
     use near_sdk::{near, serde_json};
+
+    /// What `internal_dao_verify_deposit` relies on to canonicalize a DAO-supplied tx_id.
+    #[test]
+    fn test_txid_parsing_canonicalizes_case() {
+        let lower = "9d4c1ab6d4f5f3f5cf5a6f4e5b0f1cbf4b8f2c1d0e9a8b7c6d5e4f3a2b1c0d9e";
+        assert_eq!(Txid::from_str(lower).unwrap().to_string(), lower);
+        assert_eq!(
+            Txid::from_str(&lower.to_uppercase()).unwrap().to_string(),
+            lower
+        );
+        assert!(Txid::from_str("not-a-txid").is_err());
+        assert!(Txid::from_str(&lower[..62]).is_err());
+        assert!(Txid::from_str(&format!("{lower}00")).is_err());
+    }
 
     #[near(serializers=[json])]
     #[derive(Debug, Clone, PartialEq, Eq)]

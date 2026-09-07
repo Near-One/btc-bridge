@@ -3048,6 +3048,22 @@ async fn test_dao_verify_deposit() {
         "the DAO deposit must mint the same amount as the proven deposit of the same size"
     );
 
+    // An uppercase spelling of the same tx_id is the same output, not a second one.
+    let outcome = context
+        .dao_verify_deposit(
+            "root",
+            deposit_msg.clone(),
+            &alice_btc_deposit_address,
+            &DAO_TX_ID.to_uppercase(),
+            0,
+            50000,
+        )
+        .await;
+    assert!(
+        tool_err_msg(&outcome).contains("Already deposit utxo"),
+        "an uppercase tx_id must not credit the same output a second time"
+    );
+
     // The same output cannot be credited twice.
     let outcome = context
         .dao_verify_deposit(
