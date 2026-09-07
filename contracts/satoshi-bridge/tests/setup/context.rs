@@ -691,6 +691,36 @@ impl Context {
             .await
     }
 
+    pub async fn dao_verify_deposit(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        deposit_address: &str,
+        tx_id: &str,
+        vout: u32,
+        balance: u128,
+    ) -> Result<ExecutionFinalResult> {
+        // The safe flow pays for the recipient's token storage, the standard flow does not.
+        let deposit = if deposit_msg.safe_deposit.is_some() {
+            self.required_balance_for_safe_deposit().await.unwrap()
+        } else {
+            NearToken::from_yoctonear(1)
+        };
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "dao_verify_deposit")
+            .args_json(json!({
+                "deposit_msg": deposit_msg,
+                "deposit_address": deposit_address,
+                "tx_id": tx_id,
+                "vout": vout,
+                "balance": U128(balance),
+            }))
+            .max_gas()
+            .deposit(deposit)
+            .transact()
+            .await
+    }
+
     pub async fn withdraw_protocol_fee(
         &self,
         amount: Option<u128>,
