@@ -255,6 +255,46 @@ pub fn proof_json(
     })
 }
 
+/// Derive the compact-object form of the `tx_bytes` argument of
+/// `verify_deposit_v2` from full Zcash
+/// transaction bytes — i.e. what a relayer does off-chain with librustzcash:
+/// pull the ZIP-244 subtree digests out of `TxIdDigester` and ship those instead
+/// of the transaction.
+#[cfg(feature = "zcash")]
+pub fn compact_proof_json(tx_bytes: &[u8]) -> near_sdk::serde_json::Value {
+    use near_sdk::json_types::Base64VecU8;
+    use satoshi_bridge::zcash_utils::compact_txid::{
+        empty_orchard_digest, empty_sapling_digest, V5_TX_VERSION_HEADER,
+    };
+    use zcash_primitives::transaction::txid::TxIdDigester;
+
+    let tx = satoshi_bridge::WrappedTransaction::decode(tx_bytes, &Chain::ZcashMainnet)
+        .expect("Invalid Zcash transaction");
+    let digests = tx.inner_tx.digest(TxIdDigester);
+    let transparent = digests
+        .transparent_digests
+        .as_ref()
+        .expect("Transaction has no transparent bundle");
+    let b64 = |h: &blake2b_simd::Hash| Base64VecU8(h.as_bytes().to_vec());
+
+    near_sdk::serde_json::json!({
+        "version_header": V5_TX_VERSION_HEADER,
+        "consensus_branch_id": u32::from(tx.inner_tx.consensus_branch_id()),
+        "header_digest": b64(&digests.header_digest),
+        "prevouts_digest": b64(&transparent.prevouts_digest),
+        "sequence_digest": b64(&transparent.sequence_digest),
+        "sapling_digest": digests
+            .sapling_digest
+            .as_ref()
+            .map_or_else(|| Base64VecU8(empty_sapling_digest().to_vec()), b64),
+        "orchard_digest": digests.orchard_digest.as_ref().map_or_else(
+            || Base64VecU8(empty_orchard_digest(V5_TX_VERSION_HEADER).to_vec()),
+            b64,
+        ),
+        "outputs": tx.output(),
+    })
+}
+
 pub fn tool_err_msg(outcome: &Result<ExecutionFinalResult>) -> String {
     match outcome {
         Ok(res) => {

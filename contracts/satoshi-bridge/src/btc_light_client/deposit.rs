@@ -12,9 +12,10 @@ use crate::{
     deposit_msg::get_deposit_path,
     env, ext_nbtc, generate_utxo_storage_key,
     mint::{GAS_FOR_MINT_CALL, GAS_FOR_MINT_CALL_BACK},
-    near, require, serde_json, AccountId, Contract, ContractExt, DepositMsg, Event, Gas, NearToken,
-    PendingUTXOInfo, PostAction, Promise, PromiseOrValue, SafeDepositMsg, WrappedTransaction,
-    MAX_BOOL_RESULT, MAX_FT_TRANSFER_CALL_RESULT, MAX_INCLUSION_INFO_RESULT, U128, UTXO,
+    near, require, serde_json, AccountId, Contract, ContractExt, DepositMsg, DepositTxProof,
+    DepositTxSummary, Event, Gas, NearToken, PendingUTXOInfo, PostAction, Promise, PromiseOrValue,
+    SafeDepositMsg, WrappedTransaction, MAX_BOOL_RESULT, MAX_FT_TRANSFER_CALL_RESULT,
+    MAX_INCLUSION_INFO_RESULT, U128, UTXO,
 };
 
 pub const GAS_FOR_VERIFY_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(130);
@@ -147,26 +148,49 @@ impl Contract {
         );
     }
 
+    /// Resolve the funding transaction from either accepted form: the full
+    /// transaction bytes, or a ZIP-244 compact commitment set (Zcash only) that
+    /// recomputes the same txid without them. Both produce the same
+    /// [`DepositTxSummary`], and both are equally trustless — the caller cannot
+    /// move the txid off the value the light client will be asked about without
+    /// breaking BLAKE2b-256.
+    pub(crate) fn internal_resolve_deposit_tx(&self, tx_bytes: DepositTxProof) -> DepositTxSummary {
+        match tx_bytes {
+            DepositTxProof::Full(tx_bytes) => {
+                let transaction =
+                    WrappedTransaction::decode(&tx_bytes.0, &self.internal_config().chain)
+                        .expect("Deserialization tx_bytes failed");
+                DepositTxSummary {
+                    tx_id: transaction.compute_txid(),
+                    outputs: transaction.output(),
+                }
+            }
+            DepositTxProof::Compact(compact) => compact.resolve(),
+        }
+    }
+
     pub(crate) fn internal_build_deposit_utxo_info(
         &self,
         path: String,
-        tx_bytes: &[u8],
+        tx: &DepositTxSummary,
         vout: usize,
     ) -> PendingUTXOInfo {
-        let transaction = WrappedTransaction::decode(tx_bytes, &self.internal_config().chain)
-            .expect("Deserialization tx_bytes failed");
-        let balance = transaction.output()[vout].value.to_sat();
+        let output = tx
+            .outputs
+            .get(vout)
+            .unwrap_or_else(|| env::panic_str("vout is out of range"));
+        let balance = output.value.to_sat();
         require!(balance > 0, "Invalid deposit_amount");
         let deposit_address = self.generate_utxo_chain_address(&path);
         let deposit_address_script_pubkey = deposit_address
             .script_pubkey()
             .expect("Invalid deposit address");
         require!(
-            deposit_address_script_pubkey == transaction.output()[vout].script_pubkey,
+            deposit_address_script_pubkey == output.script_pubkey,
             "Invalid deposit tx_bytes"
         );
 
-        let tx_id = transaction.compute_txid().to_string();
+        let tx_id = tx.tx_id.to_string();
         let utxo_storage_key = generate_utxo_storage_key(
             tx_id.clone(),
             u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
@@ -186,7 +210,7 @@ impl Contract {
     pub(crate) fn internal_verify_deposit_entry(
         &mut self,
         deposit_msg: DepositMsg,
-        tx_bytes: Vec<u8>,
+        tx: DepositTxSummary,
         vout: usize,
         tx_block_blockhash: String,
         tx_index: u64,
@@ -198,7 +222,7 @@ impl Contract {
             "safe_deposit not supported in the standard deposit flow"
         );
         let path = get_deposit_path(&deposit_msg);
-        let pending_utxo_info = self.internal_build_deposit_utxo_info(path, &tx_bytes, vout);
+        let pending_utxo_info = self.internal_build_deposit_utxo_info(path, &tx, vout);
         let deposit_amount = u128::from(pending_utxo_info.utxo.balance);
 
         self.internal_verify_deposit(
@@ -215,7 +239,7 @@ impl Contract {
     pub(crate) fn internal_safe_verify_deposit_entry(
         &mut self,
         deposit_msg: DepositMsg,
-        tx_bytes: Vec<u8>,
+        tx: DepositTxSummary,
         vout: usize,
         tx_block_blockhash: String,
         tx_index: u64,
@@ -232,7 +256,7 @@ impl Contract {
             .safe_deposit
             .unwrap_or_else(|| env::panic_str("safe_deposit is required in the safe deposit flow"));
 
-        let pending_utxo_info = self.internal_build_deposit_utxo_info(path, &tx_bytes, vout);
+        let pending_utxo_info = self.internal_build_deposit_utxo_info(path, &tx, vout);
         let deposit_amount = u128::from(pending_utxo_info.utxo.balance);
 
         self.internal_safe_verify_deposit(

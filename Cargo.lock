@@ -4439,6 +4439,7 @@ name = "satoshi-bridge"
 version = "0.9.7-rc.2"
 dependencies = [
  "bitcoin",
+ "blake2b_simd",
  "bs58 0.5.1",
  "crypto-shared",
  "ed25519-dalek",
