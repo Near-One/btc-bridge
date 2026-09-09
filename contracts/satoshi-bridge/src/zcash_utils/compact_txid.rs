@@ -271,19 +271,92 @@ impl CompactTxProof {
 mod tests {
     use super::*;
     use crate::zcash_utils::transaction::Transaction;
-    use zcash_primitives::transaction::txid::TxIdDigester;
+    use zcash_primitives::transaction::txid::{to_txid, TxIdDigester};
 
-    /// A real mainnet v5 shielded-to-transparent transaction: zero transparent
+    /// A real mainnet **v5** shielded-to-transparent transaction: zero transparent
     /// inputs, one transparent output, and a ~9 KB Orchard bundle. Same vector as
-    /// `btc_pending_info::tests::test_zcash_tx_bytes`.
+    /// `btc_pending_info::tests::test_zcash_tx_bytes`, which is why this one is
+    /// stored as hex.
+    const V5_FIXTURE_HEX: &str = include_str!("../../tests/data/zcash_shielded_deposit_tx.hex");
+
+    /// A real **v6** (NU6.3) shielded-to-transparent transaction: zero transparent
+    /// inputs, one transparent output, no Sapling bundle, *no Orchard bundle*, and a
+    /// 1.67 MB Ironwood bundle. This is the fixture that exercises the v6 half of the
+    /// txid tree — the 5-node root, the Ironwood slot, and the empty-Orchard
+    /// substitution — none of which the v5 vector can reach.
+    ///
+    /// Stored as raw consensus bytes rather than hex: at this size the hex encoding
+    /// would double it to 3.3 MB in the repository for no benefit.
+    const V6_FIXTURE: &[u8] =
+        include_bytes!("../../tests/data/zcash_shielded_deposit_tx_large.bin");
+
+    /// The v6 fixture's txid, pinned as a literal.
+    ///
+    /// Every other test here compares our hand-rolled tree against
+    /// `zcash_primitives`, so a behaviour change in that crate would move both
+    /// sides together and go unnoticed. This constant is the one anchor that does
+    /// not, and it also catches the fixture file being corrupted or swapped.
+    const V6_FIXTURE_TXID: &str =
+        "9de2c62bd6dd6c408fb4d04c329f73509f629b9233330c9cedaaecece11076e4";
+
+    fn decode_fixture(bytes: &[u8]) -> Transaction {
+        Transaction::decode(bytes, &crate::network::Chain::ZcashMainnet).unwrap()
+    }
+
     fn real_tx() -> Transaction {
-        let hex = include_str!("../../tests/data/zcash_shielded_deposit_tx.hex");
-        let bytes = hex::decode(hex.trim()).unwrap();
-        Transaction::decode(&bytes, &crate::network::Chain::ZcashMainnet).unwrap()
+        decode_fixture(&hex::decode(V5_FIXTURE_HEX.trim()).unwrap())
+    }
+
+    fn large_v6_tx() -> Transaction {
+        decode_fixture(V6_FIXTURE)
     }
 
     fn to_array(hash: &blake2b_simd::Hash) -> [u8; 32] {
         hash.as_bytes().try_into().unwrap()
+    }
+
+    fn version_header_of(tx: &Transaction) -> u32 {
+        tx.inner_tx.version().header()
+    }
+
+    /// Everything a relayer precomputes off-chain for `tx`, paired with `vout`.
+    ///
+    /// Derives the version rather than assuming it, and substitutes the
+    /// protocol-defined empty-bundle digest wherever a bundle is absent — which is
+    /// exactly what the off-chain side has to do. Taking `vout` separately lets a
+    /// test tamper with the outputs while leaving the digests honest.
+    fn parts_for<'a>(tx: &Transaction, vout: &'a [TxOut]) -> CompactTxidParts<'a> {
+        let digests = tx.inner_tx.digest(TxIdDigester);
+        let transparent = digests
+            .transparent_digests
+            .as_ref()
+            .expect("fixture has a transparent bundle");
+        let version_header = version_header_of(tx);
+
+        CompactTxidParts {
+            version_header,
+            consensus_branch_id: u32::from(tx.inner_tx.consensus_branch_id()),
+            header_digest: to_array(&digests.header_digest),
+            prevouts_digest: to_array(&transparent.prevouts_digest),
+            sequence_digest: to_array(&transparent.sequence_digest),
+            sapling_digest: digests
+                .sapling_digest
+                .as_ref()
+                .map_or_else(empty_sapling_digest, to_array),
+            orchard_digest: digests
+                .orchard_digest
+                .as_ref()
+                .map_or_else(|| empty_orchard_digest(version_header), to_array),
+            // The Ironwood slot exists only in the v6 tree, and `compact_txid`
+            // rejects it being supplied for v5.
+            ironwood_digest: (version_header == V6_TX_VERSION_HEADER).then(|| {
+                digests
+                    .ironwood_digest
+                    .as_ref()
+                    .map_or_else(empty_ironwood_digest, to_array)
+            }),
+            vout,
+        }
     }
 
     /// Rebuild the fixture with one transparent input carrying `script_sig`.
@@ -313,26 +386,27 @@ mod tests {
     /// librustzcash: take the four (or five) level-1 digests plus the two
     /// transparent input digests straight out of `TxIdDigester`.
     fn compact_proof_json(tx: &Transaction) -> near_sdk::serde_json::Value {
-        let digests = tx.inner_tx.digest(TxIdDigester);
-        let transparent = digests.transparent_digests.as_ref().unwrap();
-        let b64 = |h: &blake2b_simd::Hash| Base64VecU8(h.as_bytes().to_vec());
+        let outputs = tx.output();
+        let parts = parts_for(tx, &outputs);
+        let b64 = |d: [u8; 32]| Base64VecU8(d.to_vec());
 
-        near_sdk::serde_json::json!({
-            "version_header": V5_TX_VERSION_HEADER,
-            "consensus_branch_id": u32::from(tx.inner_tx.consensus_branch_id()),
-            "header_digest": b64(&digests.header_digest),
-            "prevouts_digest": b64(&transparent.prevouts_digest),
-            "sequence_digest": b64(&transparent.sequence_digest),
-            "sapling_digest": digests
-                .sapling_digest
-                .as_ref()
-                .map_or_else(|| Base64VecU8(empty_sapling_digest().to_vec()), b64),
-            "orchard_digest": b64(digests.orchard_digest.as_ref().unwrap()),
-            "outputs": tx.output(),
-            // `ironwood_digest` deliberately omitted: a missing Option field must
-            // deserialize to None, which is what keeps `tx_bytes` optional on the
-            // public API without breaking existing callers.
-        })
+        let mut json = near_sdk::serde_json::json!({
+            "version_header": parts.version_header,
+            "consensus_branch_id": parts.consensus_branch_id,
+            "header_digest": b64(parts.header_digest),
+            "prevouts_digest": b64(parts.prevouts_digest),
+            "sequence_digest": b64(parts.sequence_digest),
+            "sapling_digest": b64(parts.sapling_digest),
+            "orchard_digest": b64(parts.orchard_digest),
+            "outputs": outputs,
+        });
+        // For v5 the field is left out entirely rather than sent as null: a missing
+        // `Option` must deserialize to `None`, and that is what lets the wire format
+        // stay compatible.
+        if let Some(ironwood) = parts.ironwood_digest {
+            json["ironwood_digest"] = near_sdk::serde_json::to_value(b64(ironwood)).unwrap();
+        }
+        json
     }
 
     #[test]
@@ -385,56 +459,136 @@ mod tests {
     #[test]
     fn compact_txid_matches_full_transaction() {
         let tx = real_tx();
-        let expected = tx.compute_txid();
+        assert_eq!(version_header_of(&tx), V5_TX_VERSION_HEADER);
 
-        // Everything the relayer would precompute off-chain from the raw tx.
-        let digests = tx.inner_tx.digest(TxIdDigester);
-        let transparent = digests.transparent_digests.as_ref().unwrap();
-        let parts_vout = tx.output();
+        let outputs = tx.output();
+        assert_eq!(compact_txid(&parts_for(&tx, &outputs)), tx.compute_txid());
+    }
 
-        let recomputed = compact_txid(&CompactTxidParts {
-            version_header: V5_TX_VERSION_HEADER,
-            consensus_branch_id: u32::from(tx.inner_tx.consensus_branch_id()),
-            header_digest: to_array(&digests.header_digest),
-            prevouts_digest: to_array(&transparent.prevouts_digest),
-            sequence_digest: to_array(&transparent.sequence_digest),
-            sapling_digest: digests
-                .sapling_digest
-                .as_ref()
-                .map_or_else(empty_sapling_digest, to_array),
-            orchard_digest: to_array(digests.orchard_digest.as_ref().unwrap()),
-            ironwood_digest: None,
-            vout: &parts_vout,
-        });
+    /// The v6 half of the tree, which the v5 vector cannot reach: a 5-node root
+    /// with the Ironwood slot populated, and — because this transaction carries no
+    /// Orchard bundle — the `empty_orchard_digest(V6)` substitution in the Orchard
+    /// slot. If either the node count, the Ironwood position, or the v6 empty-bundle
+    /// domains were wrong, this txid would not match.
+    #[test]
+    fn compact_txid_matches_large_v6_ironwood_transaction() {
+        let tx = large_v6_tx();
+        assert_eq!(version_header_of(&tx), V6_TX_VERSION_HEADER);
+        assert!(
+            tx.inner_tx.orchard_bundle().is_none() && tx.inner_tx.sapling_bundle().is_none(),
+            "fixture should exercise the empty Orchard and Sapling substitutions"
+        );
 
-        assert_eq!(recomputed, expected);
+        let outputs = tx.output();
+        let parts = parts_for(&tx, &outputs);
+        assert!(
+            parts.ironwood_digest.is_some(),
+            "fixture should carry a real Ironwood bundle digest"
+        );
+
+        let recomputed = compact_txid(&parts);
+        assert_eq!(recomputed, tx.compute_txid());
+        // Anchored independently of zcash_primitives — see V6_FIXTURE_TXID.
+        assert_eq!(recomputed.to_string(), V6_FIXTURE_TXID);
+    }
+
+    /// Differential test against the reference implementation for BOTH versions, so
+    /// that any future divergence of the hand-rolled tree from consensus is caught
+    /// even without a new fixture. `to_txid` substitutes its own empty-bundle
+    /// digests for the `None` slots, so agreement also pins `empty_sapling_digest`
+    /// and `empty_orchard_digest` to the protocol values.
+    #[test]
+    fn compact_txid_matches_reference_to_txid() {
+        for tx in [real_tx(), large_v6_tx()] {
+            let outputs = tx.output();
+            let reference = to_txid(
+                tx.inner_tx.version(),
+                tx.inner_tx.consensus_branch_id(),
+                &tx.inner_tx.digest(TxIdDigester),
+            );
+            assert_eq!(
+                compact_txid(&parts_for(&tx, &outputs)).as_byte_array(),
+                reference.as_ref(),
+                "divergence from reference to_txid for version {:?}",
+                tx.inner_tx.version()
+            );
+        }
+    }
+
+    /// `empty_ironwood_digest` is the one empty-bundle substitution no fixture
+    /// reaches (the v6 vector has a real Ironwood bundle), so pin it directly: ask
+    /// the reference for the txid of the same transaction with the Ironwood slot
+    /// empty, and check our helper reproduces it.
+    #[test]
+    fn empty_ironwood_digest_matches_reference_substitution() {
+        let tx = large_v6_tx();
+        let outputs = tx.output();
+
+        let mut digests = tx.inner_tx.digest(TxIdDigester);
+        digests.ironwood_digest = None;
+        let reference = to_txid(
+            tx.inner_tx.version(),
+            tx.inner_tx.consensus_branch_id(),
+            &digests,
+        );
+
+        let mut parts = parts_for(&tx, &outputs);
+        parts.ironwood_digest = Some(empty_ironwood_digest());
+
+        assert_eq!(compact_txid(&parts).as_byte_array(), reference.as_ref());
     }
 
     #[test]
     fn compact_txid_rejects_a_tampered_output() {
         let tx = real_tx();
-        let digests = tx.inner_tx.digest(TxIdDigester);
-        let transparent = digests.transparent_digests.as_ref().unwrap();
-
         let mut tampered = tx.output();
         tampered[0].value += bitcoin::Amount::from_sat(1);
 
-        let recomputed = compact_txid(&CompactTxidParts {
-            version_header: V5_TX_VERSION_HEADER,
-            consensus_branch_id: u32::from(tx.inner_tx.consensus_branch_id()),
-            header_digest: to_array(&digests.header_digest),
-            prevouts_digest: to_array(&transparent.prevouts_digest),
-            sequence_digest: to_array(&transparent.sequence_digest),
-            sapling_digest: digests
-                .sapling_digest
-                .as_ref()
-                .map_or_else(empty_sapling_digest, to_array),
-            orchard_digest: to_array(digests.orchard_digest.as_ref().unwrap()),
-            ironwood_digest: None,
-            vout: &tampered,
-        });
+        assert_ne!(compact_txid(&parts_for(&tx, &tampered)), tx.compute_txid());
+    }
 
-        assert_ne!(recomputed, tx.compute_txid());
+    /// The Ironwood digest must actually be bound into the v6 root — a 5th node that
+    /// was hashed in the wrong place, or dropped, would not show up in the
+    /// happy-path test above.
+    #[test]
+    fn compact_txid_binds_the_ironwood_digest() {
+        let tx = large_v6_tx();
+        let outputs = tx.output();
+
+        let mut parts = parts_for(&tx, &outputs);
+        parts.ironwood_digest = Some([0xaa; 32]);
+
+        assert_ne!(compact_txid(&parts), tx.compute_txid());
+    }
+
+    #[test]
+    fn compact_tx_proof_round_trips_through_json_for_v6() {
+        let tx = large_v6_tx();
+        let json = compact_proof_json(&tx);
+        assert!(
+            json.get("ironwood_digest").is_some(),
+            "the v6 wire form must carry ironwood_digest"
+        );
+
+        let proof: CompactTxProof = near_sdk::serde_json::from_value(json).unwrap();
+        let summary = proof.resolve();
+        assert_eq!(summary.tx_id, tx.compute_txid());
+        assert_eq!(summary.outputs, tx.output());
+    }
+
+    /// Supplying an Ironwood digest for a v5 transaction is rejected rather than
+    /// silently ignored, so a relayer cannot build a proof whose version and node
+    /// set disagree.
+    #[test]
+    #[should_panic(expected = "v5 transactions have no Ironwood bundle")]
+    fn compact_txid_rejects_an_ironwood_digest_on_v5() {
+        let tx = real_tx();
+        let outputs = tx.output();
+
+        let mut parts = parts_for(&tx, &outputs);
+        parts.ironwood_digest = Some([0xaa; 32]);
+
+        compact_txid(&parts);
     }
 
     /// The whole point: the compact commitment set is a constant ~200 bytes where
@@ -453,6 +607,35 @@ mod tests {
         assert!(
             full > 9_000,
             "fixture should be a large shielded tx: {full}"
+        );
+        assert!(compact < 250, "compact form should be tiny: {compact}");
+    }
+
+    /// The case that motivates the whole feature. This deposit cannot be proven with
+    /// full `tx_bytes` at all: base64-encoded the transaction is over 2 MB, past
+    /// NEAR's ~1.5 MiB per-transaction ceiling, so no `verify_deposit_v2` call
+    /// carrying it can even be submitted. The compact form is not an optimisation
+    /// here, it is the only way to credit the deposit trustlessly.
+    #[test]
+    fn large_v6_deposit_cannot_be_proven_with_full_tx_bytes() {
+        const NEAR_MAX_TX_SIZE: usize = 1_572_864;
+
+        let tx = large_v6_tx();
+        let raw = tx.encode().unwrap().len();
+        let base64_len = raw.div_ceil(3) * 4;
+
+        let outputs = tx.output();
+        let compact = 8
+            + 5 * 32
+            + outputs
+                .iter()
+                .map(|o| 8 + 1 + o.script_pubkey.len())
+                .sum::<usize>();
+
+        assert!(
+            base64_len > NEAR_MAX_TX_SIZE,
+            "fixture should be unsubmittable as tx_bytes: {base64_len} base64 bytes \
+             from {raw} raw vs NEAR's {NEAR_MAX_TX_SIZE} limit"
         );
         assert!(compact < 250, "compact form should be tiny: {compact}");
     }
