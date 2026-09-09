@@ -939,6 +939,50 @@ impl Context {
             .await
     }
 
+    /// `verify_deposit_v2` with hand-built arguments, for exercising argument
+    /// validation that the typed helpers cannot express.
+    pub async fn verify_deposit_v2_raw(
+        &self,
+        user: &str,
+        args: Value,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "verify_deposit_v2")
+            .args_json(args)
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    /// `verify_deposit_v2` with a ZIP-244 compact proof as `tx_bytes` — the same
+    /// parameter the full bytes go in, just a JSON object instead of a string.
+    pub async fn verify_deposit_v2_compact(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        tx_bytes: Value,
+        vout: u32,
+        proof: Value,
+    ) -> Result<ExecutionFinalResult> {
+        let deposit = if deposit_msg.safe_deposit.is_some() {
+            self.required_balance_for_safe_deposit().await.unwrap()
+        } else {
+            NearToken::from_yoctonear(0)
+        };
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "verify_deposit_v2")
+            .args_json(json!({
+                "deposit_msg": deposit_msg,
+                "tx_bytes": tx_bytes,
+                "vout": vout,
+                "proof": proof,
+            }))
+            .deposit(deposit)
+            .max_gas()
+            .transact()
+            .await
+    }
+
     pub async fn verify_withdraw_v2(
         &self,
         user: &str,

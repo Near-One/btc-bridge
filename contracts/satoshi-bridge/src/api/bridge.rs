@@ -19,7 +19,17 @@ impl Contract {
     /// # Arguments
     ///
     /// * `deposit_msg` - Information used to generate the deposit address path.
-    /// * `tx_bytes` - Successfully confirmed BTC transaction bytes.
+    /// * `tx_bytes` - The confirmed transaction, in either of two forms:
+    ///   * a base64 **string** — the full transaction bytes, as always;
+    ///   * a JSON **object** — Zcash only, a ZIP-244 compact commitment set (subtree
+    ///     digests plus the transparent outputs) that recomputes the same txid without the
+    ///     transaction itself. Equally trustless — the contract derives the outputs digest
+    ///     from the outputs it validates, so any discrepancy changes the txid and fails the
+    ///     inclusion check — but a fixed ~200 bytes (~480 as JSON) regardless of input
+    ///     count, and it skips parsing the Orchard bundle. Because that cost is fixed it
+    ///     only pays off above roughly 500 bytes of transaction: use it for shielded
+    ///     deposits and consolidations with several inputs, and keep sending the full bytes
+    ///     for an ordinary one- or two-input transparent deposit.
     /// * `vout` - The index of the output where the user sent BTC to the deposit address.
     /// * `proof` - Transaction inclusion proof with coinbase verification.
     ///
@@ -32,15 +42,16 @@ impl Contract {
     pub fn verify_deposit_v2(
         &mut self,
         deposit_msg: DepositMsg,
-        tx_bytes: Base64VecU8,
+        tx_bytes: DepositTxProof,
         vout: usize,
         proof: TxInclusionProof,
     ) -> Promise {
+        let tx = self.internal_resolve_deposit_tx(tx_bytes);
         let coinbase_proof = (proof.coinbase_tx_id, proof.coinbase_merkle_proof);
         if deposit_msg.safe_deposit.is_some() {
             self.internal_safe_verify_deposit_entry(
                 deposit_msg,
-                tx_bytes.0,
+                tx,
                 vout,
                 proof.tx_block_blockhash,
                 proof.tx_index,
@@ -50,7 +61,7 @@ impl Contract {
         } else {
             self.internal_verify_deposit_entry(
                 deposit_msg,
-                tx_bytes.0,
+                tx,
                 vout,
                 proof.tx_block_blockhash,
                 proof.tx_index,

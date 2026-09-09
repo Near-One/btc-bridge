@@ -1,7 +1,9 @@
 use crate::{
-    generate_utxo_storage_key, near, psbt_wrapper::PsbtWrapper, u64_dec_format, Contract, OutPoint,
+    generate_utxo_storage_key, near, psbt_wrapper::PsbtWrapper, u64_dec_format, CompactTxProof,
+    Contract, Deserialize, OutPoint, Serialize, TxOut,
 };
 use near_sdk::env;
+use near_sdk::json_types::Base64VecU8;
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone)]
@@ -106,6 +108,24 @@ pub struct PendingUTXOInfo {
     pub tx_id: String,
     pub utxo_storage_key: String,
     pub utxo: UTXO,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde", untagged)]
+pub enum DepositTxProof {
+    Full(Base64VecU8),
+    Compact(CompactTxProof),
+}
+
+/// The only two facts the deposit path needs about the funding transaction: its
+/// txid, which goes to the light client, and its transparent outputs, which
+/// carry the deposited amount and script.
+///
+/// Produced either by decoding full transaction bytes, or — on Zcash — from a
+/// ZIP-244 compact commitment set that recomputes the same txid without them.
+pub struct DepositTxSummary {
+    pub tx_id: bitcoin::Txid,
+    pub outputs: Vec<TxOut>,
 }
 
 pub fn out_point_to_utxo_storage_key(out_point: &OutPoint) -> String {
