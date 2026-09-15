@@ -1059,6 +1059,19 @@ impl Context {
             .json::<HashMap<String, UTXO>>()
     }
 
+    pub async fn list_utxos(
+        &self,
+        utxo_storage_keys: Vec<String>,
+    ) -> Result<HashMap<String, Option<UTXO>>> {
+        self.bridge_contract
+            .call("list_utxos")
+            .args_json(json!({ "utxo_storage_keys": utxo_storage_keys }))
+            .view()
+            .await
+            .unwrap()
+            .json::<HashMap<String, Option<UTXO>>>()
+    }
+
     pub async fn get_unavailable_utxos_paged(&self) -> Result<HashMap<String, UTXO>> {
         self.bridge_contract
             .call("get_unavailable_utxos_paged")

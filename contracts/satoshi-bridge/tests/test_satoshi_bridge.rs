@@ -439,6 +439,20 @@ async fn test_base() {
         &keys[0],
         proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
+    // The withdrawal change UTXOs must be stored without the raw transaction bytes.
+    let change_utxos = context.get_utxos_paged().await.unwrap();
+    assert_eq!(change_utxos.len(), 4);
+    for utxo in change_utxos.values() {
+        assert!(utxo.tx_bytes.is_empty());
+    }
+    let listed_utxos = context
+        .list_utxos(change_utxos.keys().cloned().collect())
+        .await
+        .unwrap();
+    assert_eq!(listed_utxos.len(), 4);
+    for utxo in listed_utxos.values() {
+        assert!(utxo.as_ref().unwrap().tx_bytes.is_empty());
+    }
     assert_eq!(context.ft_balance_of("relayer").await.unwrap().0, 5000);
     assert_eq!(
         context
@@ -2696,6 +2710,16 @@ async fn test_utxo_active_management2() {
         &active_utxo_management_rbf_tx_id,
         proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
+    // The consolidation change UTXO must be stored without the raw transaction bytes.
+    let consolidation_change_utxos = context
+        .get_utxos_paged()
+        .await
+        .unwrap()
+        .into_values()
+        .filter(|utxo| utxo.balance == output_amount * 2 - 15000)
+        .collect::<Vec<_>>();
+    assert_eq!(consolidation_change_utxos.len(), 1);
+    assert!(consolidation_change_utxos[0].tx_bytes.is_empty());
     assert_eq!(
         context
             .get_metadata()

@@ -237,7 +237,7 @@ impl Contract {
 
         let utxo = UTXO {
             path: env::current_account_id().to_string(),
-            tx_bytes,
+            tx_bytes: Vec::new(),
             vout,
             balance: transaction.output()[vout].value.to_sat(),
         };

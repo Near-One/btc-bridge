@@ -86,7 +86,7 @@ impl Contract {
                 if withdraw_change_script_pubkey == output.script_pubkey {
                     let utxo = UTXO {
                         path: env::current_account_id().to_string(),
-                        tx_bytes: tx_bytes.clone(),
+                        tx_bytes: Vec::new(),
                         vout: index,
                         balance: output.value.to_sat(),
                     };
@@ -175,7 +175,7 @@ impl Contract {
                 if withdraw_change_script_pubkey == output.script_pubkey {
                     let utxo = UTXO {
                         path: env::current_account_id().to_string(),
-                        tx_bytes: tx_bytes.clone(),
+                        tx_bytes: Vec::new(),
                         vout: index,
                         balance: output.value.to_sat(),
                     };
