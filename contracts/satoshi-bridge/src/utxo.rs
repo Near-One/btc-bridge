@@ -117,12 +117,8 @@ pub enum DepositTxProof {
     Compact(CompactTxProof),
 }
 
-/// The only two facts the deposit path needs about the funding transaction: its
-/// txid, which goes to the light client, and its transparent outputs, which
-/// carry the deposited amount and script.
-///
-/// Produced either by decoding full transaction bytes, or — on Zcash — from a
-/// ZIP-244 compact commitment set that recomputes the same txid without them.
+/// The only two facts the deposit path needs about the funding transaction,
+/// produced from either [`DepositTxProof`] variant.
 pub struct DepositTxSummary {
     pub tx_id: bitcoin::Txid,
     pub outputs: Vec<TxOut>,

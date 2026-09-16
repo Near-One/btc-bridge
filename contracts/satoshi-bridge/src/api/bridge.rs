@@ -19,17 +19,11 @@ impl Contract {
     /// # Arguments
     ///
     /// * `deposit_msg` - Information used to generate the deposit address path.
-    /// * `tx_bytes` - The confirmed transaction, in either of two forms:
-    ///   * a base64 **string** — the full transaction bytes, as always;
-    ///   * a JSON **object** — Zcash only, a ZIP-244 compact commitment set (subtree
-    ///     digests plus the transparent outputs) that recomputes the same txid without the
-    ///     transaction itself. Equally trustless — the contract derives the outputs digest
-    ///     from the outputs it validates, so any discrepancy changes the txid and fails the
-    ///     inclusion check — but a fixed ~200 bytes (~480 as JSON) regardless of input
-    ///     count, and it skips parsing the Orchard bundle. Because that cost is fixed it
-    ///     only pays off above roughly 500 bytes of transaction: use it for shielded
-    ///     deposits and consolidations with several inputs, and keep sending the full bytes
-    ///     for an ordinary one- or two-input transparent deposit.
+    /// * `tx_bytes` - The confirmed transaction, either as a base64 string of the full
+    ///   transaction bytes, or — Zcash only — as a JSON object holding a ZIP-244 compact
+    ///   commitment set ([`CompactTxProof`]), which recomputes the same txid in a fixed
+    ///   ~200 bytes. The compact form only pays off above roughly 500 bytes of
+    ///   transaction: use it for shielded deposits and multi-input consolidations.
     /// * `vout` - The index of the output where the user sent BTC to the deposit address.
     /// * `proof` - Transaction inclusion proof with coinbase verification.
     ///

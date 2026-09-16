@@ -5,12 +5,8 @@ use crate::DepositTxSummary;
 #[near(serializers = [json])]
 pub struct ChainSpecificData {}
 
-/// Bitcoin stand-in for the Zcash ZIP-244 compact deposit proof, so that the
-/// shared `DepositTxProof` compiles on both chains.
-///
-/// There is no Bitcoin equivalent: a Bitcoin txid is a flat `SHA256d` over the
-/// whole serialization, not a hash tree, so the inputs cannot be replaced by a
-/// digest. Bitcoin deposits must pass the full transaction bytes.
+/// Stand-in so that the shared `DepositTxProof` compiles on Bitcoin, where a
+/// txid is a flat `SHA256d` rather than a hash tree and has no compact form.
 #[near(serializers = [json])]
 pub struct CompactTxProof {}
 

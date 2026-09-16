@@ -939,8 +939,8 @@ impl Context {
             .await
     }
 
-    /// `verify_deposit_v2` with hand-built arguments, for exercising argument
-    /// validation that the typed helpers cannot express.
+    /// `verify_deposit_v2` with hand-built arguments, for cases the typed
+    /// helpers cannot express.
     pub async fn verify_deposit_v2_raw(
         &self,
         user: &str,
@@ -954,8 +954,7 @@ impl Context {
             .await
     }
 
-    /// `verify_deposit_v2` with a ZIP-244 compact proof as `tx_bytes` — the same
-    /// parameter the full bytes go in, just a JSON object instead of a string.
+    /// `verify_deposit_v2` with a compact proof as `tx_bytes`.
     pub async fn verify_deposit_v2_compact(
         &self,
         user: &str,

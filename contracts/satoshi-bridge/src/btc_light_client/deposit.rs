@@ -148,12 +148,6 @@ impl Contract {
         );
     }
 
-    /// Resolve the funding transaction from either accepted form: the full
-    /// transaction bytes, or a ZIP-244 compact commitment set (Zcash only) that
-    /// recomputes the same txid without them. Both produce the same
-    /// [`DepositTxSummary`], and both are equally trustless — the caller cannot
-    /// move the txid off the value the light client will be asked about without
-    /// breaking BLAKE2b-256.
     pub(crate) fn internal_resolve_deposit_tx(&self, tx_bytes: DepositTxProof) -> DepositTxSummary {
         match tx_bytes {
             DepositTxProof::Full(tx_bytes) => {

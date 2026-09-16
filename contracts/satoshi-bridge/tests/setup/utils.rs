@@ -255,11 +255,8 @@ pub fn proof_json(
     })
 }
 
-/// Derive the compact-object form of the `tx_bytes` argument of
-/// `verify_deposit_v2` from full Zcash
-/// transaction bytes — i.e. what a relayer does off-chain with librustzcash:
-/// pull the ZIP-244 subtree digests out of `TxIdDigester` and ship those instead
-/// of the transaction.
+/// Derive the compact form of `tx_bytes` from full transaction bytes, as a
+/// relayer would off-chain.
 #[cfg(feature = "zcash")]
 pub fn compact_proof_json(tx_bytes: &[u8]) -> near_sdk::serde_json::Value {
     use near_sdk::json_types::Base64VecU8;

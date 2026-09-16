@@ -32,8 +32,8 @@ fn real_tx_id(tx_bytes: &[u8]) -> String {
     .to_string()
 }
 
-/// Set up a Zcash sandbox and a deposit transaction with `inputs` transparent
-/// inputs, paying `amount` to alice's deposit address at output index 0.
+/// A Zcash sandbox plus a transaction with `inputs` transparent inputs, paying
+/// `amount` to alice's deposit address at output index 0.
 #[cfg(feature = "zcash")]
 async fn setup_deposit(
     worker: &near_workspaces::Worker<near_workspaces::network::Sandbox>,
@@ -57,14 +57,8 @@ async fn setup_deposit(
     (context, tx_bytes)
 }
 
-/// A compact proof credits exactly the same UTXO as the full transaction bytes
-/// would — same txid, same amount — while shipping a fraction of the bytes.
-///
-/// 40 inputs here, because the compact form is a *fixed* ~480 bytes of JSON: it
-/// only pays off above roughly 500 bytes of transaction, i.e. a handful of
-/// inputs or any shielded bundle. The generated inputs carry 25-byte scriptSigs
-/// rather than real ~107-byte signatures, so a production consolidation of this
-/// width would be ~4x larger still.
+/// 40 inputs, because the compact form is a fixed ~480 bytes of JSON and only
+/// pays off above roughly 500 bytes of transaction.
 #[tokio::test]
 #[cfg(feature = "zcash")]
 async fn test_compact_deposit_credits_same_utxo() {
@@ -94,8 +88,7 @@ async fn test_compact_deposit_credits_same_utxo() {
         )
     );
 
-    // The contract must have recomputed the genuine txid, so the UTXO key has to
-    // match what decoding the full transaction yields.
+    // The UTXO key must match what decoding the full transaction yields.
     let expected_key = format!("{}@0", real_tx_id(&tx_bytes));
     let utxos = context.get_utxos_paged().await.unwrap();
     assert!(
@@ -106,9 +99,9 @@ async fn test_compact_deposit_credits_same_utxo() {
     assert_eq!(utxos[&expected_key].balance, 500000);
 }
 
-/// `tx_bytes` accepts both wire forms under the one parameter name: a base64
-/// string (the pre-existing format, which must keep working verbatim) and a
-/// compact-proof object. Both must resolve to the same txid.
+/// `tx_bytes` accepts both wire forms under the one parameter name, and both
+/// resolve to the same txid. The base64 string is the pre-existing format and
+/// must keep working verbatim.
 #[tokio::test]
 #[cfg(feature = "zcash")]
 async fn test_tx_bytes_accepts_both_wire_forms() {
@@ -119,7 +112,7 @@ async fn test_tx_bytes_accepts_both_wire_forms() {
     let (context, tx_bytes) = setup_deposit(&worker, 500000, 1).await;
     let expected_key = format!("{}@0", real_tx_id(&tx_bytes));
 
-    // Legacy form: a JSON string. Untouched by the enum change.
+    // Legacy form: a JSON string.
     check!(
         print "verify_deposit_v2 (tx_bytes as base64 string)"
         context.verify_deposit_v2_raw(
@@ -138,9 +131,8 @@ async fn test_tx_bytes_accepts_both_wire_forms() {
         "string form should credit {expected_key}"
     );
 
-    // New form: a JSON object in the very same field. Re-depositing the same
-    // UTXO must now be rejected as already deposited — which only happens if the
-    // compact proof resolved to the identical txid.
+    // New form: a JSON object in the same field. Re-depositing the same UTXO is
+    // rejected only if the compact proof resolved to the identical txid.
     check!(
         context.verify_deposit_v2_compact(
             "relayer",
@@ -153,8 +145,8 @@ async fn test_tx_bytes_accepts_both_wire_forms() {
     );
 }
 
-/// A malformed object in `tx_bytes` is rejected at deserialization, not silently
-/// treated as the other variant.
+/// A malformed object is rejected at deserialization, not silently treated as
+/// the other variant.
 #[tokio::test]
 #[cfg(feature = "zcash")]
 async fn test_tx_bytes_rejects_malformed_compact_proof() {
@@ -181,10 +173,9 @@ async fn test_tx_bytes_rejects_malformed_compact_proof() {
     );
 }
 
-/// Tampering with a supplied digest changes the recomputed txid, so a forged
-/// proof cannot masquerade as the genuine transaction. (The mock light client
+/// Tampering with a digest changes the recomputed txid. The mock light client
 /// confirms any txid, so this asserts on the txid itself; in production the
-/// inclusion check is what rejects the unknown txid.)
+/// inclusion check is what rejects it.
 #[tokio::test]
 #[cfg(feature = "zcash")]
 async fn test_compact_deposit_binds_digests_into_txid() {

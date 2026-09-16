@@ -1,44 +1,14 @@
-//! Recompute a ZIP-244 txid from a *compact* commitment set instead of from the
+//! Recompute a ZIP-244 txid from a compact commitment set instead of from the
 //! full transaction bytes.
 //!
-//! `verify_deposit_v2` only needs two things out of `tx_bytes`: the transaction's
-//! txid (to hand to the light client) and transparent output `vout` (to check the
-//! amount and the deposit script). Everything else — signed transparent inputs,
-//! the Sapling bundle, the Orchard bundle and its proof — is parsed only so that
-//! `compute_txid()` can hash it back together. On Zcash that is pure waste: a
-//! shielded-to-transparent deposit carries a ~9 KB Orchard bundle, and a large
-//! consolidation carries ~148 bytes of signed input per UTXO.
+//! The deposit path needs only the txid and the transparent outputs. ZIP 244
+//! makes the txid a hash tree, so the parts the bridge never inspects (inputs,
+//! Sapling, Orchard, Ironwood) can be supplied as their 32-byte subtree digests:
+//! a fixed ~200 bytes whatever the transaction size.
 //!
-//! ZIP 244 makes the txid a *hash tree*, so those parts can be replaced by their
-//! 32-byte subtree digests:
-//!
-//! ```text
-//! txid  = BLAKE2b-256("ZcashTxHash_" || branch_id)
-//!         ├── header_digest                                   (caller-supplied)
-//!         ├── transparent_digest = BLAKE2b("ZTxIdTranspaHash")
-//!         │   ├── prevouts_digest                             (caller-supplied)
-//!         │   ├── sequence_digest                             (caller-supplied)
-//!         │   └── outputs_digest   ← recomputed here from `vout`
-//!         ├── sapling_digest                                  (caller-supplied)
-//!         ├── orchard_digest                                  (caller-supplied)
-//!         └── ironwood_digest      (v6 only)                  (caller-supplied)
-//! ```
-//!
-//! Security rests on the same argument as passing the full bytes: the contract
-//! derives `outputs_digest` itself from the outputs it validates, so a caller who
-//! lies about *any* supplied digest — or omits/alters an output — gets a different
-//! txid, and the light-client inclusion check then fails. Forging a deposit would
-//! require a BLAKE2b-256 collision.
-//!
-//! Note that ZIP 244 txids do not commit to `script_sig` at all (signatures live
-//! in the separate auth digest), which is why the inputs can collapse to
-//! `prevouts_digest` + `sequence_digest`. That also means a relayer sending full
-//! `tx_bytes` can blank every `script_sig` and still produce the same txid — a
-//! cheaper win than this module for moderately sized transparent transactions.
-//!
-//! The commitment set is a *fixed* ~200 bytes (~480 as JSON) whatever the input
-//! count, so it is a loss for a one-input transparent deposit and a large win
-//! for anything shielded or wide. See `tests/test_compact_deposit.rs`.
+//! As trustless as passing the full bytes: the contract derives the outputs
+//! digest itself from the outputs it validates, so a lie about any supplied
+//! digest or output changes the txid and fails the inclusion check.
 
 use bitcoin::hashes::Hash as _;
 use bitcoin::{TxOut, Txid};
@@ -54,15 +24,12 @@ use zcash_transparent::bundle::TxOut as ZcashTxOut;
 
 use crate::DepositTxSummary;
 
-/// TxId tree root personalization prefix (ZIP 244).
 const ZCASH_TX_PERSONALIZATION_PREFIX: &[u8; 12] = b"ZcashTxHash_";
 const ZCASH_TRANSPARENT_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdTranspaHash";
 const ZCASH_OUTPUTS_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdOutputsHash";
 const ZCASH_SAPLING_HASH_PERSONALIZATION: &[u8; 16] = b"ZTxIdSaplingHash";
 
-/// v5 header word (`overwintered` bit | version 5).
 pub const V5_TX_VERSION_HEADER: u32 = 0x8000_0005;
-/// v6 header word (`overwintered` bit | version 6).
 pub const V6_TX_VERSION_HEADER: u32 = 0x8000_0006;
 
 fn hash32(personal: &[u8; 16], parts: &[&[u8]]) -> [u8; 32] {
@@ -76,36 +43,21 @@ fn hash32(personal: &[u8; 16], parts: &[&[u8]]) -> [u8; 32] {
         .expect("BLAKE2b-256 produces 32 bytes")
 }
 
-/// The subtree digests that stand in for the parts of the transaction the bridge
-/// does not need to inspect. All values are the raw 32-byte ZIP-244 node digests;
-/// for an absent bundle that is the protocol-defined *empty bundle* digest, which
-/// the caller computes off-chain (see [`empty_sapling_digest`]).
+/// Raw 32-byte ZIP-244 subtree digests standing in for the parts of the
+/// transaction the bridge does not inspect, plus the complete output list.
 pub struct CompactTxidParts<'a> {
-    /// `0x80000005` or `0x80000006` — selects the txid tree arity (v6 adds the
-    /// Ironwood slot). Its value is also committed to by `header_digest`.
     pub version_header: u32,
-    /// Consensus branch ID, which personalizes the tree root.
     pub consensus_branch_id: u32,
-    /// ZIP 244 T.1: version, version group id, branch id, lock time, expiry height.
     pub header_digest: [u8; 32],
-    /// ZIP 244 T.2a: every input's `(txid, index)`.
     pub prevouts_digest: [u8; 32],
-    /// ZIP 244 T.2b: every input's `nSequence`.
     pub sequence_digest: [u8; 32],
-    /// ZIP 244 T.3.
     pub sapling_digest: [u8; 32],
-    /// ZIP 244 T.4.
     pub orchard_digest: [u8; 32],
-    /// ZIP 229 Ironwood slot; required for (and only used by) v6.
     pub ironwood_digest: Option<[u8; 32]>,
-    /// The complete list of transparent outputs, in order. Required in full: the
-    /// digest is taken over all of them, so a missing or reordered output changes
-    /// the txid.
     pub vout: &'a [TxOut],
 }
 
-/// ZIP 244 T.2c — the digest of all transparent outputs, in Zcash's canonical
-/// `TxOut` encoding (`value` as LE u64, then CompactSize-prefixed script).
+/// ZIP 244 T.2c — the digest of all transparent outputs.
 pub fn outputs_digest(vout: &[TxOut]) -> [u8; 32] {
     let mut buf = Vec::new();
     for out in vout {
@@ -119,8 +71,7 @@ pub fn outputs_digest(vout: &[TxOut]) -> [u8; 32] {
     hash32(ZCASH_OUTPUTS_HASH_PERSONALIZATION, &[&buf])
 }
 
-/// The ZIP 244 T.3 digest of an absent Sapling bundle. Most deposits have no
-/// Sapling bundle, so this is what `sapling_digest` normally carries.
+/// ZIP 244 T.3 digest of an absent Sapling bundle.
 pub fn empty_sapling_digest() -> [u8; 32] {
     hash32(ZCASH_SAPLING_HASH_PERSONALIZATION, &[])
 }
@@ -133,14 +84,13 @@ fn empty_bundle_digest(value_pool: ValuePool, tx_version: OrchardTxVersion) -> [
         .expect("BLAKE2b-256 produces 32 bytes")
 }
 
-/// The ZIP 244 T.4 digest of an absent Orchard bundle, for a v5 or v6
-/// transaction (the personalization differs between the two).
+/// ZIP 244 T.4 digest of an absent Orchard bundle; personalization differs
+/// between v5 and v6.
 pub fn empty_orchard_digest(version_header: u32) -> [u8; 32] {
     empty_bundle_digest(ValuePool::Orchard, orchard_tx_version(version_header))
 }
 
-/// The ZIP 229 digest of an absent Ironwood bundle. Only v6 transactions carry
-/// this slot.
+/// ZIP 229 digest of an absent Ironwood bundle (v6 only).
 pub fn empty_ironwood_digest() -> [u8; 32] {
     empty_bundle_digest(ValuePool::Ironwood, OrchardTxVersion::V6)
 }
@@ -153,7 +103,6 @@ fn orchard_tx_version(version_header: u32) -> OrchardTxVersion {
     }
 }
 
-/// Recompute the transaction's ZIP-244 txid from `parts`.
 pub fn compact_txid(parts: &CompactTxidParts) -> Txid {
     require!(
         !parts.vout.is_empty(),
@@ -198,40 +147,30 @@ pub fn compact_txid(parts: &CompactTxidParts) -> Txid {
         nodes.push(digest);
     }
 
-    // ZIP 244 txids are displayed byte-reversed, which is what `Txid` does.
     Txid::from_byte_array(hash32(&personal, &nodes))
 }
 
-/// A ZIP-244 compact commitment set: everything needed to recompute a
-/// transaction's txid and inspect its transparent outputs, without shipping the
-/// transaction itself. Passed to `verify_deposit_v2` as the `tx_bytes` argument
-/// — a JSON object where the full bytes would be a base64 string (see
+/// The `tx_bytes` argument of `verify_deposit_v2` in its compact form: a JSON
+/// object where the full bytes would be a base64 string (see
 /// [`crate::DepositTxProof`]).
 ///
-/// Every digest is the raw 32-byte ZIP-244 node digest as produced by
+/// Digests are raw 32-byte ZIP-244 node digests as produced by
 /// `zcash_primitives::transaction::txid::TxIdDigester` — **not** byte-reversed
-/// the way txids are displayed. Where a bundle is absent, pass the
-/// protocol-defined empty-bundle digest for that pool.
+/// the way txids are displayed; where a bundle is absent, pass the
+/// protocol-defined empty-bundle digest for that pool. `outputs` must be the
+/// complete list, in order.
 #[near(serializers = [json])]
 pub struct CompactTxProof {
     /// `0x80000005` (v5) or `0x80000006` (v6).
     pub version_header: u32,
-    /// Consensus branch ID of the epoch the transaction was mined in.
     pub consensus_branch_id: u32,
-    /// ZIP 244 T.1 — header digest.
     pub header_digest: Base64VecU8,
-    /// ZIP 244 T.2a — digest of every input's `(txid, index)`.
     pub prevouts_digest: Base64VecU8,
-    /// ZIP 244 T.2b — digest of every input's `nSequence`.
     pub sequence_digest: Base64VecU8,
-    /// ZIP 244 T.3 — Sapling bundle digest.
     pub sapling_digest: Base64VecU8,
-    /// ZIP 244 T.4 — Orchard bundle digest.
     pub orchard_digest: Base64VecU8,
-    /// ZIP 229 Ironwood bundle digest. Required for v6, rejected for v5.
+    /// Required for v6, rejected for v5.
     pub ironwood_digest: Option<Base64VecU8>,
-    /// The complete transparent output list, in order. Required in full, because
-    /// the txid commits to a digest over all of them.
     pub outputs: Vec<TxOut>,
 }
 
@@ -241,9 +180,6 @@ fn digest32(bytes: &Base64VecU8, field: &str) -> [u8; 32] {
 }
 
 impl CompactTxProof {
-    /// Recompute the txid this proof commits to. Any mismatch between the
-    /// supplied digests/outputs and the real transaction yields a different
-    /// txid, which the light-client inclusion check then rejects.
     pub fn resolve(self) -> DepositTxSummary {
         let tx_id = compact_txid(&CompactTxidParts {
             version_header: self.version_header,
@@ -273,29 +209,18 @@ mod tests {
     use crate::zcash_utils::transaction::Transaction;
     use zcash_primitives::transaction::txid::{to_txid, TxIdDigester};
 
-    /// A real mainnet **v5** shielded-to-transparent transaction: zero transparent
-    /// inputs, one transparent output, and a ~9 KB Orchard bundle. Same vector as
-    /// `btc_pending_info::tests::test_zcash_tx_bytes`, which is why this one is
-    /// stored as hex.
+    /// Real mainnet **v5** shielded-to-transparent tx: no transparent inputs, one
+    /// output, ~9 KB Orchard bundle.
     const V5_FIXTURE_HEX: &str = include_str!("../../tests/data/zcash_shielded_deposit_tx.hex");
 
-    /// A real **v6** (NU6.3) shielded-to-transparent transaction: zero transparent
-    /// inputs, one transparent output, no Sapling bundle, *no Orchard bundle*, and a
-    /// 1.67 MB Ironwood bundle. This is the fixture that exercises the v6 half of the
-    /// txid tree — the 5-node root, the Ironwood slot, and the empty-Orchard
-    /// substitution — none of which the v5 vector can reach.
-    ///
-    /// Stored as raw consensus bytes rather than hex: at this size the hex encoding
-    /// would double it to 3.3 MB in the repository for no benefit.
+    /// Real **v6** (NU6.3) shielded-to-transparent tx: no Sapling and no Orchard
+    /// bundle, 1.67 MB Ironwood bundle — the only fixture reaching the v6 half of
+    /// the tree. Raw bytes rather than hex, which would double it in the repo.
     const V6_FIXTURE: &[u8] =
         include_bytes!("../../tests/data/zcash_shielded_deposit_tx_large.bin");
 
-    /// The v6 fixture's txid, pinned as a literal.
-    ///
-    /// Every other test here compares our hand-rolled tree against
-    /// `zcash_primitives`, so a behaviour change in that crate would move both
-    /// sides together and go unnoticed. This constant is the one anchor that does
-    /// not, and it also catches the fixture file being corrupted or swapped.
+    /// The one assertion here not derived from `zcash_primitives`, so a behaviour
+    /// change there cannot move both sides together unnoticed.
     const V6_FIXTURE_TXID: &str =
         "9de2c62bd6dd6c408fb4d04c329f73509f629b9233330c9cedaaecece11076e4";
 
@@ -319,12 +244,8 @@ mod tests {
         tx.inner_tx.version().header()
     }
 
-    /// Everything a relayer precomputes off-chain for `tx`, paired with `vout`.
-    ///
-    /// Derives the version rather than assuming it, and substitutes the
-    /// protocol-defined empty-bundle digest wherever a bundle is absent — which is
-    /// exactly what the off-chain side has to do. Taking `vout` separately lets a
-    /// test tamper with the outputs while leaving the digests honest.
+    /// Everything a relayer precomputes off-chain for `tx`. `vout` is taken
+    /// separately so a test can tamper with the outputs, leaving the digests honest.
     fn parts_for<'a>(tx: &Transaction, vout: &'a [TxOut]) -> CompactTxidParts<'a> {
         let digests = tx.inner_tx.digest(TxIdDigester);
         let transparent = digests
@@ -347,8 +268,6 @@ mod tests {
                 .orchard_digest
                 .as_ref()
                 .map_or_else(|| empty_orchard_digest(version_header), to_array),
-            // The Ironwood slot exists only in the v6 tree, and `compact_txid`
-            // rejects it being supplied for v5.
             ironwood_digest: (version_header == V6_TX_VERSION_HEADER).then(|| {
                 digests
                     .ironwood_digest
@@ -359,9 +278,8 @@ mod tests {
         }
     }
 
-    /// Rebuild the fixture with one transparent input carrying `script_sig`.
-    /// The fixture has `tx_in_count == 0` at byte 20, right after the five
-    /// header words, so the input list can be spliced in there.
+    /// Splice one transparent input carrying `script_sig` into the fixture, at
+    /// byte 20, where `tx_in_count == 0` sits right after the five header words.
     fn fixture_with_one_input(script_sig: &[u8]) -> Vec<u8> {
         let hex = include_str!("../../tests/data/zcash_shielded_deposit_tx.hex");
         let bytes = hex::decode(hex.trim()).unwrap();
@@ -381,10 +299,7 @@ mod tests {
         out
     }
 
-    /// Build the JSON a relayer would send as `tx_bytes`, from the raw
-    /// transaction. This mirrors what the off-chain side must do with
-    /// librustzcash: take the four (or five) level-1 digests plus the two
-    /// transparent input digests straight out of `TxIdDigester`.
+    /// Build the JSON a relayer would send as `tx_bytes`.
     fn compact_proof_json(tx: &Transaction) -> near_sdk::serde_json::Value {
         let outputs = tx.output();
         let parts = parts_for(tx, &outputs);
@@ -400,9 +315,7 @@ mod tests {
             "orchard_digest": b64(parts.orchard_digest),
             "outputs": outputs,
         });
-        // For v5 the field is left out entirely rather than sent as null: a missing
-        // `Option` must deserialize to `None`, and that is what lets the wire format
-        // stay compatible.
+        // v5 leaves the field out entirely rather than sending null.
         if let Some(ironwood) = parts.ironwood_digest {
             json["ironwood_digest"] = near_sdk::serde_json::to_value(b64(ironwood)).unwrap();
         }
@@ -432,10 +345,8 @@ mod tests {
         proof.resolve();
     }
 
-    /// ZIP 244 moved all signature data out of the txid tree, so blanking every
-    /// `script_sig` leaves the txid untouched. That makes a signature-stripped
-    /// transaction an equally valid deposit proof today, with no contract change —
-    /// worth ~110 bytes per P2PKH input.
+    /// ZIP 244 moved signature data out of the txid tree, so a signature-stripped
+    /// transaction is an equally valid deposit proof with no contract change.
     #[test]
     fn txid_ignores_script_sig() {
         let mut script_sig = vec![0x47]; // push 71-byte DER signature
@@ -465,11 +376,8 @@ mod tests {
         assert_eq!(compact_txid(&parts_for(&tx, &outputs)), tx.compute_txid());
     }
 
-    /// The v6 half of the tree, which the v5 vector cannot reach: a 5-node root
-    /// with the Ironwood slot populated, and — because this transaction carries no
-    /// Orchard bundle — the `empty_orchard_digest(V6)` substitution in the Orchard
-    /// slot. If either the node count, the Ironwood position, or the v6 empty-bundle
-    /// domains were wrong, this txid would not match.
+    /// The 5-node v6 root: Ironwood slot populated, Orchard slot filled by the
+    /// v6 empty-bundle substitution.
     #[test]
     fn compact_txid_matches_large_v6_ironwood_transaction() {
         let tx = large_v6_tx();
@@ -488,15 +396,12 @@ mod tests {
 
         let recomputed = compact_txid(&parts);
         assert_eq!(recomputed, tx.compute_txid());
-        // Anchored independently of zcash_primitives — see V6_FIXTURE_TXID.
         assert_eq!(recomputed.to_string(), V6_FIXTURE_TXID);
     }
 
-    /// Differential test against the reference implementation for BOTH versions, so
-    /// that any future divergence of the hand-rolled tree from consensus is caught
-    /// even without a new fixture. `to_txid` substitutes its own empty-bundle
-    /// digests for the `None` slots, so agreement also pins `empty_sapling_digest`
-    /// and `empty_orchard_digest` to the protocol values.
+    /// Differential test against the reference implementation for both versions.
+    /// `to_txid` supplies its own empty-bundle digests for the `None` slots, so
+    /// agreement also pins `empty_sapling_digest` and `empty_orchard_digest`.
     #[test]
     fn compact_txid_matches_reference_to_txid() {
         for tx in [real_tx(), large_v6_tx()] {
@@ -515,10 +420,8 @@ mod tests {
         }
     }
 
-    /// `empty_ironwood_digest` is the one empty-bundle substitution no fixture
-    /// reaches (the v6 vector has a real Ironwood bundle), so pin it directly: ask
-    /// the reference for the txid of the same transaction with the Ironwood slot
-    /// empty, and check our helper reproduces it.
+    /// The one empty-bundle substitution no fixture reaches, so pin it against the
+    /// reference directly.
     #[test]
     fn empty_ironwood_digest_matches_reference_substitution() {
         let tx = large_v6_tx();
@@ -547,9 +450,6 @@ mod tests {
         assert_ne!(compact_txid(&parts_for(&tx, &tampered)), tx.compute_txid());
     }
 
-    /// The Ironwood digest must actually be bound into the v6 root — a 5th node that
-    /// was hashed in the wrong place, or dropped, would not show up in the
-    /// happy-path test above.
     #[test]
     fn compact_txid_binds_the_ironwood_digest() {
         let tx = large_v6_tx();
@@ -576,9 +476,6 @@ mod tests {
         assert_eq!(summary.outputs, tx.output());
     }
 
-    /// Supplying an Ironwood digest for a v5 transaction is rejected rather than
-    /// silently ignored, so a relayer cannot build a proof whose version and node
-    /// set disagree.
     #[test]
     #[should_panic(expected = "v5 transactions have no Ironwood bundle")]
     fn compact_txid_rejects_an_ironwood_digest_on_v5() {
@@ -591,13 +488,11 @@ mod tests {
         compact_txid(&parts);
     }
 
-    /// The whole point: the compact commitment set is a constant ~200 bytes where
-    /// the raw transaction is kilobytes.
     #[test]
     fn compact_proof_is_far_smaller_than_tx_bytes() {
         let tx = real_tx();
         let full = tx.encode().unwrap().len();
-        // 4 + 4 header words, 5 * 32 digest bytes, plus the serialized outputs.
+        // Two header words, five digests, plus the serialized outputs.
         let compact = 8
             + 5 * 32
             + tx.output()
@@ -611,11 +506,9 @@ mod tests {
         assert!(compact < 250, "compact form should be tiny: {compact}");
     }
 
-    /// The case that motivates the whole feature. This deposit cannot be proven with
-    /// full `tx_bytes` at all: base64-encoded the transaction is over 2 MB, past
-    /// NEAR's ~1.5 MiB per-transaction ceiling, so no `verify_deposit_v2` call
-    /// carrying it can even be submitted. The compact form is not an optimisation
-    /// here, it is the only way to credit the deposit trustlessly.
+    /// The case that motivates the feature: base64-encoded this transaction is
+    /// past NEAR's per-transaction ceiling, so the compact form is not an
+    /// optimisation but the only way to credit the deposit.
     #[test]
     fn large_v6_deposit_cannot_be_proven_with_full_tx_bytes() {
         const NEAR_MAX_TX_SIZE: usize = 1_572_864;
