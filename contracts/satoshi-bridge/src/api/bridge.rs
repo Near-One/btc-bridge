@@ -321,7 +321,10 @@ impl Contract {
     ///   it must match the provided `refund_address`.
     /// * `refund_address` - BTC address to send the refund to. If `deposit_msg.refund_address`
     ///   is `None`, this value is used directly.
-    /// * `tx_bytes` - BTC transaction bytes proving the deposit.
+    /// * `tx_bytes` - The deposit transaction, in either form accepted by
+    ///   `verify_deposit_v2`: a base64 string of the full bytes, or — Zcash only — a
+    ///   compact ZIP-244 commitment set. A deposit that only a compact proof can prove
+    ///   must stay refundable, otherwise it could be credited but never returned.
     /// * `vout` - Output index of the deposit in the transaction.
     /// * `proof` - Transaction inclusion proof for Light Client verification, bundling:
     ///   `tx_block_blockhash` (block hash containing the transaction), `tx_index`
@@ -337,7 +340,7 @@ impl Contract {
         &mut self,
         deposit_msg: DepositMsg,
         refund_address: String,
-        tx_bytes: Base64VecU8,
+        tx_bytes: DepositTxProof,
         vout: usize,
         proof: TxInclusionProof,
         gas_fee: Option<U128>,

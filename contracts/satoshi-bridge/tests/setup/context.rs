@@ -691,6 +691,29 @@ impl Context {
             .await
     }
 
+    /// `complete_failed_deposit_mint` with a compact proof as `tx_bytes`.
+    pub async fn complete_failed_deposit_mint_compact(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        tx_bytes: Value,
+        vout: u32,
+        protocol_fee: u128,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "complete_failed_deposit_mint")
+            .args_json(json!({
+                "deposit_msg": deposit_msg,
+                "tx_bytes": tx_bytes,
+                "vout": vout,
+                "protocol_fee": U128(protocol_fee),
+            }))
+            .max_gas()
+            .deposit(NearToken::from_yoctonear(1))
+            .transact()
+            .await
+    }
+
     pub async fn dao_verify_deposit(
         &self,
         user: &str,
@@ -1443,6 +1466,43 @@ impl Context {
                 "deposit_msg": deposit_msg,
                 "refund_address": refund_address,
                 "tx_bytes": Base64VecU8(tx_bytes),
+                "vout": vout,
+                "proof": {
+                    "tx_block_blockhash": tx_block_blockhash,
+                    "tx_index": tx_index,
+                    "merkle_proof": merkle_proof,
+                    "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
+                    "coinbase_merkle_proof": Vec::<String>::new(),
+                },
+                "gas_fee": gas_fee,
+            }))
+            .deposit(self.required_balance_for_request_refund().await?)
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    /// `request_refund` with a compact proof as `tx_bytes`, where the typed helper
+    /// would send the full bytes.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn request_refund_compact(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        refund_address: &str,
+        tx_bytes: Value,
+        vout: u32,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+        gas_fee: Option<U128>,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "request_refund")
+            .args_json(json!({
+                "deposit_msg": deposit_msg,
+                "refund_address": refund_address,
+                "tx_bytes": tx_bytes,
                 "vout": vout,
                 "proof": {
                     "tx_block_blockhash": tx_block_blockhash,

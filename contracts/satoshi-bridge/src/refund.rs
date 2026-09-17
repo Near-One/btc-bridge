@@ -1,29 +1,29 @@
-use bitcoin::{Amount, OutPoint, TxOut};
+use bitcoin::{Amount, OutPoint, TxOut, Txid};
 use near_sdk::json_types::Base64VecU8;
 
 use crate::{
     btc_light_client::TxInclusionInfo, env, near, require, serde_json, AccessControllable,
-    AccountId, BTCPendingInfo, Contract, ContractExt, DepositMsg, Event, Gas, OriginalState,
-    PendingInfoStage, PendingInfoState, Promise, Role, TxInclusionProof, MAX_BOOL_RESULT,
-    MAX_INCLUSION_INFO_RESULT, UTXO, VUTXO,
+    AccountId, BTCPendingInfo, Contract, ContractExt, DepositMsg, DepositTxProof, Event, Gas,
+    OriginalState, PendingInfoStage, PendingInfoState, Promise, Role, TxInclusionProof,
+    MAX_BOOL_RESULT, MAX_INCLUSION_INFO_RESULT, UTXO, VUTXO,
 };
 
 use crate::deposit_msg::get_deposit_path;
 use crate::psbt_wrapper::PsbtWrapper;
-use crate::utils::{generate_utxo_storage_key, nano_to_sec};
+use crate::utils::{generate_utxo_storage_key, nano_to_sec, UTXO_STORAGE_KEY_TAG};
 
 pub(crate) const GAS_FOR_REQUEST_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
 pub(crate) const GAS_FOR_VERIFY_REFUND_CALLBACK: Gas = Gas::from_tgas(20);
 
-/// Upper bound on the deposit `tx_bytes` accepted by `request_refund`.
+/// Upper bound on the deposit `tx_bytes` accepted by `request_refund`, in its full
+/// (base64) form. A compact proof carries no transaction bytes, so the cap does not
+/// apply to it — nor does it need to, being a fixed few hundred bytes.
 ///
-/// The RefundRequest stores `tx_bytes` verbatim (no truncation — `execute_refund`
-/// later decodes them to rebuild the refund tx), so storage grows ~1:1 with tx size:
-/// at this cap a request stores ~200 KB ≈ 2 NEAR, which `required_balance_for_request_refund`
-/// is sized to cover. The cap also sits safely below the hard gas ceiling: decoding +
-/// borsh-storing the tx happens in `request_refund_callback` (only 20 Tgas), which runs
-/// out of gas around ~250 KB regardless of the attached deposit. 200 KB is ~1350 signed
-/// P2PKH inputs — far above any real deposit (1-2 inputs), incl. large consolidations.
+/// This bounds work, not storage: the RefundRequest no longer persists `tx_bytes`
+/// (see `refund_execution_inputs`), and the decode now happens in `request_refund`
+/// itself rather than in the 20 Tgas callback, which only ever sees the resolved
+/// summary. The cap simply keeps a single decode well inside one function call's gas.
+/// 200 KB is ~1350 signed P2PKH inputs, far above any real deposit (1-2 inputs).
 pub(crate) const MAX_REQUEST_REFUND_TX_BYTES: usize = 200_000;
 
 /// Stored refund request. `deposit_msg` is kept as JSON string
@@ -139,7 +139,7 @@ impl Contract {
         &self,
         deposit_msg: DepositMsg,
         refund_address: String,
-        tx_bytes: Base64VecU8,
+        tx_bytes: DepositTxProof,
         vout: usize,
         proof: TxInclusionProof,
         gas_fee: Option<u128>,
@@ -148,10 +148,12 @@ impl Contract {
             env::attached_deposit() >= self.required_balance_for_request_refund(),
             "Insufficient deposit for storage"
         );
-        require!(
-            tx_bytes.0.len() <= MAX_REQUEST_REFUND_TX_BYTES,
-            "tx_bytes too large for refund request"
-        );
+        if let DepositTxProof::Full(tx_bytes) = &tx_bytes {
+            require!(
+                tx_bytes.0.len() <= MAX_REQUEST_REFUND_TX_BYTES,
+                "tx_bytes too large for refund request"
+            );
+        }
         if let Some(msg_refund_address) = &deposit_msg.refund_address {
             require!(
                 msg_refund_address == &refund_address,
@@ -159,16 +161,19 @@ impl Contract {
             );
         }
 
-        let transaction =
-            crate::WrappedTransaction::decode(&tx_bytes.0, &self.internal_config().chain)
-                .expect("Deserialization tx_bytes failed");
-        let tx_id = transaction.compute_txid().to_string();
+        let tx = self.internal_resolve_deposit_tx(tx_bytes);
+        let tx_id = tx.tx_id.to_string();
+        let deposit_output = tx
+            .outputs
+            .into_iter()
+            .nth(vout)
+            .unwrap_or_else(|| env::panic_str("vout is out of range"));
 
         // Refunds skip the block-amount ring; max-tier depth is required unconditionally.
         let config = self.internal_config();
         self.verify_transaction_inclusion_with_heights_promise(
             config.btc_light_client_account_id.clone(),
-            tx_id,
+            tx_id.clone(),
             proof.tx_block_blockhash,
             proof.tx_index,
             proof.merkle_proof,
@@ -177,7 +182,14 @@ impl Contract {
         .then(
             Self::ext(env::current_account_id())
                 .with_static_gas(GAS_FOR_REQUEST_REFUND_CALLBACK)
-                .request_refund_callback(deposit_msg, refund_address, tx_bytes, vout, gas_fee),
+                .request_refund_callback(
+                    deposit_msg,
+                    refund_address,
+                    tx_id,
+                    deposit_output,
+                    vout,
+                    gas_fee,
+                ),
         )
     }
 
@@ -258,22 +270,53 @@ impl Contract {
         refund_request
     }
 
-    /// Parse the original deposit transaction and compute the refund economics.
+    /// Recover the deposit outpoint and output, and compute the refund economics.
     pub(crate) fn refund_execution_inputs(
         &self,
         refund_request: &RefundRequest,
     ) -> RefundExecutionInputs {
-        let config = self.internal_config();
-        let transaction =
-            crate::WrappedTransaction::decode(&refund_request.tx_bytes.0, &config.chain)
-                .expect("Deserialization tx_bytes failed");
-        let txid = transaction.compute_txid();
+        let (txid, deposit_output) = if refund_request.tx_bytes.0.is_empty() {
+            let txid = refund_request
+                .utxo_storage_key
+                .split(UTXO_STORAGE_KEY_TAG)
+                .next()
+                .and_then(|txid| txid.parse::<Txid>().ok())
+                .unwrap_or_else(|| env::panic_str("Invalid utxo_storage_key"));
+            let path = get_deposit_path(&refund_request.deposit_msg());
+            let script_pubkey = self
+                .generate_utxo_chain_address(&path)
+                .script_pubkey()
+                .expect("Invalid deposit address");
+            let value = Amount::from_sat(
+                u64::try_from(refund_request.amount)
+                    .unwrap_or_else(|_| env::panic_str("Amount overflow")),
+            );
+            (
+                txid,
+                TxOut {
+                    value,
+                    script_pubkey,
+                },
+            )
+        } else {
+            // Legacy: requests stored before `tx_bytes` stopped being persisted.
+            let config = self.internal_config();
+            let transaction =
+                crate::WrappedTransaction::decode(&refund_request.tx_bytes.0, &config.chain)
+                    .expect("Deserialization tx_bytes failed");
+            let deposit_output = transaction
+                .output()
+                .get(refund_request.vout)
+                .unwrap_or_else(|| env::panic_str("vout is out of range"))
+                .clone();
+            (transaction.compute_txid(), deposit_output)
+        };
+
         let outpoint = OutPoint {
             txid,
             vout: u32::try_from(refund_request.vout)
                 .unwrap_or_else(|_| env::panic_str("vout overflow")),
         };
-        let deposit_output = transaction.output()[refund_request.vout].clone();
 
         let refund_amount = refund_request
             .amount
@@ -511,7 +554,8 @@ impl Contract {
         &mut self,
         deposit_msg: DepositMsg,
         refund_address: String,
-        tx_bytes: Base64VecU8,
+        tx_id: String,
+        deposit_output: TxOut,
         vout: usize,
         gas_fee: Option<u128>,
     ) -> bool {
@@ -531,10 +575,6 @@ impl Contract {
             actual >= required,
             "Refund request: not enough confirmations (max-tier required)"
         );
-        let transaction = crate::WrappedTransaction::decode(&tx_bytes.0, &config.chain)
-            .expect("Deserialization tx_bytes failed");
-        let output = &transaction.output()[vout];
-
         // Verify that the output script matches the deposit address derived from deposit_msg
         let path = get_deposit_path(&deposit_msg);
         let deposit_address = self.generate_utxo_chain_address(&path);
@@ -542,12 +582,11 @@ impl Contract {
             .script_pubkey()
             .expect("Invalid deposit address");
         require!(
-            deposit_script_pubkey == output.script_pubkey,
+            deposit_script_pubkey == deposit_output.script_pubkey,
             "Output script_pubkey does not match deposit address"
         );
 
-        let amount = u128::from(output.value.to_sat());
-        let tx_id = transaction.compute_txid().to_string();
+        let amount = u128::from(deposit_output.value.to_sat());
         let utxo_storage_key = generate_utxo_storage_key(
             tx_id,
             u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
@@ -586,7 +625,7 @@ impl Contract {
         let refund_request = RefundRequest {
             deposit_msg_json: serde_json::to_string(&deposit_msg).unwrap(),
             utxo_storage_key: utxo_storage_key.clone(),
-            tx_bytes,
+            tx_bytes: Base64VecU8(Vec::new()),
             vout,
             amount,
             refund_address,

@@ -204,3 +204,138 @@ async fn test_compact_deposit_binds_digests_into_txid() {
         "a tampered prevouts_digest must not resolve to the genuine txid"
     );
 }
+
+/// Run one refund end to end and return the refund transaction the bridge built,
+/// requesting it either with the full transaction bytes or with a compact proof.
+#[cfg(feature = "zcash")]
+async fn refund_psbt_via_proof(compact: bool) -> String {
+    const REFUND_ADDR: &str = "tmD67UTsZ4iBbhCae4D43k1x8fhFNhwd4Jn";
+
+    std::env::set_var("TEST_CHAIN", "ZcashTestnet");
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, None).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: Some(REFUND_ADDR.to_string()),
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    let tx_bytes = setup::utils::generate_transaction_bytes(
+        vec![(PREV_TX_ID, 1, None)],
+        vec![(deposit_address.as_str(), 150_000)],
+    );
+
+    // `execute_refund` no longer stores the deposit transaction, so it rebuilds the
+    // spent output's script by deriving the deposit address from `deposit_msg`. Anchor
+    // that derivation to the real transaction, otherwise both routes below could agree
+    // on the same wrong script and still compare equal.
+    let chain = satoshi_bridge::network::Chain::ZcashTestnet;
+    let real_script = satoshi_bridge::WrappedTransaction::decode(&tx_bytes, &chain)
+        .unwrap()
+        .output()[0]
+        .script_pubkey
+        .clone();
+    let derived_script = satoshi_bridge::network::Address::parse(&deposit_address, chain)
+        .unwrap()
+        .script_pubkey()
+        .unwrap();
+    assert_eq!(
+        real_script, derived_script,
+        "the deposit address script must equal the real output script"
+    );
+
+    if compact {
+        check!(
+            print "request_refund (compact)"
+            context.request_refund_compact(
+                "relayer",
+                deposit_msg,
+                REFUND_ADDR,
+                setup::utils::compact_proof_json(&tx_bytes),
+                0,
+                BLOCK_HASH.to_string(),
+                1,
+                vec![],
+                None,
+            )
+        );
+    } else {
+        check!(
+            print "request_refund (full tx_bytes)"
+            context.request_refund(
+                "relayer",
+                deposit_msg,
+                REFUND_ADDR,
+                tx_bytes.clone(),
+                0,
+                BLOCK_HASH.to_string(),
+                1,
+                vec![],
+                None,
+            )
+        );
+    }
+
+    let key = format!("{}@0", real_tx_id(&tx_bytes));
+    check!(context.execute_refund("root", &key, None));
+
+    let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
+    assert_eq!(pending_infos.len(), 1, "expected one refund pending info");
+    let pending = pending_infos.values().next().unwrap();
+    // The recovered UTXO must carry the deposit's full value, whichever proof form
+    // the request arrived in.
+    assert_eq!(pending.vutxos.len(), 1, "a refund spends exactly one UTXO");
+    assert_eq!(pending.vutxos[0].get_amount(), 150_000);
+    pending.psbt_hex.clone()
+}
+
+/// The compact form must not degrade the refund path. `execute_refund` normally
+/// re-decodes the stored `tx_bytes` to recover the deposit outpoint and output;
+/// a compact request stores no bytes, so those are reconstructed instead. This
+/// pins the reconstruction to be exact: both routes must build the identical
+/// refund transaction, spending the same outpoint for the same value.
+#[tokio::test]
+#[cfg(feature = "zcash")]
+async fn test_compact_refund_builds_same_tx_as_full_bytes() {
+    let from_full_bytes = refund_psbt_via_proof(false).await;
+    let from_compact = refund_psbt_via_proof(true).await;
+
+    assert_eq!(
+        from_full_bytes, from_compact,
+        "a compact-proof refund must build the same transaction as a full-bytes one"
+    );
+}
+
+/// `complete_failed_deposit_mint` is the DAO's only recovery for a deposit whose mint
+/// succeeded but whose callback did not, so it has to accept a compact proof: a deposit
+/// provable only compactly would otherwise leave nBTC minted with the UTXO
+/// unregistered and no way to repair it. Reaching the "not verified" business check
+/// proves the proof deserialized and resolved to a real deposit output.
+#[tokio::test]
+#[cfg(feature = "zcash")]
+async fn test_complete_failed_deposit_mint_accepts_compact_proof() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let (context, tx_bytes) = setup_deposit(&worker, 500_000, 1).await;
+
+    let outcome = context
+        .complete_failed_deposit_mint_compact(
+            "root",
+            alice_deposit_msg(&context),
+            setup::utils::compact_proof_json(&tx_bytes),
+            0,
+            0,
+        )
+        .await;
+
+    let err = tool_err_msg(&outcome);
+    assert!(
+        err.contains("Deposit is not verified"),
+        "a compact proof should resolve and reach the verification check, got: {err}"
+    );
+}
