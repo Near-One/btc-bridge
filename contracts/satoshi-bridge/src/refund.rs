@@ -161,9 +161,9 @@ impl Contract {
             );
         }
 
-        let tx = self.internal_resolve_deposit_tx(tx_bytes);
-        let tx_id = tx.tx_id.to_string();
-        let deposit_output = tx
+        let tx_summary = self.internal_resolve_deposit_tx(tx_bytes);
+        let tx_id = tx_summary.tx_id.to_string();
+        let deposit_output = tx_summary
             .outputs
             .into_iter()
             .nth(vout)

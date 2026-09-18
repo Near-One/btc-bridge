@@ -38,12 +38,12 @@ impl Contract {
         vout: usize,
         proof: TxInclusionProof,
     ) -> Promise {
-        let tx = self.internal_resolve_deposit_tx(tx_bytes);
+        let tx_summary = self.internal_resolve_deposit_tx(tx_bytes);
         let coinbase_proof = (proof.coinbase_tx_id, proof.coinbase_merkle_proof);
         if deposit_msg.safe_deposit.is_some() {
             self.internal_safe_verify_deposit_entry(
                 deposit_msg,
-                tx,
+                tx_summary,
                 vout,
                 proof.tx_block_blockhash,
                 proof.tx_index,
@@ -53,7 +53,7 @@ impl Contract {
         } else {
             self.internal_verify_deposit_entry(
                 deposit_msg,
-                tx,
+                tx_summary,
                 vout,
                 proof.tx_block_blockhash,
                 proof.tx_index,

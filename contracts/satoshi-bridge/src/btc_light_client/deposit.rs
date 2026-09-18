@@ -166,10 +166,10 @@ impl Contract {
     pub(crate) fn internal_build_deposit_utxo_info(
         &self,
         path: String,
-        tx: &DepositTxSummary,
+        tx_summary: &DepositTxSummary,
         vout: usize,
     ) -> PendingUTXOInfo {
-        let output = tx
+        let output = tx_summary
             .outputs
             .get(vout)
             .unwrap_or_else(|| env::panic_str("vout is out of range"));
@@ -184,7 +184,7 @@ impl Contract {
             "Invalid deposit tx_bytes"
         );
 
-        let tx_id = tx.tx_id.to_string();
+        let tx_id = tx_summary.tx_id.to_string();
         let utxo_storage_key = generate_utxo_storage_key(
             tx_id.clone(),
             u32::try_from(vout).unwrap_or_else(|_| env::panic_str("vout overflow")),
@@ -204,7 +204,7 @@ impl Contract {
     pub(crate) fn internal_verify_deposit_entry(
         &mut self,
         deposit_msg: DepositMsg,
-        tx: DepositTxSummary,
+        tx_summary: DepositTxSummary,
         vout: usize,
         tx_block_blockhash: String,
         tx_index: u64,
@@ -216,7 +216,7 @@ impl Contract {
             "safe_deposit not supported in the standard deposit flow"
         );
         let path = get_deposit_path(&deposit_msg);
-        let pending_utxo_info = self.internal_build_deposit_utxo_info(path, &tx, vout);
+        let pending_utxo_info = self.internal_build_deposit_utxo_info(path, &tx_summary, vout);
         let deposit_amount = u128::from(pending_utxo_info.utxo.balance);
 
         self.internal_verify_deposit(
@@ -233,7 +233,7 @@ impl Contract {
     pub(crate) fn internal_safe_verify_deposit_entry(
         &mut self,
         deposit_msg: DepositMsg,
-        tx: DepositTxSummary,
+        tx_summary: DepositTxSummary,
         vout: usize,
         tx_block_blockhash: String,
         tx_index: u64,
@@ -250,7 +250,7 @@ impl Contract {
             .safe_deposit
             .unwrap_or_else(|| env::panic_str("safe_deposit is required in the safe deposit flow"));
 
-        let pending_utxo_info = self.internal_build_deposit_utxo_info(path, &tx, vout);
+        let pending_utxo_info = self.internal_build_deposit_utxo_info(path, &tx_summary, vout);
         let deposit_amount = u128::from(pending_utxo_info.utxo.balance);
 
         self.internal_safe_verify_deposit(

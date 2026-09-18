@@ -309,9 +309,12 @@ impl Contract {
         protocol_fee: U128,
     ) -> String {
         assert_one_yocto();
-        let tx = self.internal_resolve_deposit_tx(tx_bytes);
-        let pending_utxo_info =
-            self.internal_build_deposit_utxo_info(get_deposit_path(&deposit_msg), &tx, vout);
+        let tx_summary = self.internal_resolve_deposit_tx(tx_bytes);
+        let pending_utxo_info = self.internal_build_deposit_utxo_info(
+            get_deposit_path(&deposit_msg),
+            &tx_summary,
+            vout,
+        );
         let utxo_storage_key = pending_utxo_info.utxo_storage_key;
 
         require!(
