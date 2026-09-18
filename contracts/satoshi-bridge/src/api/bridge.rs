@@ -21,9 +21,7 @@ impl Contract {
     /// * `deposit_msg` - Information used to generate the deposit address path.
     /// * `tx_bytes` - The confirmed transaction, either as a base64 string of the full
     ///   transaction bytes, or — Zcash only — as a JSON object holding a ZIP-244 compact
-    ///   commitment set ([`CompactTxProof`]), which recomputes the same txid in a fixed
-    ///   ~200 bytes. The compact form only pays off above roughly 500 bytes of
-    ///   transaction: use it for shielded deposits and multi-input consolidations.
+    ///   commitment set ([`CompactTxProof`]).
     /// * `vout` - The index of the output where the user sent BTC to the deposit address.
     /// * `proof` - Transaction inclusion proof with coinbase verification.
     ///
