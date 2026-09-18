@@ -233,6 +233,11 @@ mod tests {
     }
 
     fn large_v6_tx() -> Transaction {
+        assert!(
+            !V6_FIXTURE.starts_with(b"version https://git-lfs"),
+            "zcash_shielded_deposit_tx_large.bin is a Git LFS pointer, not the fixture: \
+             run `git lfs install && git lfs pull` (CI needs `lfs: true` on actions/checkout)"
+        );
         decode_fixture(V6_FIXTURE)
     }
 
