@@ -451,6 +451,39 @@ mod tests {
     }
 
     #[test]
+    fn compact_txid_binds_output_order() {
+        let tx = real_tx();
+        let deposit = tx.output()[0].clone();
+        let other = TxOut {
+            value: deposit.value + bitcoin::Amount::from_sat(1),
+            script_pubkey: bitcoin::ScriptBuf::from_bytes(vec![0x51]),
+        };
+
+        let forward = vec![deposit.clone(), other.clone()];
+        let swapped = vec![other, deposit];
+        assert_ne!(forward, swapped);
+
+        assert_ne!(
+            compact_txid(&parts_for(&tx, &forward)),
+            compact_txid(&parts_for(&tx, &swapped)),
+        );
+    }
+
+    #[test]
+    fn compact_txid_binds_the_output_count() {
+        let tx = real_tx();
+        let outputs = tx.output();
+        assert_eq!(compact_txid(&parts_for(&tx, &outputs)), tx.compute_txid());
+
+        let mut extended = outputs.clone();
+        extended.push(TxOut {
+            value: bitcoin::Amount::from_sat(1),
+            script_pubkey: bitcoin::ScriptBuf::from_bytes(vec![0x51]),
+        });
+        assert_ne!(compact_txid(&parts_for(&tx, &extended)), tx.compute_txid());
+    }
+
+    #[test]
     fn compact_txid_binds_the_ironwood_digest() {
         let tx = large_v6_tx();
         let outputs = tx.output();
