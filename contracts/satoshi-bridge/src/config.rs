@@ -93,11 +93,11 @@ pub struct Config {
     pub max_active_utxo_management_input_number: u8,
     // The maximum number of outputs allowed during active UTXO management.
     pub max_active_utxo_management_output_number: u8,
-    // When the number of UTXOs in the protocol is less than this configuration, UTXO management can be actively initiated.
-    // The number of inputs in the managed PSBT must be less than the number of outputs.
+    // Deprecated: active UTXO management is no longer gated on the protocol's UTXO count.
+    // Retained for state compatibility; the value is unused.
     pub active_management_lower_limit: u32,
-    // When the number of UTXOs in the protocol is greater than this configuration, UTXO management can be actively initiated.
-    // The number of inputs in the managed PSBT must be greater than the number of outputs.
+    // Deprecated: active UTXO management is no longer gated on the protocol's UTXO count.
+    // Retained for state compatibility; the value is unused.
     pub active_management_upper_limit: u32,
     // When the number of UTXOs in the protocol is less than this configuration, passive UTXO management will be triggered,
     // requiring that the number of inputs must be less than the number of changes.
@@ -155,10 +155,6 @@ impl Config {
         require!(
             self.min_btc_gas_fee < self.max_btc_gas_fee,
             "min_btc_gas_fee must be less than max_btc_gas_fee"
-        );
-        require!(
-            self.active_management_lower_limit < self.active_management_upper_limit,
-            "active_management_lower_limit must be less than active_management_upper_limit"
         );
         require!(
             self.passive_management_lower_limit < self.passive_management_upper_limit,
