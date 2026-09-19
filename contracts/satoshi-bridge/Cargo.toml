@@ -43,6 +43,7 @@ zcash_transparent = { version = "=0.9.0", features = ["transparent-inputs"], opt
 orchard = { version = "=0.15.0", default-features = false, optional = true }
 sapling-crypto = { version = "0.7.0", default-features = false, optional = true }
 zcash_script = { version = "0.4.5", optional = true }
+blake2b_simd = { version = "1", default-features = false, optional = true }
 zcash_protocol = { version = "=0.10.0" }
 zcash_address = { version = "=0.13.0" }
 
@@ -59,5 +60,5 @@ near-account-id-v1 = { package = "near-account-id", version = "1" }
 
 [features]
 default = []
-zcash = ["zcash_primitives", "zcash_transparent", "orchard", "sapling-crypto", "zcash_script"]
+zcash = ["zcash_primitives", "zcash_transparent", "orchard", "sapling-crypto", "zcash_script", "blake2b_simd"]
 bitcoin = []

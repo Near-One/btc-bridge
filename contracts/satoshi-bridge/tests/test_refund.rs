@@ -1864,3 +1864,41 @@ async fn test_reject_refund_blocked_after_execute() {
     // DAO can still reject it.
     check!(context.reject_refund("root", &key));
 }
+
+/// Bitcoin has no compact form — a txid there is a flat SHA256d, not a hash tree —
+/// so `DepositTxProof::Compact` exists only as a stub. An object passed where the
+/// base64 string belongs must be rejected outright rather than silently treated as
+/// some other value.
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_request_refund_rejects_compact_proof_on_bitcoin() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: None,
+    };
+
+    let outcome = context
+        .request_refund_compact(
+            "relayer",
+            deposit_msg,
+            TARGET_ADDRESS,
+            json!({ "version_header": 0x8000_0005u32, "outputs": [] }),
+            0,
+            "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            1,
+            vec![],
+            None,
+        )
+        .await;
+
+    let err = tool_err_msg(&outcome);
+    assert!(
+        err.contains("A compact tx_bytes proof is not supported on Bitcoin"),
+        "bitcoin must reject a compact proof, got: {err}"
+    );
+}

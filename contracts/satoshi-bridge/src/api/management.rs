@@ -1,10 +1,10 @@
 use crate::{
     assert_one_yocto, env, get_deposit_path, near, require, AccessControllable, Account, AccountId,
-    ConfigUpdate, Contract, ContractExt, DepositMsg, Event, HashSet, Promise, Role, U128,
+    ConfigUpdate, Contract, ContractExt, DepositMsg, DepositTxProof, Event, HashSet, Promise, Role,
+    U128,
 };
 
 use near_plugins::access_control_any;
-use near_sdk::json_types::Base64VecU8;
 
 #[near]
 impl Contract {
@@ -304,14 +304,15 @@ impl Contract {
     pub fn complete_failed_deposit_mint(
         &mut self,
         deposit_msg: DepositMsg,
-        tx_bytes: Base64VecU8,
+        tx_bytes: DepositTxProof,
         vout: usize,
         protocol_fee: U128,
     ) -> String {
         assert_one_yocto();
+        let tx_summary = self.internal_resolve_deposit_tx(tx_bytes);
         let pending_utxo_info = self.internal_build_deposit_utxo_info(
             get_deposit_path(&deposit_msg),
-            &tx_bytes.0,
+            &tx_summary,
             vout,
         );
         let utxo_storage_key = pending_utxo_info.utxo_storage_key;
