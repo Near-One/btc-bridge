@@ -157,6 +157,10 @@ impl Config {
             "min_btc_gas_fee must be less than max_btc_gas_fee"
         );
         require!(
+            self.active_management_lower_limit < self.active_management_upper_limit,
+            "active_management_lower_limit must be less than active_management_upper_limit"
+        );
+        require!(
             self.passive_management_lower_limit < self.passive_management_upper_limit,
             "passive_management_lower_limit must be less than passive_management_upper_limit"
         );

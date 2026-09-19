@@ -78,9 +78,6 @@ impl Contract {
 
         let input_num = psbt.get_input_num();
         let output_num = psbt.get_output_num();
-        // Splitting and merging are both allowed at any UTXO count; only the per-transaction
-        // input/output counts are bounded. Merging unhealthy UTXOs is exempt from those bounds
-        // because it strictly reduces the dust population and cannot create new dust.
         if !is_merge_unhealthy_utxos(output_num, vutxos, config.unhealthy_utxo_amount) {
             require!(
                 input_num <= usize::from(config.max_active_utxo_management_input_number),
