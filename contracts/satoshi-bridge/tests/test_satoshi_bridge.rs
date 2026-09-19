@@ -2233,25 +2233,6 @@ async fn test_utxo_active_management() {
         .clone();
     let utxo60000 = utxo_key60000.split('@').collect::<Vec<_>>();
     let output_amount = 560000 / 2;
-    check!(
-        context.active_utxo_management(
-            vec![
-                OutPoint {
-                    txid: utxo500000[0].parse().unwrap(),
-                    vout: utxo500000[1].parse().unwrap(),
-                },
-                OutPoint {
-                    txid: utxo60000[0].parse().unwrap(),
-                    vout: utxo60000[1].parse().unwrap(),
-                }
-            ],
-            vec![
-                generate_tx_out(output_amount, TARGET_ADDRESS, get_chain()),
-                generate_tx_out(output_amount, withdraw_change_address.as_str(), get_chain()),
-            ]
-        ),
-        "Active management conditions are not met"
-    );
     check!(context.set_active_management_limit(3, 10));
     check!(
         context.active_utxo_management(
@@ -2270,9 +2251,8 @@ async fn test_utxo_active_management() {
                 generate_tx_out(output_amount, withdraw_change_address.as_str(), get_chain()),
             ]
         ),
-        "require input_num < output_num"
+        "Invalid output script_pubkey"
     );
-    check!(context.set_active_management_limit(0, 1));
     check!(
         context.active_utxo_management(
             vec![
@@ -2286,11 +2266,24 @@ async fn test_utxo_active_management() {
                 }
             ],
             vec![
-                generate_tx_out(output_amount, TARGET_ADDRESS, get_chain()),
-                generate_tx_out(output_amount, withdraw_change_address.as_str(), get_chain()),
+                generate_tx_out(
+                    output_amount / 2,
+                    withdraw_change_address.as_str(),
+                    get_chain()
+                ),
+                generate_tx_out(
+                    output_amount / 2,
+                    withdraw_change_address.as_str(),
+                    get_chain()
+                ),
+                generate_tx_out(
+                    output_amount / 2,
+                    withdraw_change_address.as_str(),
+                    get_chain()
+                ),
             ]
         ),
-        "require input_num > output_num"
+        "require output_num <= 2"
     );
     check!(
         context.active_utxo_management(
