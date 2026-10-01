@@ -463,8 +463,15 @@ impl Contract {
     #[private]
     pub fn safe_deposit_burn_callback(&mut self, utxo_storage_key: String) -> bool {
         let is_success = is_promise_success();
-        if is_success {
-            self.internal_remove_utxo_in_progress(&utxo_storage_key);
+        // Release only a UTXO that is still in progress. If `complete_failed_deposit_mint`
+        // already registered it, keep the verified mark so the deposit can't be minted again.
+        if is_success
+            && self
+                .data_mut()
+                .utxos_in_progress
+                .remove(&utxo_storage_key)
+                .is_some()
+        {
             self.data_mut()
                 .verified_deposit_utxo
                 .remove(&utxo_storage_key);

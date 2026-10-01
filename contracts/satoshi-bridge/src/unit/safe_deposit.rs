@@ -251,3 +251,34 @@ fn test_failed_safe_deposit_retry_is_rejected_after_burn_failure() {
         pending_utxo_info(),
     );
 }
+
+#[test]
+#[should_panic(expected = "Already deposit utxo")]
+fn test_burn_callback_keeps_verified_mark_if_utxo_was_registered_during_burn() {
+    let mut unit_env = init_unit_env();
+    run_until_burn_dispatched(&mut unit_env);
+    let utxo_storage_key = pending_utxo_info().utxo_storage_key;
+
+    // What `complete_failed_deposit_mint` does if the DAO calls it while the burn is in flight.
+    unit_env
+        .contract
+        .internal_set_utxo(&utxo_storage_key, pending_utxo_info().utxo);
+    unit_env
+        .contract
+        .internal_remove_utxo_in_progress(&utxo_storage_key);
+
+    set_callback_env(&mut unit_env, PromiseResult::Successful(Vec::new()));
+    assert!(unit_env
+        .contract
+        .safe_deposit_burn_callback(utxo_storage_key.clone()));
+    assert!(is_verified(&unit_env.contract, &utxo_storage_key));
+
+    // The registered UTXO must not be minted against again.
+    set_callback_env(&mut unit_env, PromiseResult::Successful(b"true".to_vec()));
+    let _ = unit_env.contract.verify_safe_deposit_callback(
+        recipient_id(),
+        U128(DEPOSIT_AMOUNT.into()),
+        String::new(),
+        pending_utxo_info(),
+    );
+}
