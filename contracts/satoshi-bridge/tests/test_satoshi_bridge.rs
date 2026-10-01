@@ -3456,3 +3456,172 @@ async fn test_safe_verify_deposit_to_bridge_recipient_is_rejected() {
     assert_eq!(context.ft_balance_of("bridge").await.unwrap().0, 0);
     assert_eq!(context.ft_total_supply().await.unwrap().0, 0);
 }
+
+/// Supply monitor view of the bridge at `height`: (S, U, I), where S is the nBTC total
+/// supply, U the sum of available UTXOs and I the sum of `DepositInProgress` UTXOs.
+async fn supply_snapshot_at(context: &Context, height: u64) -> (u128, u128, u128) {
+    let total_supply = context
+        .nbtc_contract
+        .view("ft_total_supply")
+        .args_json(near_sdk::serde_json::json!({}))
+        .block_height(height)
+        .await
+        .unwrap()
+        .json::<near_sdk::json_types::U128>()
+        .unwrap()
+        .0;
+    let available: u128 = context
+        .bridge_contract
+        .view("get_utxos_paged")
+        .args_json(near_sdk::serde_json::json!({}))
+        .block_height(height)
+        .await
+        .unwrap()
+        .json::<std::collections::HashMap<String, satoshi_bridge::UTXO>>()
+        .unwrap()
+        .values()
+        .map(|utxo| u128::from(utxo.balance))
+        .sum();
+    let in_progress: u128 = context
+        .bridge_contract
+        .view("get_utxos_in_progress_paged")
+        .args_json(near_sdk::serde_json::json!({}))
+        .block_height(height)
+        .await
+        .unwrap()
+        .json::<std::collections::HashMap<String, satoshi_bridge::UTXOStatus>>()
+        .unwrap()
+        .into_values()
+        .map(|status| match status {
+            satoshi_bridge::UTXOStatus::DepositInProgress(vutxo) => {
+                u128::from(satoshi_bridge::UTXO::from(vutxo).balance)
+            }
+        })
+        .sum();
+    (total_supply, available, in_progress)
+}
+
+// When the recipient's ft_on_transfer fails, the safe-minted tokens stay in the total
+// supply until the refund burn lands. The deposit UTXO must stay in progress for that
+// whole window, so the supply monitor sees K <= S - U <= K + I at every block
+// (no pending withdrawals here, so P = B = 0).
+#[tokio::test]
+async fn test_safe_verify_deposit_failed_transfer_keeps_utxo_in_progress_until_burn() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    // Seed U and S with a regular deposit.
+    let bob_deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("bob").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: None,
+    };
+    let bob_deposit_address = context
+        .get_user_deposit_address(bob_deposit_msg.clone())
+        .await
+        .unwrap();
+    check!(context.verify_deposit_v2(
+        "relayer",
+        bob_deposit_msg,
+        generate_transaction_bytes(
+            vec![(
+                "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+                0,
+                None,
+            )],
+            vec![
+                (bob_deposit_address.as_str(), 200_000),
+                (TARGET_ADDRESS, 90_000),
+            ],
+        ),
+        0,
+        mock_proof()
+    ));
+
+    // The dapp is registered on nBTC, but the bridge is not registered on the dapp,
+    // so the dapp's ft_on_transfer panics and ft_resolve_transfer refunds the bridge.
+    check!(context.storage_deposit("nbtc", "dapp"));
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("dapp").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
+            msg: near_sdk::serde_json::json!({
+                "DepositToOthers": {
+                    "beneficiary_accouont_id": context.get_account_by_name("alice").id(),
+                }
+            })
+            .to_string(),
+        }),
+        refund_address: None,
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d",
+            0,
+            None,
+        )],
+        vec![
+            (deposit_address.as_str(), 100_000),
+            (TARGET_ADDRESS, 90_000),
+        ],
+    );
+
+    let start_height = worker.view_block().await.unwrap().height();
+    let (supply_before, available_before, in_progress_before) =
+        supply_snapshot_at(&context, start_height).await;
+    assert_eq!(in_progress_before, 0);
+    let baseline =
+        i128::try_from(supply_before).unwrap() - i128::try_from(available_before).unwrap();
+
+    let outcome = context
+        .verify_deposit_v2("relayer", deposit_msg, tx_bytes, 0, mock_proof())
+        .await
+        .unwrap();
+    let failures = format!("{:?}", outcome.receipt_failures());
+    assert_eq!(outcome.receipt_failures().len(), 1, "{failures}");
+    assert!(failures.contains("not register"), "{failures}");
+    let logs = outcome.logs().join("\n");
+    assert!(logs.contains(r#""event":"ft_burn""#), "{logs}");
+
+    let mut end_height = start_height;
+    for receipt_outcome in outcome.outcomes() {
+        let height = worker
+            .view_block()
+            .block_hash(receipt_outcome.block_hash)
+            .await
+            .unwrap()
+            .height();
+        end_height = end_height.max(height);
+    }
+
+    let mut saw_minted_supply = false;
+    let mut saw_burn_before_release = false;
+    for height in start_height..=end_height + 1 {
+        let (supply, available, in_progress) = supply_snapshot_at(&context, height).await;
+        let residual = i128::try_from(supply).unwrap() - i128::try_from(available).unwrap();
+        assert!(
+            residual >= baseline && residual <= baseline + i128::try_from(in_progress).unwrap(),
+            "block {height}: S - U = {residual} is outside [{baseline}, {baseline} + I = {in_progress}]"
+        );
+        saw_minted_supply |= supply > supply_before;
+        saw_burn_before_release |= saw_minted_supply && supply == supply_before && in_progress > 0;
+    }
+    assert!(saw_minted_supply, "safe_mint never raised the total supply");
+    assert!(
+        saw_burn_before_release,
+        "the UTXO must stay in progress until after the burn lands"
+    );
+
+    let (supply_after, available_after, in_progress_after) =
+        supply_snapshot_at(&context, end_height + 1).await;
+    assert_eq!(supply_after, supply_before);
+    assert_eq!(available_after, available_before);
+    assert_eq!(in_progress_after, 0);
+}

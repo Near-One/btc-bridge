@@ -2,18 +2,19 @@ use near_sdk::serde_json::Value;
 
 use crate::utxo::UTXOStatus;
 use crate::{
-    burn::GAS_FOR_BURN_CALL,
-    deposit_msg::get_deposit_path,
-    env, ext_nbtc, generate_utxo_storage_key,
-    mint::{GAS_FOR_MINT_CALL, GAS_FOR_MINT_CALL_BACK},
-    near, require, serde_json, AccountId, Contract, ContractExt, DepositMsg, Event, Gas, NearToken,
+    burn::GAS_FOR_BURN_CALL, deposit_msg::get_deposit_path, env, ext_nbtc,
+    generate_utxo_storage_key, is_promise_success, mint::GAS_FOR_MINT_CALL, near, require,
+    serde_json, AccountId, Contract, ContractExt, DepositMsg, Event, Gas, NearToken,
     PendingUTXOInfo, PostAction, Promise, PromiseOrValue, SafeDepositMsg, WrappedTransaction,
     MAX_BOOL_RESULT, MAX_FT_TRANSFER_CALL_RESULT, U128, UTXO,
 };
 
 pub const GAS_FOR_VERIFY_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(130);
+pub const GAS_FOR_VERIFY_SAFE_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(150);
 pub const GAS_FOR_UNAVAILABLE_UTXO_CALL_BACK: Gas = Gas::from_tgas(20);
 pub const GAS_FOR_VERIFY_MIGRATE_DEPOSIT_CALL_BACK: Gas = Gas::from_tgas(20);
+pub const GAS_FOR_SAFE_MINT_CALL_BACK: Gas = Gas::from_tgas(30);
+pub const GAS_FOR_SAFE_DEPOSIT_BURN_CALL_BACK: Gas = Gas::from_tgas(10);
 
 impl Contract {
     pub(crate) fn internal_verify_deposit(
@@ -104,7 +105,7 @@ impl Contract {
         } else {
             promise.then(
                 Self::ext(env::current_account_id())
-                    .with_static_gas(GAS_FOR_VERIFY_DEPOSIT_CALL_BACK)
+                    .with_static_gas(GAS_FOR_VERIFY_SAFE_DEPOSIT_CALL_BACK)
                     .verify_safe_deposit_callback(
                         recipient_id,
                         deposit_amount.into(),
@@ -399,7 +400,7 @@ impl Contract {
             .safe_mint(recipient_id.clone(), mint_amount, msg)
             .then(
                 Self::ext(env::current_account_id())
-                    .with_static_gas(GAS_FOR_MINT_CALL_BACK)
+                    .with_static_gas(GAS_FOR_SAFE_MINT_CALL_BACK)
                     .safe_mint_callback(recipient_id.clone(), mint_amount, pending_utxo_info),
             )
             .into()
@@ -415,9 +416,8 @@ impl Contract {
         let is_success = !is_refund_required();
         let relayer_account_id = env::signer_account_id();
 
-        self.internal_remove_utxo_in_progress(&pending_utxo_info.utxo_storage_key);
-
         if is_success {
+            self.internal_remove_utxo_in_progress(&pending_utxo_info.utxo_storage_key);
             Event::UtxoAdded {
                 utxo_storage_keys: vec![pending_utxo_info.utxo_storage_key.clone()],
                 balances: Some(vec![U128(pending_utxo_info.utxo.balance.into())]),
@@ -425,10 +425,9 @@ impl Contract {
             .emit();
             self.internal_set_utxo(&pending_utxo_info.utxo_storage_key, pending_utxo_info.utxo);
         } else {
-            self.data_mut()
-                .verified_deposit_utxo
-                .remove(&pending_utxo_info.utxo_storage_key);
-
+            // The refunded tokens still count towards the total supply until the burn lands,
+            // so the UTXO stays in progress (and verified, which also blocks a concurrent
+            // retry of the same deposit) until `safe_deposit_burn_callback` confirms the burn.
             ext_nbtc::ext(self.internal_config().nbtc_account_id.clone())
                 .with_static_gas(GAS_FOR_BURN_CALL)
                 .burn(
@@ -436,6 +435,11 @@ impl Contract {
                     mint_amount,
                     relayer_account_id,
                     U128(0),
+                )
+                .then(
+                    Self::ext(env::current_account_id())
+                        .with_static_gas(GAS_FOR_SAFE_DEPOSIT_BURN_CALL_BACK)
+                        .safe_deposit_burn_callback(pending_utxo_info.utxo_storage_key.clone()),
                 )
                 .detach();
 
@@ -453,6 +457,25 @@ impl Contract {
             success: is_success,
         }
         .emit();
+        is_success
+    }
+
+    #[private]
+    pub fn safe_deposit_burn_callback(&mut self, utxo_storage_key: String) -> bool {
+        let is_success = is_promise_success();
+        // Release only a UTXO that is still in progress. If `complete_failed_deposit_mint`
+        // already registered it, keep the verified mark so the deposit can't be minted again.
+        if is_success
+            && self
+                .data_mut()
+                .utxos_in_progress
+                .remove(&utxo_storage_key)
+                .is_some()
+        {
+            self.data_mut()
+                .verified_deposit_utxo
+                .remove(&utxo_storage_key);
+        }
         is_success
     }
 }
