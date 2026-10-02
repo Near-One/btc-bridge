@@ -17,7 +17,8 @@ impl Contract {
         btc_pending_info: &BTCPendingInfo,
     ) -> Promise {
         let config = self.internal_config();
-        let confirmations = self.get_confirmations(config, btc_pending_info.actual_received_amount);
+        let confirmations = config.get_confirmations(btc_pending_info.actual_received_amount)
+            + self.relayer_delta(&env::predecessor_account_id());
         self.verify_transaction_inclusion_promise(
             config.btc_light_client_account_id.clone(),
             tx_id.clone(),

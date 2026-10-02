@@ -6,6 +6,8 @@ pub const UTXO_STORAGE_KEY_TAG: &str = "@";
 
 /// Maximum expected byte length of a JSON-serialized `bool` promise result (`true`/`false`).
 pub const MAX_BOOL_RESULT: usize = 10;
+/// Maximum expected byte length of a JSON-serialized `Option<TxInclusionInfo>` promise result.
+pub const MAX_INCLUSION_INFO_RESULT: usize = 100;
 /// Maximum expected byte length of a JSON-serialized `U128` promise result (e.g. from `ft_on_transfer`).
 pub const MAX_FT_TRANSFER_CALL_RESULT: usize = 50;
 /// Maximum expected byte length of a JSON-serialized `near_sdk::PublicKey` promise result.

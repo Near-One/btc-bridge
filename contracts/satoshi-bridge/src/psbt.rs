@@ -75,35 +75,24 @@ impl Contract {
         vutxos: &[VUTXO],
     ) -> (u128, u128) {
         let config = self.internal_config();
-        let vutxos_len = u32::try_from(vutxos.len()).unwrap_or_else(|_| {
-            env::panic_str("vutxos len overflow");
-        });
-        let utxo_num = self.data().utxos.len() + vutxos_len;
 
         let input_num = psbt.get_input_num();
         let output_num = psbt.get_output_num();
         if !is_merge_unhealthy_utxos(output_num, vutxos, config.unhealthy_utxo_amount) {
-            if utxo_num < config.active_management_lower_limit {
-                require!(input_num < output_num, "require input_num < output_num");
-                require!(
-                    output_num <= usize::from(config.max_active_utxo_management_output_number),
-                    format!(
-                        "require output_num <= {}",
-                        config.max_active_utxo_management_output_number
-                    )
-                );
-            } else if utxo_num > config.active_management_upper_limit {
-                require!(input_num > output_num, "require input_num > output_num");
-                require!(
-                    input_num <= usize::from(config.max_active_utxo_management_input_number),
-                    format!(
-                        "require input_num <= {}",
-                        config.max_active_utxo_management_input_number
-                    )
-                );
-            } else {
-                env::panic_str("Active management conditions are not met");
-            }
+            require!(
+                input_num <= usize::from(config.max_active_utxo_management_input_number),
+                format!(
+                    "require input_num <= {}",
+                    config.max_active_utxo_management_input_number
+                )
+            );
+            require!(
+                output_num <= usize::from(config.max_active_utxo_management_output_number),
+                format!(
+                    "require output_num <= {}",
+                    config.max_active_utxo_management_output_number
+                )
+            );
         }
 
         let (output_amount, gas_fee) =

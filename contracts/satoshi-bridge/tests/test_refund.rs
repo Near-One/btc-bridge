@@ -716,6 +716,86 @@ async fn test_refund_reject_then_deposit_succeeds() {
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 100_000);
 }
 
+// A pending refund request claims the very same output, and only `refund_requests` records
+// that claim — crediting the deposit anyway would mint while the refund can still execute.
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_dao_verify_deposit_blocked_by_refund_request() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: Some(TARGET_ADDRESS.to_string()),
+    };
+
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "c1c1069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f31",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 100_000)],
+    );
+    let vout: u32 = 0;
+    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+
+    check!(
+        print "request_refund"
+        context.request_refund(
+            "alice",
+            deposit_msg.clone(),
+            TARGET_ADDRESS,
+            tx_bytes.clone(),
+            vout,
+            blockhash,
+            1,
+            vec![],
+            None
+        )
+    );
+
+    let key = utxo_storage_key(&tx_bytes, vout);
+    let tx_id = compute_tx_id(&tx_bytes);
+
+    check!(
+        context.dao_verify_deposit(
+            "root",
+            deposit_msg.clone(),
+            &deposit_address,
+            &tx_id,
+            vout,
+            100_000
+        ),
+        "UTXO is claimed by a refund"
+    );
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+
+    // Once the claim is gone the same output can be credited.
+    check!(
+        print "reject_refund"
+        context.reject_refund("root", &key)
+    );
+    check!(context.dao_verify_deposit(
+        "root",
+        deposit_msg,
+        &deposit_address,
+        &tx_id,
+        vout,
+        100_000
+    ));
+    assert!(context.ft_balance_of("alice").await.unwrap().0 > 0);
+    assert!(context.get_utxos_paged().await.unwrap().contains_key(&key));
+}
+
 #[tokio::test]
 #[cfg(not(feature = "zcash"))]
 async fn test_refund_double_request_after_execute() {

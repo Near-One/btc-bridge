@@ -157,14 +157,73 @@ impl Serialize for H256 {
     }
 }
 
+/// Mirrors `btc-types::contract_args::TxInclusionProof` from the light client contract.
+#[near(serializers = [borsh])]
+pub struct TxInclusionProof {
+    pub tx_id: H256,
+    pub tx_block_blockhash: H256,
+    pub tx_index: u64,
+    pub merkle_proof: Vec<H256>,
+    pub coinbase_tx_id: H256,
+    pub coinbase_merkle_proof: Vec<H256>,
+}
+
+impl TxInclusionProof {
+    pub fn new(
+        tx_id: String,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+        coinbase_tx_id: String,
+        coinbase_merkle_proof: Vec<String>,
+    ) -> Self {
+        TxInclusionProof {
+            tx_id: tx_id.parse().expect("Invalid tx_id"),
+            tx_block_blockhash: tx_block_blockhash
+                .parse()
+                .expect("Invalid tx_block_blockhash"),
+            tx_index,
+            merkle_proof: merkle_proof
+                .into_iter()
+                .map(|v| {
+                    v.parse()
+                        .unwrap_or_else(|_| env::panic_str(&format!("Invalid merkle_proof: {v:?}")))
+                })
+                .collect(),
+            coinbase_tx_id: coinbase_tx_id.parse().expect("Invalid coinbase_tx_id"),
+            coinbase_merkle_proof: coinbase_merkle_proof
+                .into_iter()
+                .map(|v| {
+                    v.parse().unwrap_or_else(|_| {
+                        env::panic_str(&format!("Invalid coinbase_merkle_proof: {v:?}"))
+                    })
+                })
+                .collect(),
+        }
+    }
+}
+
+/// Mirrors `btc-types::contract_args::TxInclusionInfo` from the light client contract.
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug)]
+pub struct TxInclusionInfo {
+    pub tx_block_height: u64,
+    pub mainchain_tip_height: u64,
+}
+
 #[ext_contract(ext_btc_light_client)]
 pub trait BtcLightClient {
     fn verify_transaction_inclusion(&self, #[serializer(borsh)] args: ProofArgs) -> bool;
+    fn verify_transaction_inclusion_with_heights(
+        &self,
+        #[serializer(borsh)] args: TxInclusionProof,
+    ) -> Option<TxInclusionInfo>;
     fn verify_transaction_inclusion_v2(&self, #[serializer(borsh)] args: ProofArgsV2) -> bool;
-    fn get_last_block_height(&self) -> u32;
+    fn get_last_block_height(&self) -> u64;
 }
 
 impl Contract {
+    #[allow(clippy::too_many_arguments)]
     pub fn verify_transaction_inclusion_promise(
         &self,
         btc_light_client_account_id: AccountId,
@@ -196,6 +255,30 @@ impl Contract {
                 confirmations,
             ))
         }
+    }
+
+    /// The LC only proves inclusion here; the confirmations check happens in
+    /// the callback on this side.
+    pub fn verify_transaction_inclusion_with_heights_promise(
+        &self,
+        btc_light_client_account_id: AccountId,
+        tx_id: String,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+        coinbase_proof: (String, Vec<String>),
+    ) -> Promise {
+        let (coinbase_tx_id, coinbase_merkle_proof) = coinbase_proof;
+        ext_btc_light_client::ext(btc_light_client_account_id)
+            .with_static_gas(GAS_FOR_VERIFY_TRANSACTION_INCLUSION)
+            .verify_transaction_inclusion_with_heights(TxInclusionProof::new(
+                tx_id,
+                tx_block_blockhash,
+                tx_index,
+                merkle_proof,
+                coinbase_tx_id,
+                coinbase_merkle_proof,
+            ))
     }
 
     pub fn get_last_block_height_promise(&self) -> Promise {

@@ -40,6 +40,23 @@ pub struct ProofArgsV2 {
     pub confirmations: u64,
 }
 
+#[near(serializers = [borsh])]
+pub struct TxInclusionProof {
+    pub tx_id: H256,
+    pub tx_block_blockhash: H256,
+    pub tx_index: u64,
+    pub merkle_proof: Vec<H256>,
+    pub coinbase_tx_id: H256,
+    pub coinbase_merkle_proof: Vec<H256>,
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone, Debug)]
+pub struct TxInclusionInfo {
+    pub tx_block_height: u64,
+    pub mainchain_tip_height: u64,
+}
+
 impl<'de> Deserialize<'de> for H256 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -84,7 +101,8 @@ impl Serialize for H256 {
 
 #[near(contract_state)]
 pub struct Contract {
-    last_block_height: u32,
+    last_block_height: u64,
+    tx_block_height: u64,
 }
 
 impl Default for Contract {
@@ -94,6 +112,7 @@ impl Default for Contract {
         // via `set_last_block_height`.
         Self {
             last_block_height: 1000,
+            tx_block_height: 1,
         }
     }
 }
@@ -110,13 +129,30 @@ impl Contract {
         true
     }
 
-    pub fn get_last_block_height(&self) -> u32 {
+    #[allow(unused_variables)]
+    pub fn verify_transaction_inclusion_with_heights(
+        &self,
+        #[serializer(borsh)] args: TxInclusionProof,
+    ) -> Option<TxInclusionInfo> {
+        Some(TxInclusionInfo {
+            tx_block_height: self.tx_block_height,
+            mainchain_tip_height: self.last_block_height,
+        })
+    }
+
+    pub fn get_last_block_height(&self) -> u64 {
         self.last_block_height
     }
 
     /// Test-only: set the height returned by `get_last_block_height`, so a test
     /// can drive the Zcash consensus `branch_id` derived from it.
-    pub fn set_last_block_height(&mut self, height: u32) {
+    pub fn set_last_block_height(&mut self, height: u64) {
         self.last_block_height = height;
+    }
+
+    /// Test-only: set the `tx_block_height` returned by
+    /// `verify_transaction_inclusion_with_heights`.
+    pub fn set_tx_block_height(&mut self, height: u64) {
+        self.tx_block_height = height;
     }
 }
