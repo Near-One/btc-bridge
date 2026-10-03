@@ -1792,10 +1792,7 @@ async fn test_request_refund_input_capacity() {
     );
 }
 
-/// After `execute_refund` the UTXO is also inserted into `verified_deposit_utxo` (to
-/// block a later deposit) while the request is kept with `executed == true`. That must
-/// NOT let a non-privileged account reject the in-flight refund via the "already
-/// deposited" path — only DAO/Operator can. Regression test for that access check.
+/// Once `execute_refund` has run, nobody — including DAO — can reject the request.
 #[tokio::test]
 #[cfg(not(feature = "zcash"))]
 async fn test_reject_refund_blocked_after_execute() {
@@ -1855,12 +1852,12 @@ async fn test_reject_refund_blocked_after_execute() {
     // the request with executed == true. Must actually succeed for the test to be meaningful.
     check!(context.execute_refund("alice", &key));
 
-    // A non-privileged account must NOT be able to reject the now in-flight refund.
     check!(
         context.reject_refund("bob", &key),
-        "Only DAO/Operator can reject, or UTXO must be already verified via deposit"
+        "Refund already executed, cannot reject"
     );
-
-    // DAO can still reject it.
-    check!(context.reject_refund("root", &key));
+    check!(
+        context.reject_refund("root", &key),
+        "Refund already executed, cannot reject"
+    );
 }
