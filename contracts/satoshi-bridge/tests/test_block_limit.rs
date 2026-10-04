@@ -12,7 +12,7 @@ const CHAIN: &str = "BitcoinMainnet";
 
 const BLOCKHASH: &str = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d";
 const NOT_ENOUGH_CONFIRMATIONS_ERR: &str =
-    "Not enough confirmations for the block-cumulative bridge amount";
+    "Not enough confirmations for the rolling-window bridge amount";
 
 // Two-tier strategy: amounts below 10_000 need 3 confirmations,
 // amounts from 10_000 up to the max tier need 10.
@@ -250,7 +250,7 @@ async fn test_same_block_cumulative_amount_escalates_tier() {
 }
 
 #[tokio::test]
-async fn test_other_block_accumulates_independently() {
+async fn test_consecutive_blocks_cannot_reuse_the_low_tier() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let (context, deposit_address) = setup_two_tier_context(&worker).await;
 
@@ -268,21 +268,51 @@ async fn test_other_block_accumulates_independently() {
         BASE_BLOCK_HEIGHT + LOW_TIER_CONFIRMATIONS,
     )
     .await;
+    check!(
+        verify_deposit(&context, &deposit_address, 6000, 2),
+        NOT_ENOUGH_CONFIRMATIONS_ERR
+    );
+
+    set_heights(
+        &context,
+        BASE_BLOCK_HEIGHT + 1,
+        BASE_BLOCK_HEIGHT + HIGH_TIER_CONFIRMATIONS - 1,
+    )
+    .await;
     check!(verify_deposit(&context, &deposit_address, 6000, 2));
 
-    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 12_000);
+    set_heights(
+        &context,
+        BASE_BLOCK_HEIGHT + 2,
+        BASE_BLOCK_HEIGHT + 2 + LOW_TIER_CONFIRMATIONS - 1,
+    )
+    .await;
+    check!(
+        verify_deposit(&context, &deposit_address, 6000, 3),
+        NOT_ENOUGH_CONFIRMATIONS_ERR
+    );
+
+    set_heights(
+        &context,
+        BASE_BLOCK_HEIGHT + 2,
+        BASE_BLOCK_HEIGHT + HIGH_TIER_CONFIRMATIONS,
+    )
+    .await;
+    check!(verify_deposit(&context, &deposit_address, 6000, 3));
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 18_000);
 }
 
 #[tokio::test]
-async fn test_ring_wraparound_evicts_old_block_and_falls_back_to_max_tier() {
+async fn test_block_deeper_than_the_widest_window_is_unconstrained() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let (context, deposit_address) = setup_two_tier_context(&worker).await;
 
     let config = context.get_bridge_config().await.unwrap();
     let capacity = u64::try_from(BlockAmountRing::capacity_for(&config)).unwrap();
     assert!(
-        capacity + LOW_TIER_CONFIRMATIONS >= HIGH_TIER_CONFIRMATIONS,
-        "depth at the original height must already satisfy the max tier"
+        capacity + LOW_TIER_CONFIRMATIONS > HIGH_TIER_CONFIRMATIONS,
+        "the original height must end up deeper than the widest window"
     );
 
     set_heights(
@@ -551,16 +581,26 @@ async fn test_ring_shrink_merges_collided_blocks() {
 }
 
 #[tokio::test]
-async fn test_ring_grow_forgotten_block_restarts_from_zero() {
+async fn test_ring_grow_undercounts_an_evicted_block() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let (context, deposit_address) = setup_two_tier_context(&worker).await;
 
     let config = context.get_bridge_config().await.unwrap();
     let capacity = u64::try_from(BlockAmountRing::capacity_for(&config)).unwrap();
     let evicting_height = BASE_BLOCK_HEIGHT + capacity;
-    // The raised top tier must exceed the old capacity, otherwise the forgotten
-    // block's depth alone satisfies it and the under-count is not observable.
+    // The raised top tier must exceed the evicted block's final depth, otherwise
+    // that depth alone satisfies it and the under-count is not observable.
     let raised_tier = capacity + 13;
+
+    dao_call(
+        &context,
+        "set_confirmations_strategy",
+        json!({
+            "range_upper_bound": "15000",
+            "confirmations": LOW_TIER_CONFIRMATIONS,
+        }),
+    )
+    .await;
 
     set_heights(
         &context,
