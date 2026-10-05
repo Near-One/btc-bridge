@@ -279,7 +279,10 @@ impl Contract {
             .amount
             .checked_sub(refund_request.gas_fee)
             .expect("Deposit amount too small to cover gas fee");
-        require!(refund_amount > 0, "Refund amount is zero after gas fee");
+        require!(
+            refund_amount >= config.min_change_amount,
+            "Refund amount after gas fee is dust"
+        );
 
         RefundExecutionInputs {
             outpoint,
@@ -569,9 +572,12 @@ impl Contract {
         );
 
         let resolved_gas_fee = gas_fee.unwrap_or_else(|| self.get_refund_gas_fee());
+        let refund_amount = amount
+            .checked_sub(resolved_gas_fee)
+            .expect("Gas fee must be less than deposit amount");
         require!(
-            resolved_gas_fee < amount,
-            "Gas fee must be less than deposit amount"
+            refund_amount >= config.min_change_amount,
+            "Refund amount after gas fee is dust"
         );
 
         Event::RefundRequested {
