@@ -250,6 +250,8 @@ impl Contract {
 
     /// Since there can be many RBFs, removing all RBF pending info at once after verifying the transaction on-chain might not have enough gas.
     /// Therefore, the off-chain program uses this interface to perform the cleanup.
+    /// Accepts RBF transactions in either the pending sign or the pending verify stage;
+    /// a pending sign one is also removed from its owner's pending sign list.
     ///
     /// # Arguments
     ///
