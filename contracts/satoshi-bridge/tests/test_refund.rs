@@ -1864,3 +1864,117 @@ async fn test_reject_refund_blocked_after_execute() {
     // DAO can still reject it.
     check!(context.reject_refund("root", &key));
 }
+
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_refund_request_survives_reject_during_pending_safe_mint() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let rejector = worker
+        .dev_deploy(&std::fs::read("../../res/mock_refund_rejector.wasm").unwrap())
+        .await
+        .unwrap();
+    rejector
+        .as_account()
+        .call(context.nbtc_contract.id(), "storage_deposit")
+        .args_json(json!({"registration_only": true}))
+        .deposit(near_sdk::NearToken::from_near(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+
+    let reject_msg = json!({
+        "bridge_id": context.bridge_contract.id(),
+        "utxo_id": "",
+    })
+    .to_string();
+    let deposit_msg = DepositMsg {
+        recipient_id: rejector.id().as_str().parse().unwrap(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: reject_msg }),
+        refund_address: Some(TARGET_ADDRESS.to_string()),
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "a8a8069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f25",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 100_000)],
+    );
+    let vout: u32 = 0;
+    let key = utxo_storage_key(&tx_bytes, vout);
+    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+
+    check!(context.request_refund(
+        "alice",
+        deposit_msg.clone(),
+        TARGET_ADDRESS,
+        tx_bytes.clone(),
+        vout,
+        blockhash.clone(),
+        1,
+        vec![],
+        None
+    ));
+
+    let outcome = context
+        .verify_deposit_v2(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            proof_json(blockhash.clone(), 1, vec![]),
+        )
+        .await
+        .unwrap();
+    let failures = format!("{:?}", outcome.receipt_failures());
+    assert!(
+        failures.contains("Only DAO/Operator can reject"),
+        "{failures}"
+    );
+
+    let rejector_balance: near_sdk::json_types::U128 = context
+        .nbtc_contract
+        .view("ft_balance_of")
+        .args_json(json!({"account_id": rejector.id()}))
+        .await
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(rejector_balance.0, 0);
+    assert_eq!(context.get_utxos_paged().await.unwrap().len(), 0);
+    let refund_requests: std::collections::HashMap<String, near_sdk::serde_json::Value> = context
+        .bridge_contract
+        .view("get_refund_requests_paged")
+        .args_json(json!({}))
+        .await
+        .unwrap()
+        .json()
+        .unwrap();
+    assert!(refund_requests.contains_key(&key));
+
+    check!(
+        context.request_refund(
+            "alice",
+            deposit_msg,
+            TARGET_ADDRESS,
+            tx_bytes,
+            vout,
+            blockhash,
+            1,
+            vec![],
+            None
+        ),
+        "Refund request already exists for this UTXO"
+    );
+}
