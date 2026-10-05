@@ -1864,3 +1864,78 @@ async fn test_reject_refund_blocked_after_execute() {
     // DAO can still reject it.
     check!(context.reject_refund("root", &key));
 }
+
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_refund_rejects_amount_below_min_change_amount() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    context
+        .get_account_by_name("root")
+        .call(context.bridge_contract.id(), "update_config")
+        .args_json(
+            json!({"update": {"min_change_amount": "20000", "unhealthy_utxo_amount": 30000}}),
+        )
+        .deposit(near_sdk::NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: Some(TARGET_ADDRESS.to_string()),
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let dust_tx_bytes = generate_transaction_bytes(
+        vec![(
+            "e6e6069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f23",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 60_000)],
+    );
+    check!(
+        context.request_refund(
+            "alice",
+            deposit_msg.clone(),
+            TARGET_ADDRESS,
+            dust_tx_bytes,
+            0,
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![],
+            None
+        ),
+        "Refund amount after gas fee is dust"
+    );
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "f7f7069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f24",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 70_000)],
+    );
+    check!(context.request_refund(
+        "alice",
+        deposit_msg,
+        TARGET_ADDRESS,
+        tx_bytes,
+        0,
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+        1,
+        vec![],
+        None
+    ));
+}
