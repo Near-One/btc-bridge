@@ -892,6 +892,23 @@ impl Context {
             .await
     }
 
+    pub async fn withdraw_rbf(
+        &self,
+        user: &str,
+        original_btc_pending_verify_id: &str,
+        output: Vec<TxOut>,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "withdraw_rbf")
+            .args_json(json!({
+                "original_btc_pending_verify_id": original_btc_pending_verify_id,
+                "output": output,
+            }))
+            .max_gas()
+            .transact()
+            .await
+    }
+
     pub async fn sign_btc_transaction(
         &self,
         user: &str,
