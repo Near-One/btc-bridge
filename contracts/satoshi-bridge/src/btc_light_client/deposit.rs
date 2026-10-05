@@ -197,6 +197,10 @@ impl Contract {
             deposit_msg.safe_deposit.is_none(),
             "safe_deposit not supported in the standard deposit flow"
         );
+        require!(
+            tx_index != 0,
+            "coinbase transaction is not allowed for deposit"
+        );
         let path = get_deposit_path(&deposit_msg);
         let pending_utxo_info = self.internal_build_deposit_utxo_info(path, &tx_bytes, vout);
         let deposit_amount = u128::from(pending_utxo_info.utxo.balance);
@@ -225,6 +229,10 @@ impl Contract {
         require!(
             env::attached_deposit() >= self.required_balance_for_safe_deposit(),
             "Insufficient deposit for storage"
+        );
+        require!(
+            tx_index != 0,
+            "coinbase transaction is not allowed for deposit"
         );
 
         let path = get_deposit_path(&deposit_msg);
