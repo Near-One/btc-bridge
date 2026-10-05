@@ -1,7 +1,6 @@
 use crate::{ext_contract, AccountId, PostAction, U128};
 
 pub mod burn;
-pub mod migration;
 pub mod mint;
 
 #[ext_contract(ext_nbtc)]
