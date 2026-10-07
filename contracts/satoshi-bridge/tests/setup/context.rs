@@ -706,6 +706,28 @@ impl Context {
         } else {
             NearToken::from_yoctonear(1)
         };
+        self.dao_verify_deposit_with_deposit(
+            user,
+            deposit_msg,
+            deposit_address,
+            tx_id,
+            vout,
+            balance,
+            deposit,
+        )
+        .await
+    }
+
+    pub async fn dao_verify_deposit_with_deposit(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        deposit_address: &str,
+        tx_id: &str,
+        vout: u32,
+        balance: u128,
+        deposit: NearToken,
+    ) -> Result<ExecutionFinalResult> {
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "dao_verify_deposit")
             .args_json(json!({
@@ -925,6 +947,19 @@ impl Context {
         } else {
             NearToken::from_yoctonear(0)
         };
+        self.verify_deposit_v2_with_deposit(user, deposit_msg, tx_bytes, vout, proof, deposit)
+            .await
+    }
+
+    pub async fn verify_deposit_v2_with_deposit(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        tx_bytes: Vec<u8>,
+        vout: u32,
+        proof: Value,
+        deposit: NearToken,
+    ) -> Result<ExecutionFinalResult> {
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "verify_deposit_v2")
             .args_json(json!({
