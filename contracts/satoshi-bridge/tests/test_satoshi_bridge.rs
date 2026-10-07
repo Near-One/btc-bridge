@@ -1,6 +1,6 @@
 mod setup;
 use bitcoin::{Amount, OutPoint, TxOut};
-use near_sdk::{AccountId, Gas};
+use near_sdk::{AccountId, Gas, NearToken};
 use satoshi_bridge::network::{Address, Chain};
 use satoshi_bridge::{DepositMsg, PendingInfoState, PostAction, TokenReceiverMessage};
 use setup::*;
@@ -3162,6 +3162,98 @@ async fn test_safe_verify_deposit_v2() {
     ));
 
     assert!(context.ft_balance_of("alice").await.unwrap().0 > 0);
+}
+
+#[tokio::test]
+async fn test_safe_verify_deposit_v2_refunds_surplus() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
+        refund_address: None,
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    check!(context.storage_deposit("nbtc", "alice"));
+
+    let required = context.required_balance_for_safe_deposit().await.unwrap();
+    let relayer_id = context.get_account_by_name("relayer").sdk_id();
+    let balance_before = context.near_balance_by_account(&worker, &relayer_id).await;
+
+    check!(context.verify_deposit_v2_with_deposit(
+        "relayer",
+        deposit_msg,
+        generate_transaction_bytes(
+            vec![(
+                "f2f2069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f60",
+                1,
+                None,
+            )],
+            vec![(deposit_address.as_str(), 50000), (TARGET_ADDRESS, 50000)],
+        ),
+        0,
+        mock_proof(),
+        required.saturating_add(NearToken::from_near(10)),
+    ));
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 50000);
+    let spent = balance_before - context.near_balance_by_account(&worker, &relayer_id).await;
+    assert!(spent >= required.as_yoctonear());
+    assert!(
+        spent
+            < required
+                .saturating_add(NearToken::from_near(1))
+                .as_yoctonear()
+    );
+}
+
+#[tokio::test]
+async fn test_dao_verify_deposit_safe_refunds_surplus() {
+    const DAO_TX_ID: &str = "3f2a91c0b4e7d85619af0c3b7e2d4a86f0159c3bd7e84a2610fbc95d3e7a1846";
+
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
+        refund_address: None,
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    check!(context.storage_deposit("nbtc", "alice"));
+
+    let required = context.required_balance_for_safe_deposit().await.unwrap();
+    let root_id = context.get_account_by_name("root").sdk_id();
+    let balance_before = context.near_balance_by_account(&worker, &root_id).await;
+
+    check!(context.dao_verify_deposit_with_deposit(
+        "root",
+        deposit_msg,
+        &deposit_address,
+        DAO_TX_ID,
+        0,
+        50000,
+        required.saturating_add(NearToken::from_near(10)),
+    ));
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 50000);
+    let spent = balance_before - context.near_balance_by_account(&worker, &root_id).await;
+    assert!(spent >= required.as_yoctonear());
+    assert!(
+        spent
+            < required
+                .saturating_add(NearToken::from_near(1))
+                .as_yoctonear()
+    );
 }
 
 #[tokio::test]
