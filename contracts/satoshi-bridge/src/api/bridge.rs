@@ -36,6 +36,7 @@ impl Contract {
         vout: usize,
         proof: TxInclusionProof,
     ) -> Promise {
+        assert_post_actions_supported(&deposit_msg);
         let coinbase_proof = (proof.coinbase_tx_id, proof.coinbase_merkle_proof);
         if deposit_msg.safe_deposit.is_some() {
             self.internal_safe_verify_deposit_entry(
@@ -281,6 +282,7 @@ impl Contract {
     }
 
     pub fn get_user_deposit_address(&self, deposit_msg: DepositMsg) -> String {
+        assert_post_actions_supported(&deposit_msg);
         let path = get_deposit_path(&deposit_msg);
         let deposit_address = self.generate_utxo_chain_address(&path).to_string();
         Event::LogDepositAddress {

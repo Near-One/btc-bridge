@@ -1,6 +1,8 @@
 mod setup;
 use bitcoin::{Amount, OutPoint, TxOut};
-use near_sdk::{AccountId, Gas};
+use near_sdk::AccountId;
+#[cfg(not(feature = "zcash"))]
+use near_sdk::Gas;
 use satoshi_bridge::network::{Address, Chain};
 use satoshi_bridge::{DepositMsg, PendingInfoState, PostAction, TokenReceiverMessage};
 use setup::*;
@@ -1001,6 +1003,7 @@ async fn test_directly_withdraw_to_p2sh() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_one_click() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -3659,4 +3662,74 @@ async fn test_safe_verify_deposit_to_bridge_recipient_is_rejected() {
     // No tokens were minted anywhere.
     assert_eq!(context.ft_balance_of("bridge").await.unwrap().0, 0);
     assert_eq!(context.ft_total_supply().await.unwrap().0, 0);
+}
+
+#[tokio::test]
+#[cfg(feature = "zcash")]
+async fn test_zcash_rejects_post_actions() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let alice_id = context.get_account_by_name("alice").sdk_id();
+    let deposit_msg = DepositMsg {
+        recipient_id: alice_id.clone(),
+        post_actions: Some(vec![PostAction {
+            receiver_id: context.get_account_by_name("dapp").sdk_id(),
+            amount: 5000.into(),
+            memo: None,
+            msg: "".to_string(),
+            gas: None,
+        }]),
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: None,
+    };
+    let deposit_address = context
+        .get_user_deposit_address(DepositMsg {
+            post_actions: None,
+            ..deposit_msg.clone()
+        })
+        .await
+        .unwrap();
+
+    let view_err = context
+        .bridge_contract
+        .call("get_user_deposit_address")
+        .args_json(near_sdk::serde_json::json!({ "deposit_msg": deposit_msg }))
+        .view()
+        .await
+        .unwrap_err();
+    assert!(format!("{view_err:?}").contains("post_actions are not supported"));
+
+    let outcome = context
+        .verify_deposit_v2(
+            "relayer",
+            deposit_msg.clone(),
+            generate_transaction_bytes(
+                vec![(
+                    "4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a",
+                    0,
+                    None,
+                )],
+                vec![(deposit_address.as_str(), 50000)],
+            ),
+            0,
+            mock_proof(),
+        )
+        .await;
+    assert!(tool_err_msg(&outcome).contains("post_actions are not supported"));
+
+    let outcome = context
+        .dao_verify_deposit(
+            "root",
+            deposit_msg,
+            &deposit_address,
+            "5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+            0,
+            50000,
+        )
+        .await;
+    assert!(tool_err_msg(&outcome).contains("post_actions are not supported"));
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+    assert!(context.get_utxos_paged().await.unwrap().is_empty());
 }
