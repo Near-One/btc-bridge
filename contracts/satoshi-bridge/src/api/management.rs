@@ -1,6 +1,7 @@
 use crate::{
-    assert_one_yocto, env, get_deposit_path, near, require, AccessControllable, Account, AccountId,
-    ConfigUpdate, Contract, ContractExt, DepositMsg, Event, HashSet, Promise, Role, U128,
+    assert_one_yocto, assert_post_actions_supported, env, get_deposit_path, near, require,
+    AccessControllable, Account, AccountId, ConfigUpdate, Contract, ContractExt, DepositMsg, Event,
+    HashSet, Promise, Role, U128,
 };
 
 use near_plugins::access_control_any;
@@ -378,6 +379,7 @@ impl Contract {
         vout: u32,
         balance: U128,
     ) -> Promise {
+        assert_post_actions_supported(&deposit_msg);
         if deposit_msg.safe_deposit.is_none() {
             assert_one_yocto();
         }
