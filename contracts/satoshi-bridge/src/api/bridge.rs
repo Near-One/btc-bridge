@@ -137,6 +137,10 @@ impl Contract {
     ///
     /// * `original_btc_pending_verify_id` - Pending verify ID of the original transaction.
     /// * `output` - Modified output.
+    ///
+    /// Requires an attached deposit of at least `required_balance_for_withdraw_rbf()` to cover
+    /// the storage of the new pending record. Any excess is refunded.
+    #[payable]
     #[pause(except(roles(Role::DAO)))]
     pub fn withdraw_rbf(
         &mut self,
@@ -146,6 +150,17 @@ impl Contract {
     ) {
         let account_id = env::predecessor_account_id();
         self.require_pending_sign_capacity(&account_id);
+
+        let required_balance = self.required_balance_for_withdraw_rbf();
+        let attached_deposit = env::attached_deposit();
+        require!(
+            attached_deposit >= required_balance,
+            "Insufficient deposit for storage"
+        );
+        let excess = attached_deposit.saturating_sub(required_balance);
+        if !excess.is_zero() {
+            Promise::new(account_id.clone()).transfer(excess).detach();
+        }
 
         self.withdraw_rbf_chain_specific(
             account_id,
