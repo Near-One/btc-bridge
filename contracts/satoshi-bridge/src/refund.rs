@@ -158,6 +158,7 @@ impl Contract {
                 "refund_address does not match deposit_msg.refund_address"
             );
         }
+        self.assert_valid_refund_address(&refund_address);
 
         let transaction =
             crate::WrappedTransaction::decode(&tx_bytes.0, &self.internal_config().chain)
@@ -285,6 +286,15 @@ impl Contract {
             outpoint,
             deposit_output,
             refund_amount,
+        }
+    }
+
+    /// Panic unless `refund_address` parses as an address of the configured chain.
+    pub(crate) fn assert_valid_refund_address(&self, refund_address: &str) {
+        if let Err(e) =
+            crate::network::Address::parse(refund_address, self.internal_config().chain.clone())
+        {
+            env::panic_str(&format!("Invalid refund address {refund_address}: {e}"));
         }
     }
 

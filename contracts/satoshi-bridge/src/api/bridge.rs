@@ -281,6 +281,9 @@ impl Contract {
     }
 
     pub fn get_user_deposit_address(&self, deposit_msg: DepositMsg) -> String {
+        if let Some(refund_address) = &deposit_msg.refund_address {
+            self.assert_valid_refund_address(refund_address);
+        }
         let path = get_deposit_path(&deposit_msg);
         let deposit_address = self.generate_utxo_chain_address(&path).to_string();
         Event::LogDepositAddress {
