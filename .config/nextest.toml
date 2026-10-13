@@ -1,7 +1,9 @@
 [profile.ci]
-# Each test spawns a neard sandbox: ~520MB RSS but ~0.3 of a core, so
-# concurrency is bound by RAM. 24 is ~12.6GB on the 16GB runner.
-test-threads = 24
+# Each test spawns a neard sandbox: ~520MB RSS but ~0.3 of a core. 24 was
+# tried and failed: 12 zcash tests died with SandboxStartupRetriesExhausted
+# and the leak count tripled, so startup contention -- not thread count --
+# is the ceiling here.
+test-threads = 16
 
 fail-fast = false
 failure-output = "immediate-final"
