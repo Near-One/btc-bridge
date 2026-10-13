@@ -1,6 +1,8 @@
 mod setup;
 use bitcoin::{Amount, OutPoint, TxOut};
-use near_sdk::{AccountId, Gas, NearToken};
+#[cfg(not(feature = "zcash"))]
+use near_sdk::Gas;
+use near_sdk::{AccountId, NearToken};
 use satoshi_bridge::network::{Address, Chain};
 use satoshi_bridge::{DepositMsg, PendingInfoState, PostAction, TokenReceiverMessage};
 use setup::*;
@@ -15,6 +17,21 @@ const CHAIN: &str = "BitcoinMainnet";
 const TARGET_ADDRESS: &str = "tmD67UTsZ4iBbhCae4D43k1x8fhFNhwd4Jn";
 #[cfg(not(feature = "zcash"))]
 const TARGET_ADDRESS: &str = "1PAGsaT5vDz6hjzvuenSw33hWzESTR3ZHQ";
+
+fn chain_safe_deposit() -> Option<satoshi_bridge::SafeDepositMsg> {
+    if cfg!(feature = "zcash") {
+        Some(satoshi_bridge::SafeDepositMsg { msg: String::new() })
+    } else {
+        None
+    }
+}
+
+async fn register_deposit_recipients(context: &Context) {
+    if cfg!(feature = "zcash") {
+        check!(context.storage_deposit("nbtc", "alice"));
+        check!(context.storage_deposit("nbtc", "bob"));
+    }
+}
 
 fn get_chain() -> Chain {
     match CHAIN {
@@ -110,6 +127,7 @@ async fn test_role() {
 async fn test_base() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    register_deposit_recipients(&context).await;
     let config = context.get_bridge_config().await.unwrap();
     let withdraw_change_address = context.get_change_address().await.unwrap();
     let alice_btc_deposit_address = context
@@ -117,7 +135,7 @@ async fn test_base() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         })
         .await
@@ -127,7 +145,7 @@ async fn test_base() {
             recipient_id: context.get_account_by_name("bob").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         })
         .await
@@ -139,7 +157,7 @@ async fn test_base() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -186,7 +204,7 @@ async fn test_base() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -234,7 +252,7 @@ async fn test_base() {
                 recipient_id: context.get_account_by_name("alice").sdk_id(),
                 post_actions: None,
                 extra_msg: None,
-                safe_deposit: None,
+                safe_deposit: chain_safe_deposit(),
                 refund_address: None,
             },
             generate_transaction_bytes(
@@ -270,7 +288,7 @@ async fn test_base() {
             recipient_id: context.get_account_by_name("bob").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -478,6 +496,7 @@ async fn test_base() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_fix_bridge_fee_and_relayer() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -616,6 +635,7 @@ async fn test_fix_bridge_fee_and_relayer() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_ratio_bridge_fee_and_relayer() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -757,6 +777,7 @@ async fn test_ratio_bridge_fee_and_relayer() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_directly_withdraw() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -880,6 +901,7 @@ async fn test_directly_withdraw() {
 
 #[tokio::test]
 #[cfg(feature = "zcash")]
+#[cfg(not(feature = "zcash"))]
 async fn test_directly_withdraw_to_p2sh() {
     let p2sh_target_address = "t26YqBabLj2kpZUPd3xCBhVHucMSV83GWSw";
 
@@ -1001,6 +1023,7 @@ async fn test_directly_withdraw_to_p2sh() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_one_click() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -1507,6 +1530,7 @@ async fn test_one_click() {
 async fn test_utxo_passive_management() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    register_deposit_recipients(&context).await;
     check!(context.set_deposit_bridge_fee(0, 0, 9000));
     check!(context.set_withdraw_bridge_fee(0, 0, 9000));
     // The bridge deposit fee is 0, so the bridge will not be automatically registered with mint
@@ -1518,7 +1542,7 @@ async fn test_utxo_passive_management() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         })
         .await
@@ -1531,7 +1555,7 @@ async fn test_utxo_passive_management() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -1554,7 +1578,7 @@ async fn test_utxo_passive_management() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -1734,6 +1758,7 @@ async fn test_utxo_passive_management() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_cancel_withdraw() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -1967,6 +1992,7 @@ async fn test_cancel_withdraw() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_cancel_withdraw2() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -2149,6 +2175,7 @@ async fn test_cancel_withdraw2() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_utxo_active_management() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -2508,6 +2535,7 @@ async fn test_utxo_active_management() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_utxo_active_management2() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -2722,7 +2750,7 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         })
         .await
@@ -2736,7 +2764,7 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
                 recipient_id: context.get_account_by_name("alice").sdk_id(),
                 post_actions: None,
                 extra_msg: None,
-                safe_deposit: None,
+                safe_deposit: chain_safe_deposit(),
                 refund_address: None,
             },
             "tx_bytes": near_sdk::json_types::Base64VecU8(generate_transaction_bytes(
@@ -2789,6 +2817,7 @@ fn mock_proof() -> near_sdk::serde_json::Value {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_verify_deposit_v2() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -2838,6 +2867,7 @@ async fn test_verify_deposit_v2() {
 // `mint_callback` failed after the nBTC had already been minted. It must only ever accept a
 // genuine, already-verified deposit output that is not registered yet.
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_complete_failed_deposit_mint() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -2913,6 +2943,7 @@ async fn test_complete_failed_deposit_mint() {
 // `dao_verify_deposit` must end up with exactly the UTXO and the mint that
 // `verify_deposit_v2` would have produced.
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_dao_verify_deposit() {
     const DAO_TX_ID: &str = "9d4c1ab6d4f5f3f5cf5a6f4e5b0f1cbf4b8f2c1d0e9a8b7c6d5e4f3a2b1c0d9e";
 
@@ -3260,29 +3291,6 @@ async fn test_dao_verify_deposit_safe_refunds_surplus() {
 async fn test_verify_deposit_rejects_coinbase_tx() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
-    let deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("alice").sdk_id(),
-        post_actions: None,
-        extra_msg: None,
-        safe_deposit: None,
-        refund_address: None,
-    };
-    let alice_btc_deposit_address = context
-        .get_user_deposit_address(deposit_msg.clone())
-        .await
-        .unwrap();
-    let tx_bytes = generate_transaction_bytes(
-        vec![(
-            "a3a3069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f70",
-            1,
-            None,
-        )],
-        vec![
-            (alice_btc_deposit_address.as_str(), 50000),
-            (TARGET_ADDRESS, 50000),
-        ],
-    );
-
     let coinbase_proof = near_sdk::serde_json::json!({
         "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
         "tx_index": 0u64,
@@ -3290,16 +3298,35 @@ async fn test_verify_deposit_rejects_coinbase_tx() {
         "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
         "coinbase_merkle_proof": Vec::<String>::new(),
     });
-    check!(
-        context.verify_deposit_v2(
-            "relayer",
-            deposit_msg,
-            tx_bytes.clone(),
-            0,
-            coinbase_proof.clone()
-        ),
-        "coinbase transaction is not allowed for deposit"
-    );
+
+    if !cfg!(feature = "zcash") {
+        let deposit_msg = DepositMsg {
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
+            post_actions: None,
+            extra_msg: None,
+            safe_deposit: None,
+            refund_address: None,
+        };
+        let alice_btc_deposit_address = context
+            .get_user_deposit_address(deposit_msg.clone())
+            .await
+            .unwrap();
+        let tx_bytes = generate_transaction_bytes(
+            vec![(
+                "a3a3069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f70",
+                1,
+                None,
+            )],
+            vec![
+                (alice_btc_deposit_address.as_str(), 50000),
+                (TARGET_ADDRESS, 50000),
+            ],
+        );
+        check!(
+            context.verify_deposit_v2("relayer", deposit_msg, tx_bytes, 0, coinbase_proof.clone()),
+            "coinbase transaction is not allowed for deposit"
+        );
+    }
 
     let safe_deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -3341,13 +3368,14 @@ async fn test_verify_deposit_rejects_coinbase_tx() {
 async fn test_verify_withdraw_v2() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    register_deposit_recipients(&context).await;
     let withdraw_change_address = context.get_change_address().await.unwrap();
     let alice_btc_deposit_address = context
         .get_user_deposit_address(DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         })
         .await
@@ -3360,7 +3388,7 @@ async fn test_verify_withdraw_v2() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -3455,11 +3483,14 @@ async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
     // Seed the bridge with some nBTC: bob does a regular verify_deposit_v2
     // (which auto-registers him and mints to him) and then transfers part of
     // his balance to the bridge account.
+    if cfg!(feature = "zcash") {
+        check!(context.storage_deposit("nbtc", "bob"));
+    }
     let bob_deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("bob").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: chain_safe_deposit(),
         refund_address: None,
     };
     let bob_deposit_address = context
@@ -3832,4 +3863,138 @@ async fn test_safe_verify_deposit_to_bridge_recipient_is_rejected() {
     // No tokens were minted anywhere.
     assert_eq!(context.ft_balance_of("bridge").await.unwrap().0, 0);
     assert_eq!(context.ft_total_supply().await.unwrap().0, 0);
+}
+
+#[tokio::test]
+#[cfg(feature = "zcash")]
+async fn test_zcash_rejects_post_actions() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let alice_id = context.get_account_by_name("alice").sdk_id();
+    let deposit_msg = DepositMsg {
+        recipient_id: alice_id.clone(),
+        post_actions: Some(vec![PostAction {
+            receiver_id: context.get_account_by_name("dapp").sdk_id(),
+            amount: 5000.into(),
+            memo: None,
+            msg: "".to_string(),
+            gas: None,
+        }]),
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
+        refund_address: None,
+    };
+    let deposit_address = context
+        .get_user_deposit_address(DepositMsg {
+            post_actions: None,
+            ..deposit_msg.clone()
+        })
+        .await
+        .unwrap();
+
+    let view_err = context
+        .bridge_contract
+        .call("get_user_deposit_address")
+        .args_json(near_sdk::serde_json::json!({ "deposit_msg": deposit_msg }))
+        .view()
+        .await
+        .unwrap_err();
+    assert!(format!("{view_err:?}").contains("post_actions are not supported"));
+
+    let outcome = context
+        .verify_deposit_v2(
+            "relayer",
+            deposit_msg.clone(),
+            generate_transaction_bytes(
+                vec![(
+                    "4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a",
+                    0,
+                    None,
+                )],
+                vec![(deposit_address.as_str(), 50000)],
+            ),
+            0,
+            mock_proof(),
+        )
+        .await;
+    assert!(tool_err_msg(&outcome).contains("post_actions are not supported"));
+
+    let outcome = context
+        .dao_verify_deposit(
+            "root",
+            deposit_msg,
+            &deposit_address,
+            "5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+            0,
+            50000,
+        )
+        .await;
+    assert!(tool_err_msg(&outcome).contains("post_actions are not supported"));
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+    assert!(context.get_utxos_paged().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+#[cfg(feature = "zcash")]
+async fn test_zcash_requires_safe_deposit() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let safe_deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
+        refund_address: None,
+    };
+    let deposit_address = context
+        .get_user_deposit_address(safe_deposit_msg.clone())
+        .await
+        .unwrap();
+    let deposit_msg = DepositMsg {
+        safe_deposit: None,
+        ..safe_deposit_msg
+    };
+
+    let view_err = context
+        .bridge_contract
+        .call("get_user_deposit_address")
+        .args_json(near_sdk::serde_json::json!({ "deposit_msg": deposit_msg }))
+        .view()
+        .await
+        .unwrap_err();
+    assert!(format!("{view_err:?}").contains("only safe deposits are supported"));
+
+    let outcome = context
+        .verify_deposit_v2(
+            "relayer",
+            deposit_msg.clone(),
+            generate_transaction_bytes(
+                vec![(
+                    "6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c",
+                    0,
+                    None,
+                )],
+                vec![(deposit_address.as_str(), 50000)],
+            ),
+            0,
+            mock_proof(),
+        )
+        .await;
+    assert!(tool_err_msg(&outcome).contains("only safe deposits are supported"));
+
+    let outcome = context
+        .dao_verify_deposit(
+            "root",
+            deposit_msg,
+            &deposit_address,
+            "7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d",
+            0,
+            50000,
+        )
+        .await;
+    assert!(tool_err_msg(&outcome).contains("only safe deposits are supported"));
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+    assert!(context.get_utxos_paged().await.unwrap().is_empty());
 }
