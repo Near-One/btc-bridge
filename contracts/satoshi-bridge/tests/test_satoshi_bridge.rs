@@ -3165,6 +3165,87 @@ async fn test_safe_verify_deposit_v2() {
 }
 
 #[tokio::test]
+async fn test_verify_deposit_rejects_coinbase_tx() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: None,
+    };
+    let alice_btc_deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "a3a3069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f70",
+            1,
+            None,
+        )],
+        vec![
+            (alice_btc_deposit_address.as_str(), 50000),
+            (TARGET_ADDRESS, 50000),
+        ],
+    );
+
+    let coinbase_proof = near_sdk::serde_json::json!({
+        "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
+        "tx_index": 0u64,
+        "merkle_proof": Vec::<String>::new(),
+        "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
+        "coinbase_merkle_proof": Vec::<String>::new(),
+    });
+    check!(
+        context.verify_deposit_v2(
+            "relayer",
+            deposit_msg,
+            tx_bytes.clone(),
+            0,
+            coinbase_proof.clone()
+        ),
+        "coinbase transaction is not allowed for deposit"
+    );
+
+    let safe_deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
+        refund_address: None,
+    };
+    let safe_deposit_address = context
+        .get_user_deposit_address(safe_deposit_msg.clone())
+        .await
+        .unwrap();
+    check!(
+        context.verify_deposit_v2(
+            "relayer",
+            safe_deposit_msg,
+            generate_transaction_bytes(
+                vec![(
+                    "b4b4069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f80",
+                    1,
+                    None,
+                )],
+                vec![
+                    (safe_deposit_address.as_str(), 50000),
+                    (TARGET_ADDRESS, 50000)
+                ],
+            ),
+            0,
+            coinbase_proof
+        ),
+        "coinbase transaction is not allowed for deposit"
+    );
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+    assert_eq!(context.get_utxos_paged().await.unwrap().len(), 0);
+}
+
+#[tokio::test]
 async fn test_verify_withdraw_v2() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
