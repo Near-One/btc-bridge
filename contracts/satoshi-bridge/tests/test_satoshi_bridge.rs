@@ -3660,3 +3660,98 @@ async fn test_safe_verify_deposit_to_bridge_recipient_is_rejected() {
     assert_eq!(context.ft_balance_of("bridge").await.unwrap().0, 0);
     assert_eq!(context.ft_total_supply().await.unwrap().0, 0);
 }
+
+#[tokio::test]
+async fn test_withdraw_rejects_reduced_user_output() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
+    check!(context
+        .root
+        .call(context.bridge_contract.id(), "update_config")
+        .args_json(near_sdk::serde_json::json!({
+            "update": { "min_change_amount": "500" },
+        }))
+        .max_gas()
+        .deposit(near_sdk::NearToken::from_yoctonear(1))
+        .transact());
+    let config = context.get_bridge_config().await.unwrap();
+    let withdraw_change_address = context.get_change_address().await.unwrap();
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: None,
+    };
+    let alice_btc_deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    check!(context.verify_deposit_v2(
+        "relayer",
+        deposit_msg,
+        generate_transaction_bytes(
+            vec![(
+                "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
+                1,
+                None,
+            )],
+            vec![(alice_btc_deposit_address.as_str(), 500000)],
+        ),
+        0,
+        proof_json(
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![]
+        )
+    ));
+    let utxo_key = context
+        .get_utxos_paged()
+        .await
+        .unwrap()
+        .keys()
+        .next()
+        .unwrap()
+        .clone();
+    let utxo = utxo_key.split('@').collect::<Vec<_>>();
+    let input = vec![OutPoint {
+        txid: utxo[0].parse().unwrap(),
+        vout: utxo[1].parse().unwrap(),
+    }];
+    let withdraw_amount = 200000;
+    let btc_gas_fee = 10000;
+    let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
+    let user_amount = (withdraw_amount - btc_gas_fee - withdraw_fee) as u64;
+    let change_amount = 500000 - (withdraw_amount - withdraw_fee) as u64;
+    let withdraw_msg = |shaved: u64| TokenReceiverMessage::Withdraw {
+        target_btc_address: TARGET_ADDRESS.to_string(),
+        input: input.clone(),
+        output: vec![
+            generate_tx_out(user_amount - shaved, TARGET_ADDRESS, get_chain()),
+            generate_tx_out(
+                change_amount + shaved,
+                withdraw_change_address.as_str(),
+                get_chain(),
+            ),
+        ],
+        max_gas_fee: None,
+        chain_specific_data: None,
+    };
+
+    check!(
+        context.do_withdraw("alice", "bridge", withdraw_amount, withdraw_msg(300)),
+        "must be equal to"
+    );
+    assert!(context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .is_empty());
+
+    check!(context.do_withdraw("alice", "bridge", withdraw_amount, withdraw_msg(0)));
+    assert_eq!(
+        context.get_btc_pending_infos_paged().await.unwrap().len(),
+        1
+    );
+}

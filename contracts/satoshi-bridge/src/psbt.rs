@@ -225,17 +225,12 @@ impl Contract {
             );
         }
         let gas_fee = total_input_amount - total_output_amount;
-        // When constructing the withdraw transaction, if the change is less than min_change_amount (dust),
-        // the caller may deduct a portion from the user's output to make the change amount meet min_change_amount.
-        // Therefore, the contract relaxes the validation.
-        let max_received_amount = amount - withdraw_fee - gas_fee;
-        let min_received_amount = max_received_amount - config.min_change_amount;
+        let expected_received_amount = amount - withdraw_fee - gas_fee;
         require!(
-            actual_received_amount >= min_received_amount
-                && actual_received_amount <= max_received_amount,
+            actual_received_amount == expected_received_amount,
             format!(
-                "The user's output amount ({}) is out of the valid range ({}, {})",
-                actual_received_amount, min_received_amount, max_received_amount
+                "The user's output amount ({}) must be equal to {}",
+                actual_received_amount, expected_received_amount
             )
         );
         require!(
