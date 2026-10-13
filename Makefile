@@ -45,12 +45,12 @@ $(foreach feature,$(FEATURES), \
 	$(eval test-$(feature): ; cargo test --no-default-features --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST)) \
 )
 
-# Per-feature CI target so the legs run as parallel jobs. nextest is used
-# because `cargo test` runs test binaries one at a time, leaving threads idle.
-# Needs build-local: test_upgrade.rs isn't gated and loads both wasms.
+# Per-feature CI target so the legs run as parallel jobs. nextest packs tests
+# across binaries; -j8 is pinned, not core count, since sandbox startup
+# contends (16 was slower, 24 failed). build-local: test_upgrade needs both.
 $(foreach feature,$(FEATURES), \
 	$(eval test-ci-$(feature): build-local ; \
-		cargo nextest run --profile ci --no-default-features --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST)) \
+		cargo nextest run -j8 --no-fail-fast --no-default-features --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST)) \
 )
 
 
