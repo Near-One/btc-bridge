@@ -1,7 +1,7 @@
 [profile.ci]
 # Each test spawns a neard sandbox: ~520MB RSS but ~0.3 of a core, so
-# concurrency is bound by RAM. 16 is ~8.4GB on the 16GB runner.
-test-threads = 16
+# concurrency is bound by RAM. 24 is ~12.6GB on the 16GB runner.
+test-threads = 24
 
 fail-fast = false
 failure-output = "immediate-final"
