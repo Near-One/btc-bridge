@@ -21,7 +21,7 @@ async fn deposit_for_alice(context: &Context, amount: u64) -> (String, String) {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
         refund_address: None,
     };
     let deposit_address = context
@@ -65,6 +65,7 @@ async fn deposit_for_alice(context: &Context, amount: u64) -> (String, String) {
 async fn test_ironwood_withdrawal_v6_sign() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
     check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
@@ -134,6 +135,7 @@ async fn test_ironwood_withdrawal_v6_sign() {
 async fn test_ironwood_shielded_refund() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let deposit_amount: u64 = 180_000;
     let gas_fee: u64 = 10_000; // default = ZIP-317 minimum (same for the Ironwood slot)
@@ -147,7 +149,7 @@ async fn test_ironwood_shielded_refund() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
         refund_address: Some(recipient_ua.clone()),
     };
     let deposit_address = context
@@ -246,6 +248,7 @@ async fn test_ironwood_shielded_refund() {
 async fn test_shielded_withdraw_rbf_across_nu63_activation() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
     check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
@@ -400,6 +403,7 @@ async fn test_shielded_withdraw_rbf_across_nu63_activation() {
 async fn test_transparent_withdraw_rbf_across_nu63_activation() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
     check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
