@@ -3,7 +3,7 @@
 # tried and failed: 12 zcash tests died with SandboxStartupRetriesExhausted
 # and the leak count tripled, so startup contention -- not thread count --
 # is the ceiling here.
-test-threads = 16
+test-threads = 8
 
 fail-fast = false
 failure-output = "immediate-final"
