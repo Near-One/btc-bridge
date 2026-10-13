@@ -58,6 +58,10 @@ pub fn assert_post_actions_supported(deposit_msg: &DepositMsg) {
             deposit_msg.post_actions.is_none(),
             "post_actions are not supported"
         );
+        require!(
+            deposit_msg.safe_deposit.is_some(),
+            "only safe deposits are supported"
+        );
     }
 }
 

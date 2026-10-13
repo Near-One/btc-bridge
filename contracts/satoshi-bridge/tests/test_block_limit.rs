@@ -101,6 +101,14 @@ async fn setup_two_tier_context_with(
         .await;
     }
 
+    if cfg!(feature = "zcash") {
+        context
+            .storage_deposit("nbtc", "alice")
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
     let deposit_address = context
         .get_user_deposit_address(alice_deposit_msg(&context))
         .await
@@ -114,7 +122,11 @@ fn alice_deposit_msg(context: &Context) -> DepositMsg {
         recipient_id: context.alice.sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: if cfg!(feature = "zcash") {
+            Some(satoshi_bridge::SafeDepositMsg { msg: String::new() })
+        } else {
+            None
+        },
         refund_address: None,
     }
 }
