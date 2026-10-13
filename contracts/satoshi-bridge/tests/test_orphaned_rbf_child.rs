@@ -220,7 +220,8 @@ async fn test_orphaned_user_rbf_child_cleanup() {
             RBF_BTC_GAS_FEE,
             original.change_amount,
             &change_address,
-        )
+        ),
+        near_sdk::NearToken::from_near(1)
     ));
     let child_id = find_child(
         &context.get_btc_pending_infos_paged().await.unwrap(),
@@ -242,7 +243,8 @@ async fn test_orphaned_user_rbf_child_cleanup() {
             RBF_BTC_GAS_FEE,
             new_withdraw.change_amount,
             &change_address,
-        )
+        ),
+        near_sdk::NearToken::from_near(1)
     ));
 }
 
@@ -315,7 +317,8 @@ async fn test_rbf_child_cannot_be_cleared_while_original_pending() {
             RBF_BTC_GAS_FEE,
             original.change_amount,
             &change_address,
-        )
+        ),
+        near_sdk::NearToken::from_near(1)
     ));
     let child_id = find_child(
         &context.get_btc_pending_infos_paged().await.unwrap(),
@@ -355,7 +358,8 @@ async fn test_orphaned_rbf_child_cleanup_after_sibling_rbf_finalized() {
             RBF_BTC_GAS_FEE,
             original.change_amount,
             &change_address,
-        )
+        ),
+        near_sdk::NearToken::from_near(1)
     ));
     let winner_id = find_child(
         &context.get_btc_pending_infos_paged().await.unwrap(),
@@ -372,7 +376,8 @@ async fn test_orphaned_rbf_child_cleanup_after_sibling_rbf_finalized() {
             RBF_BTC_GAS_FEE + 10000,
             original.change_amount,
             &change_address,
-        )
+        ),
+        near_sdk::NearToken::from_near(1)
     ));
     let child_id = context
         .get_account("alice")

@@ -350,6 +350,7 @@ async fn test_shielded_withdraw_rbf_across_nu63_activation() {
                     expiry_height: POST_NU6_3_HEIGHT + 10_000,
                 },
             }))
+            .deposit(near_sdk::NearToken::from_near(1))
             .max_gas()
             .transact(),
         "ERR_INVALID_ORCHARD_BUNDLE"
@@ -369,6 +370,7 @@ async fn test_shielded_withdraw_rbf_across_nu63_activation() {
                     expiry_height: POST_NU6_3_HEIGHT + 10_000,
                 },
             }))
+            .deposit(near_sdk::NearToken::from_near(1))
             .max_gas()
             .transact()
     );
@@ -499,6 +501,7 @@ async fn test_transparent_withdraw_rbf_across_nu63_activation() {
                 "output": [],
                 "chain_specific_data": null,
             }))
+            .deposit(near_sdk::NearToken::from_near(1))
             .max_gas()
             .transact()
     );

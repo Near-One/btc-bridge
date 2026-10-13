@@ -1992,6 +1992,152 @@ async fn test_cancel_withdraw() {
 }
 
 #[tokio::test]
+async fn test_withdraw_rbf_charges_storage() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    register_deposit_recipients(&context).await;
+    check!(context.set_deposit_bridge_fee(10000, 0, 9000));
+    check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
+    let config = context.get_bridge_config().await.unwrap();
+    let withdraw_change_address = context.get_change_address().await.unwrap();
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: chain_safe_deposit(),
+        refund_address: None,
+    };
+    let alice_btc_deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    check!(context.verify_deposit_v2(
+        "relayer",
+        deposit_msg,
+        generate_transaction_bytes(
+            vec![(
+                "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
+                1,
+                None,
+            ),],
+            vec![
+                ("1MgiBKohM2poApYamQadp21vJrNyh5T19G", 90000),
+                (alice_btc_deposit_address.as_str(), 500000),
+            ],
+        ),
+        1,
+        proof_json(
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![]
+        )
+    ));
+    let utxos_keys = context
+        .get_utxos_paged()
+        .await
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<String>>();
+    let first_utxo = utxos_keys[0].split('@').collect::<Vec<_>>();
+    let withdraw_amount = 200000;
+    let btc_gas_fee = 10000;
+    let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
+    let change_amount = 500000 - (withdraw_amount - withdraw_fee) as u64;
+    check!(context.do_withdraw(
+        "alice",
+        "bridge",
+        withdraw_amount,
+        TokenReceiverMessage::Withdraw {
+            target_btc_address: TARGET_ADDRESS.to_string(),
+            input: vec![OutPoint {
+                txid: first_utxo[0].parse().unwrap(),
+                vout: first_utxo[1].parse().unwrap(),
+            }],
+            output: vec![
+                generate_tx_out(
+                    (withdraw_amount - btc_gas_fee - withdraw_fee) as u64,
+                    TARGET_ADDRESS,
+                    get_chain()
+                ),
+                generate_tx_out(change_amount, withdraw_change_address.as_str(), get_chain()),
+            ],
+            max_gas_fee: None,
+            chain_specific_data: None,
+        }
+    ));
+    let original_btc_pending_verify_id = context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .keys()
+        .next()
+        .unwrap()
+        .clone();
+    check!(context.sign_btc_transaction("relayer", &original_btc_pending_verify_id, 0, 0));
+
+    let rbf_output = vec![
+        generate_tx_out(
+            (withdraw_amount - btc_gas_fee - 1000 - withdraw_fee) as u64,
+            TARGET_ADDRESS,
+            get_chain(),
+        ),
+        generate_tx_out(change_amount, withdraw_change_address.as_str(), get_chain()),
+    ];
+
+    check!(
+        context.withdraw_rbf(
+            "alice",
+            &original_btc_pending_verify_id,
+            rbf_output.clone(),
+            NearToken::from_yoctonear(1)
+        ),
+        "Insufficient deposit for storage"
+    );
+    assert_eq!(
+        context.get_btc_pending_infos_paged().await.unwrap().len(),
+        1
+    );
+
+    worker.fast_forward(5).await.unwrap();
+    let alice = context.get_account_by_name("alice");
+    let alice_balance_before = alice.view_account().await.unwrap().balance;
+    let bridge_storage_before = context
+        .bridge_contract
+        .view_account()
+        .await
+        .unwrap()
+        .storage_usage;
+    check!(context.withdraw_rbf(
+        "alice",
+        &original_btc_pending_verify_id,
+        rbf_output,
+        NearToken::from_near(1)
+    ));
+    assert_eq!(
+        context.get_btc_pending_infos_paged().await.unwrap().len(),
+        2
+    );
+
+    let bridge_storage_after = context
+        .bridge_contract
+        .view_account()
+        .await
+        .unwrap()
+        .storage_usage;
+    let storage_cost = NearToken::from_yoctonear(
+        u128::from(bridge_storage_after - bridge_storage_before) * 10u128.pow(19),
+    );
+    let required_balance = context.required_balance_for_withdraw_rbf().await.unwrap();
+    assert!(storage_cost <= required_balance);
+    worker.fast_forward(5).await.unwrap();
+    let alice_spent =
+        alice_balance_before.saturating_sub(alice.view_account().await.unwrap().balance);
+    assert!(alice_spent >= required_balance);
+    assert!(alice_spent < required_balance.saturating_add(NearToken::from_millinear(100)));
+}
+
+#[tokio::test]
 #[cfg(not(feature = "zcash"))]
 async fn test_cancel_withdraw2() {
     let worker = near_workspaces::sandbox().await.unwrap();

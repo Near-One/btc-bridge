@@ -919,14 +919,17 @@ impl Context {
         user: &str,
         original_btc_pending_verify_id: &str,
         output: Vec<TxOut>,
+        deposit: NearToken,
     ) -> Result<ExecutionFinalResult> {
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "withdraw_rbf")
             .args_json(json!({
                 "original_btc_pending_verify_id": original_btc_pending_verify_id,
                 "output": output,
+                "chain_specific_data": null,
             }))
             .max_gas()
+            .deposit(deposit)
             .transact()
             .await
     }
@@ -1494,6 +1497,16 @@ impl Context {
     pub async fn required_balance_for_request_refund(&self) -> Result<NearToken> {
         self.bridge_contract
             .call("required_balance_for_request_refund")
+            .args_json(json!({}))
+            .view()
+            .await
+            .unwrap()
+            .json::<NearToken>()
+    }
+
+    pub async fn required_balance_for_withdraw_rbf(&self) -> Result<NearToken> {
+        self.bridge_contract
+            .call("required_balance_for_withdraw_rbf")
             .args_json(json!({}))
             .view()
             .await
