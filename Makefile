@@ -11,7 +11,7 @@ release: $(addprefix build-,$(FEATURES)) release-nbtc
 release-nbtc:
 	$(call build_release_wasm,nbtc,nbtc)
 
-build-local: $(addprefix build-local-,$(FEATURES)) nbtc mock-chain-signatures mock-btc-light-client mock-dapp
+build-local: $(addprefix build-local-,$(FEATURES)) nbtc mock-chain-signatures mock-btc-light-client mock-dapp mock-refund-rejector
 
 lint: $(addprefix clippy-,$(FEATURES)) $(addprefix fmt-,$(FEATURES))
 	@cargo fmt --all
@@ -48,6 +48,9 @@ $(foreach feature,$(FEATURES), \
 
 mock-dapp: contracts/mock-dapp
 	$(call local_build_wasm,mock-dapp,mock_dapp)
+
+mock-refund-rejector: contracts/mock-refund-rejector
+	$(call local_build_wasm,mock-refund-rejector,mock_refund_rejector)
 
 mock-chain-signatures: contracts/mock-chain-signatures
 	$(call local_build_wasm,mock-chain-signatures,mock_chain_signatures)

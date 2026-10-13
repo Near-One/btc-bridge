@@ -331,7 +331,7 @@ impl Contract {
     /// Reject a pending refund request.
     /// - An executed request cannot be rejected.
     /// - DAO or Operator can reject any non-executed request.
-    /// - Anyone can reject a request if the UTXO has already been verified via `verify_deposit_v2`
+    /// - Anyone can reject a request if the UTXO has already been finalized via `verify_deposit_v2`
     ///
     /// # Arguments
     ///
@@ -350,7 +350,11 @@ impl Contract {
         let is_already_deposited = self
             .data()
             .verified_deposit_utxo
-            .contains(&utxo_storage_key);
+            .contains(&utxo_storage_key)
+            && !self
+                .data()
+                .utxos_in_progress
+                .contains_key(&utxo_storage_key);
         require!(
             is_privileged || is_already_deposited,
             "Only DAO/Operator can reject, or UTXO must be already verified via deposit"
