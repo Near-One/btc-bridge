@@ -1385,6 +1385,77 @@ async fn test_refund_address_mismatch() {
 
 #[tokio::test]
 #[cfg(not(feature = "zcash"))]
+async fn test_deposit_address_rejects_invalid_refund_address() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    for refund_address in ["not-an-address", "mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn"] {
+        let deposit_msg = DepositMsg {
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
+            post_actions: None,
+            extra_msg: None,
+            safe_deposit: None,
+            refund_address: Some(refund_address.to_string()),
+        };
+        let err = context
+            .bridge_contract
+            .call("get_user_deposit_address")
+            .args_json(json!({ "deposit_msg": deposit_msg }))
+            .view()
+            .await
+            .unwrap_err();
+        assert!(format!("{err:?}").contains("Invalid refund address"));
+    }
+}
+
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_request_refund_rejects_invalid_refund_address() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: None,
+    };
+
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "b4b4069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f33",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 50_000)],
+    );
+
+    for refund_address in ["not-an-address", "mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn"] {
+        check!(
+            context.request_refund(
+                "alice",
+                deposit_msg.clone(),
+                refund_address,
+                tx_bytes.clone(),
+                0,
+                "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+                1,
+                vec![],
+                None
+            ),
+            "Invalid refund address"
+        );
+    }
+}
+
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_refund_operator_skips_timelock() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
