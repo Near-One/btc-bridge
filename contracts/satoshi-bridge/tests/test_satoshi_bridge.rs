@@ -1995,6 +1995,7 @@ async fn test_cancel_withdraw() {
 async fn test_withdraw_rbf_charges_storage() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    register_deposit_recipients(&context).await;
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
     check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
     let config = context.get_bridge_config().await.unwrap();
@@ -2003,7 +2004,7 @@ async fn test_withdraw_rbf_charges_storage() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: chain_safe_deposit(),
         refund_address: None,
     };
     let alice_btc_deposit_address = context

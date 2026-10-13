@@ -122,16 +122,7 @@ impl Contract {
         let account_id = env::predecessor_account_id();
         self.require_pending_sign_capacity(&account_id);
 
-        let required_balance = self.required_balance_for_withdraw_rbf();
-        let attached_deposit = env::attached_deposit();
-        require!(
-            attached_deposit >= required_balance,
-            "Insufficient deposit for storage"
-        );
-        let excess = attached_deposit.saturating_sub(required_balance);
-        if !excess.is_zero() {
-            Promise::new(account_id.clone()).transfer(excess).detach();
-        }
+        charge_attached_deposit(self.required_balance_for_withdraw_rbf());
 
         self.withdraw_rbf_chain_specific(
             account_id,

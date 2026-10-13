@@ -9,6 +9,7 @@ use crate::utxo::UTXOStatus;
 use crate::{
     btc_light_client::TxInclusionInfo,
     burn::GAS_FOR_BURN_CALL,
+    charge_attached_deposit,
     deposit_msg::get_deposit_path,
     env, ext_nbtc, generate_utxo_storage_key,
     mint::{GAS_FOR_MINT_CALL, GAS_FOR_MINT_CALL_BACK},
@@ -215,20 +216,6 @@ impl Contract {
         )
     }
 
-    /// Require the safe-deposit storage balance to be attached and refund any surplus
-    /// to the caller.
-    pub(crate) fn charge_safe_deposit_storage(&self) {
-        let required = self.required_balance_for_safe_deposit();
-        let attached = env::attached_deposit();
-        require!(attached >= required, "Insufficient deposit for storage");
-        let surplus = attached.saturating_sub(required);
-        if !surplus.is_zero() {
-            Promise::new(env::predecessor_account_id())
-                .transfer(surplus)
-                .detach();
-        }
-    }
-
     pub(crate) fn internal_safe_verify_deposit_entry(
         &mut self,
         deposit_msg: DepositMsg,
@@ -243,7 +230,7 @@ impl Contract {
             tx_index != 0,
             "coinbase transaction is not allowed for deposit"
         );
-        self.charge_safe_deposit_storage();
+        charge_attached_deposit(self.required_balance_for_safe_deposit());
 
         let path = get_deposit_path(&deposit_msg);
         let safe_deposit_msg = deposit_msg
@@ -345,7 +332,7 @@ impl Contract {
         );
 
         if let Some(safe_deposit_msg) = deposit_msg.safe_deposit.take() {
-            self.charge_safe_deposit_storage();
+            charge_attached_deposit(self.required_balance_for_safe_deposit());
             let recipient_id = deposit_msg.recipient_id;
             require!(
                 self.data_mut()
