@@ -609,6 +609,27 @@ async fn test_zcash_refund_reject() {
     );
 }
 
+/// Once `execute_refund` has run, nobody — including DAO — can reject the request.
+#[tokio::test]
+#[cfg(feature = "zcash")]
+async fn test_zcash_reject_refund_blocked_after_execute() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+
+    let key = deposit_and_request_refund(&context, ZEC_REFUND_TADDR, 100_000).await;
+
+    check!(context.execute_refund("root", &key, None));
+
+    check!(
+        context.reject_refund("bob", &key),
+        "Refund already executed, cannot reject"
+    );
+    check!(
+        context.reject_refund("root", &key),
+        "Refund already executed, cannot reject"
+    );
+}
+
 /// request_refund succeeds even when deposit_msg.refund_address is None
 /// (address supplied as a separate parameter).
 #[tokio::test]
