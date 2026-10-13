@@ -45,6 +45,14 @@ $(foreach feature,$(FEATURES), \
 	$(eval test-$(feature): ; cargo test --no-default-features --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST)) \
 )
 
+# Per-feature CI target so the legs run as parallel jobs. nextest packs tests
+# across binaries; -j8 is pinned, not core count. 8 measured fastest: 4 and
+# 16 are both slower and 24 fails. build-local: test_upgrade needs both.
+$(foreach feature,$(FEATURES), \
+	$(eval test-ci-$(feature): build-local ; \
+		cargo nextest run -j8 --no-fail-fast --no-default-features --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST)) \
+)
+
 
 mock-dapp: contracts/mock-dapp
 	$(call local_build_wasm,mock-dapp,mock_dapp)

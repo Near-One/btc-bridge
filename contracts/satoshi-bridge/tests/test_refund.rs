@@ -97,8 +97,10 @@ async fn test_refund_basic_flow() {
         "Refund timelock has not passed yet"
     );
 
-    // 7. Fast-forward past timelock (3600 seconds = ~3600 blocks)
-    worker.fast_forward(4000).await.unwrap();
+    // 7. Fast-forward past the 200s timelock. A sandbox block advances the clock
+    // by ~0.3s, so 1000 blocks is ~300s -- comfortably past, and 4x cheaper than
+    // the 4000 this used to forward.
+    worker.fast_forward(1000).await.unwrap();
 
     // 8. Execute refund — timelock passed, should succeed
 
@@ -1695,7 +1697,8 @@ async fn test_refund_execute_twice_different_account() {
 
     // (2) After the timelock, bob's call reaches the finalize step but rebuilds the
     // identical tx (same id) and is rejected — no duplicate, no hijack.
-    worker.fast_forward(4000).await.unwrap();
+    // 1000 blocks is ~300s, past the 200s timelock.
+    worker.fast_forward(1000).await.unwrap();
     check!(
         context.execute_refund("bob", &key),
         "pending info already exist"
@@ -1917,7 +1920,8 @@ async fn test_reject_refund_blocked_after_execute() {
         .await
         .unwrap()
         .unwrap();
-    worker.fast_forward(4000).await.unwrap();
+    // 1000 blocks is ~300s, past the 200s timelock.
+    worker.fast_forward(1000).await.unwrap();
 
     // Execute the refund — this inserts the UTXO into verified_deposit_utxo and keeps
     // the request with executed == true. Must actually succeed for the test to be meaningful.
