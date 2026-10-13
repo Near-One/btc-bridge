@@ -45,6 +45,14 @@ $(foreach feature,$(FEATURES), \
 	$(eval test-$(feature): ; cargo test --no-default-features --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST)) \
 )
 
+# Per-feature CI target so the legs run as parallel jobs. nextest is used
+# because `cargo test` runs test binaries one at a time, leaving threads idle.
+# Needs build-local: test_upgrade.rs isn't gated and loads both wasms.
+$(foreach feature,$(FEATURES), \
+	$(eval test-ci-$(feature): build-local ; \
+		cargo nextest run --profile ci --no-default-features --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST)) \
+)
+
 
 mock-dapp: contracts/mock-dapp
 	$(call local_build_wasm,mock-dapp,mock_dapp)
