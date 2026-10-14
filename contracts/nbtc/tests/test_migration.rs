@@ -233,6 +233,7 @@ async fn test_migration_from_poa_via_full_access_key() {
     owner
         .call(fresh.id(), "set_withdraw_relayer_address")
         .args_json(json!({ "relayer": NEW_WITHDRAW_RELAYER }))
+        .deposit(NearToken::from_yoctonear(1))
         .transact()
         .await
         .unwrap()
