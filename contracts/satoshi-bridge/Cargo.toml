@@ -53,6 +53,7 @@ zcash_address = { version = "=0.14.0-pre.1" }
 getrandom = { version = "0.2.12", features = ["custom"] }
 
 [dev-dependencies]
+near-sdk = { workspace = true, features = ["unit-testing"] }
 near-workspaces = { version = "0.22", features = ["unstable"] }
 tokio = { version = "1.12.0", features = ["full"] }
 # Must match the `rand_core` major version used by `orchard`.
