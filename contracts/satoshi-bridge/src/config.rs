@@ -120,6 +120,14 @@ pub struct Config {
     pub expiry_height_gap: u32,
 }
 
+/// Blocks with at most `max_confirmations` confirmations must hold less than
+/// `allowed_total` in total.
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Eq))]
+pub struct RiskLimit {
+    pub max_confirmations: u64,
+    pub allowed_total: u128,
+}
+
 impl Config {
     pub fn assert_valid(&self) {
         let confirmations_valid_range = 2..=100;
@@ -210,30 +218,53 @@ impl Config {
         self.chain.clone()
     }
 
-    pub fn get_confirmations(&self, satoshi_amount: u128) -> u64 {
+    pub fn sorted_confirmations_tiers(&self) -> Vec<(u128, u64)> {
         require!(
             !self.confirmations_strategy.is_empty(),
             "confirmations_strategy is empty"
         );
         // The key is constrained to U64 during assignment, so it won't panic.
-        let mut keys = self
+        let mut tiers = self
             .confirmations_strategy
-            .keys()
-            .map(|k| k.parse::<u128>().unwrap())
+            .iter()
+            .map(|(bound, confirmations)| {
+                (bound.parse::<u128>().unwrap(), u64::from(*confirmations))
+            })
             .collect::<Vec<_>>();
-        keys.sort_unstable();
-        for key in &keys {
-            if *key > satoshi_amount {
-                return u64::from(*self.confirmations_strategy.get(&key.to_string()).unwrap());
-            }
-        }
-        let max_key = keys.last().unwrap();
-        u64::from(
-            *self
-                .confirmations_strategy
-                .get(&max_key.to_string())
-                .unwrap(),
-        )
+        tiers.sort_unstable();
+        tiers
+    }
+
+    /// The confirmations strategy read as risk limits, shifted by `delta`:
+    /// tiers `3 -> 10_000`, `10 -> 100_000`, `25 -> 1_000_000` become
+    /// `(2, 0)`, `(9, 10_000)`, `(24, 100_000)`. The bound of the top tier
+    /// is the fallback for any larger amount and limits nothing.
+    pub fn risk_limits(&self, delta: u64) -> Vec<RiskLimit> {
+        let tiers = self.sorted_confirmations_tiers();
+        let allowed_totals = std::iter::once(0).chain(tiers.iter().map(|(bound, _)| *bound));
+        tiers
+            .iter()
+            .zip(allowed_totals)
+            .map(|((_, confirmations), allowed_total)| RiskLimit {
+                max_confirmations: (confirmations + delta).saturating_sub(1),
+                allowed_total,
+            })
+            .collect()
+    }
+
+    pub fn tier_confirmations(tiers: &[(u128, u64)], satoshi_amount: u128) -> u64 {
+        tiers
+            .iter()
+            .find(|(bound, _)| *bound > satoshi_amount)
+            .or_else(|| tiers.last())
+            .map_or_else(
+                || env::panic_str("confirmations_strategy is empty"),
+                |(_, confirmations)| *confirmations,
+            )
+    }
+
+    pub fn get_confirmations(&self, satoshi_amount: u128) -> u64 {
+        Self::tier_confirmations(&self.sorted_confirmations_tiers(), satoshi_amount)
     }
 
     pub fn max_tier_confirmations(&self) -> u8 {
@@ -500,6 +531,40 @@ mod tests {
         assert_eq!(config.get_confirmations(u128::MAX), 10);
         assert_eq!(u64::from(config.max_tier_confirmations()), 10);
         assert_eq!(config.get_confirmations(5_000), 3);
+    }
+
+    #[test]
+    fn test_risk_limits_shift_tiers_by_one_and_by_delta() {
+        let mut unit_env = init_unit_env();
+        testing_env!(unit_env
+            .context
+            .predecessor_account_id(owner_id())
+            .attached_deposit(NearToken::from_yoctonear(1))
+            .build());
+
+        unit_env
+            .contract
+            .set_confirmations_strategy(U128(10_000_000), 25);
+        unit_env
+            .contract
+            .set_confirmations_strategy(U128(10_000), 3);
+        unit_env
+            .contract
+            .set_confirmations_strategy(U128(100_000), 10);
+
+        let config = unit_env.contract.internal_config();
+        let limit = |max_confirmations, allowed_total| RiskLimit {
+            max_confirmations,
+            allowed_total,
+        };
+        assert_eq!(
+            config.risk_limits(0),
+            vec![limit(2, 0), limit(9, 10_000), limit(24, 100_000)]
+        );
+        assert_eq!(
+            config.risk_limits(2),
+            vec![limit(4, 0), limit(11, 10_000), limit(26, 100_000)]
+        );
     }
 
     // Regression: a Zcash unified address with no transparent receiver (shielded-only,
