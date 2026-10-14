@@ -2,9 +2,10 @@ use bitcoin::{Amount, OutPoint, TxOut};
 use near_sdk::json_types::Base64VecU8;
 
 use crate::{
-    env, near, require, serde_json, AccessControllable, AccountId, BTCPendingInfo, Contract,
-    ContractExt, DepositMsg, Event, Gas, OriginalState, PendingInfoStage, PendingInfoState,
-    Promise, Role, TxInclusionProof, MAX_BOOL_RESULT, UTXO, VUTXO,
+    btc_light_client::TxInclusionInfo, env, near, require, serde_json, AccessControllable,
+    AccountId, BTCPendingInfo, Contract, ContractExt, DepositMsg, Event, Gas, OriginalState,
+    PendingInfoStage, PendingInfoState, Promise, Role, TxInclusionProof, MAX_BOOL_RESULT,
+    MAX_INCLUSION_INFO_RESULT, UTXO, VUTXO,
 };
 
 use crate::deposit_msg::get_deposit_path;
@@ -157,24 +158,22 @@ impl Contract {
                 "refund_address does not match deposit_msg.refund_address"
             );
         }
+        self.assert_valid_refund_address(&refund_address);
 
         let transaction =
             crate::WrappedTransaction::decode(&tx_bytes.0, &self.internal_config().chain)
                 .expect("Deserialization tx_bytes failed");
         let tx_id = transaction.compute_txid().to_string();
 
+        // Refunds skip the block-amount ring; max-tier depth is required unconditionally.
         let config = self.internal_config();
-        let deposit_amount = u128::from(transaction.output()[vout].value.to_sat());
-        let confirmations = self.get_confirmations(config, deposit_amount);
-
-        self.verify_transaction_inclusion_promise(
+        self.verify_transaction_inclusion_with_heights_promise(
             config.btc_light_client_account_id.clone(),
             tx_id,
             proof.tx_block_blockhash,
             proof.tx_index,
             proof.merkle_proof,
-            Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
-            confirmations,
+            (proof.coinbase_tx_id, proof.coinbase_merkle_proof),
         )
         .then(
             Self::ext(env::current_account_id())
@@ -281,12 +280,24 @@ impl Contract {
             .amount
             .checked_sub(refund_request.gas_fee)
             .expect("Deposit amount too small to cover gas fee");
-        require!(refund_amount > 0, "Refund amount is zero after gas fee");
+        require!(
+            refund_amount >= config.min_change_amount,
+            "Refund amount after gas fee is dust"
+        );
 
         RefundExecutionInputs {
             outpoint,
             deposit_output,
             refund_amount,
+        }
+    }
+
+    /// Panic unless `refund_address` parses as an address of the configured chain.
+    pub(crate) fn assert_valid_refund_address(&self, refund_address: &str) {
+        if let Err(e) =
+            crate::network::Address::parse(refund_address, self.internal_config().chain.clone())
+        {
+            env::panic_str(&format!("Invalid refund address {refund_address}: {e}"));
         }
     }
 
@@ -452,7 +463,8 @@ impl Contract {
         btc_pending_info: &BTCPendingInfo,
     ) -> Promise {
         let config = self.internal_config();
-        let confirmations = self.get_confirmations(config, btc_pending_info.actual_received_amount);
+        let confirmations = config.get_confirmations(btc_pending_info.actual_received_amount)
+            + self.relayer_delta(&env::predecessor_account_id());
         self.verify_transaction_inclusion_promise(
             config.btc_light_client_account_id.clone(),
             tx_id.clone(),
@@ -516,13 +528,22 @@ impl Contract {
         vout: usize,
         gas_fee: Option<u128>,
     ) -> bool {
-        let result_bytes = env::promise_result_checked(0, MAX_BOOL_RESULT)
-            .expect("Call verify_transaction_inclusion failed");
-        let is_valid = serde_json::from_slice::<bool>(&result_bytes)
-            .expect("verify_transaction_inclusion return not bool");
-        require!(is_valid, "verify_transaction_inclusion return false");
+        let result_bytes = env::promise_result_checked(0, MAX_INCLUSION_INFO_RESULT)
+            .expect("Call verify_transaction_inclusion_with_heights failed");
+        let info: Option<TxInclusionInfo> = serde_json::from_slice(&result_bytes)
+            .expect("verify_transaction_inclusion_with_heights returned an unexpected payload");
+        let info = info.expect("Transaction not included in the BTC mainchain");
 
         let config = self.internal_config();
+        let required = config.max_required_confirmations();
+        let actual = info
+            .mainchain_tip_height
+            .saturating_sub(info.tx_block_height)
+            + 1;
+        require!(
+            actual >= required,
+            "Refund request: not enough confirmations (max-tier required)"
+        );
         let transaction = crate::WrappedTransaction::decode(&tx_bytes.0, &config.chain)
             .expect("Deserialization tx_bytes failed");
         let output = &transaction.output()[vout];
@@ -561,9 +582,12 @@ impl Contract {
         );
 
         let resolved_gas_fee = gas_fee.unwrap_or_else(|| self.get_refund_gas_fee());
+        let refund_amount = amount
+            .checked_sub(resolved_gas_fee)
+            .expect("Gas fee must be less than deposit amount");
         require!(
-            resolved_gas_fee < amount,
-            "Gas fee must be less than deposit amount"
+            refund_amount >= config.min_change_amount,
+            "Refund amount after gas fee is dust"
         );
 
         Event::RefundRequested {

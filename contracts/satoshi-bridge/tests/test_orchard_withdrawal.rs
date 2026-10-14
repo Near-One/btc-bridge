@@ -14,6 +14,7 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
 
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, None).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     // Setup bridge fees
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
@@ -31,7 +32,7 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
             refund_address: None,
         })
         .await
@@ -64,7 +65,7 @@ async fn test_orchard_withdrawal_with_ovk_validation() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
             refund_address: None,
         },
         zcash_tx_bytes,
@@ -160,6 +161,7 @@ async fn test_orchard_withdrawal_to_shielded_only_ua() {
 
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, None).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
     check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
@@ -173,7 +175,7 @@ async fn test_orchard_withdrawal_to_shielded_only_ua() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
             refund_address: None,
         })
         .await
@@ -197,7 +199,7 @@ async fn test_orchard_withdrawal_to_shielded_only_ua() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
             refund_address: None,
         },
         zcash_tx_bytes,
@@ -279,6 +281,7 @@ async fn test_orchard_withdrawal_amount_mismatch() {
 
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, None).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     check!(context.set_deposit_bridge_fee(10000, 0, 9000));
     check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
@@ -291,7 +294,7 @@ async fn test_orchard_withdrawal_amount_mismatch() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
             refund_address: None,
         })
         .await
@@ -316,7 +319,7 @@ async fn test_orchard_withdrawal_amount_mismatch() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
             refund_address: None,
         },
         zcash_tx_bytes,

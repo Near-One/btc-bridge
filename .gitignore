@@ -9,3 +9,5 @@ neardev
 .DS_Store
 .vscode
 res
+
+.env
