@@ -68,3 +68,70 @@ jobs:
 
       - name: Run ${{ matrix.feature }} tests
         run: make test-ci-${{ matrix.feature }}
+
+  # Builds the bitcoin and zcash wasm on this branch and on the PR base, and
+  # fails when one of them grew past the threshold. Contract size drives both
+  # the storage stake and the deploy gas, and a dependency bump can add a few
+  # hundred KB without anything in the diff hinting at it.
+  wasm-size:
+    if: github.event_name == 'pull_request'
+    runs-on: warp-ubuntu-latest-x64-4x
+    env:
+      # the script builds in the work tree while the checkout is detached at
+      # the base commit, so it can't locate the repo relative to itself
+      REPO_ROOT: ${{ github.workspace }}
+      # growth above this fails the job; raise it in the PR when an increase
+      # is intended and explained
+      THRESHOLD: 2
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # the base commit has to be reachable for the baseline build
+          fetch-depth: 0
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-provider: warpbuild
+          key: wasm-size
+
+      - name: Install cargo-near
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/releases/latest/download/cargo-near-installer.sh | sh
+
+      - name: Measure this branch
+        run: |
+          # the base commit predates this script, so the baseline step runs a
+          # copy kept outside the work tree
+          cp scripts/wasm-size.sh "$RUNNER_TEMP/wasm-size.sh"
+          "$RUNNER_TEMP/wasm-size.sh" --out "$RUNNER_TEMP/head.tsv" bitcoin zcash
+
+      - name: Measure the base branch
+        run: |
+          git checkout --detach ${{ github.event.pull_request.base.sha }}
+          "$RUNNER_TEMP/wasm-size.sh" --out "$RUNNER_TEMP/base.tsv" bitcoin zcash
+          git checkout --detach ${{ github.sha }}
+
+      - name: Compare
+        run: |
+          "$RUNNER_TEMP/wasm-size.sh" \
+            --input "$RUNNER_TEMP/head.tsv" \
+            --baseline "$RUNNER_TEMP/base.tsv" \
+            --threshold "$THRESHOLD" \
+            --markdown "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload size report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-sizes
+          path: |
+            ${{ runner.temp }}/head.tsv
+            ${{ runner.temp }}/base.tsv
+          if-no-files-found: ignore

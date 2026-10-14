@@ -4391,7 +4391,6 @@ dependencies = [
  "bitcoin",
  "bs58 0.5.1",
  "crypto-shared",
- "ed25519-dalek",
  "getrandom 0.2.17",
  "hex",
  "k256",

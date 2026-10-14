@@ -32,7 +32,7 @@ $(foreach feature,$(FEATURES), \
 
 $(foreach feature,$(FEATURES), \
 	$(eval build-local-$(feature): ; \
-		cargo near build non-reproducible-wasm --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST) --no-abi && \
+		cargo near build non-reproducible-wasm --no-default-features --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST) --no-abi && \
 		mkdir -p res && mv ./target/near/satoshi_bridge/satoshi_bridge.wasm ./res/$(feature)_bridge.wasm \
 	) \
 )
@@ -57,6 +57,12 @@ $(foreach feature,$(FEATURES), \
 		cargo nextest run -j8 --no-fail-fast --no-default-features --features "$(TEST_FEATURES_$(feature))" --manifest-path $(BRIDGE_MANIFEST)) \
 )
 
+
+# Builds the bitcoin and zcash wasm and prints their size. Extra flags go
+# through ARGS, e.g. ARGS="--out sizes.tsv" or ARGS="--baseline sizes.tsv";
+# see scripts/wasm-size.sh --help.
+wasm-size:
+	@scripts/wasm-size.sh $(ARGS)
 
 mock-dapp: contracts/mock-dapp
 	$(call local_build_wasm,mock-dapp,mock_dapp)
