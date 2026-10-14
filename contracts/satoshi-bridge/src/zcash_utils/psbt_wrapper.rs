@@ -215,6 +215,7 @@ impl PsbtWrapper {
             BranchId::Nu6_1 => buf.write_all(&[8u8; 1]).unwrap(),
             BranchId::Nu6_2 => buf.write_all(&[9u8; 1]).unwrap(),
             BranchId::Nu6_3 => buf.write_all(&[10u8; 1]).unwrap(),
+            BranchId::Nu7 => buf.write_all(&[11u8; 1]).unwrap(),
             _ => unreachable!(),
         }
         buf.write_all(&self.expiry_height.to_le_bytes()).unwrap();
@@ -294,6 +295,7 @@ impl PsbtWrapper {
                 8 => BranchId::Nu6_1,
                 9 => BranchId::Nu6_2,
                 10 => BranchId::Nu6_3,
+                11 => BranchId::Nu7,
                 _ => env::panic_str("ERR_INVALID_PSBT: unsupported branch_id"),
             }
         } else {
@@ -601,8 +603,11 @@ fn get_branch_id(current_height: u32, config: &Config) -> BranchId {
 
 /// Whether transactions at this branch id must be built as v6 with the shielded
 /// bundle routed into the Ironwood slot instead of the Orchard slot.
+///
+/// NU6.3 opened the Ironwood pool and closed the Orchard pool to new value (ZIP
+/// 2006); NU7 inherits both, so it uses the same v6 + Ironwood-slot layout.
 pub(crate) fn is_ironwood(branch_id: BranchId) -> bool {
-    matches!(branch_id, BranchId::Nu6_3)
+    matches!(branch_id, BranchId::Nu6_3 | BranchId::Nu7)
 }
 
 fn read_u32_le<R: Read>(r: &mut R) -> io::Result<u32> {

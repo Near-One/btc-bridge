@@ -71,7 +71,15 @@ impl Transaction {
                 vin[index].prevout().clone(),
                 input[index].clone(),
                 SpendInfo::P2pkh {
-                    pubkey: public_keys[index].inner,
+                    // `bitcoin` and `zcash_transparent` depend on different major
+                    // versions of `secp256k1`, so round-trip through the SEC1
+                    // encoding rather than passing the inner key across.
+                    pubkey: secp256k1::PublicKey::from_slice(&public_keys[index].inner.serialize())
+                        .unwrap_or_else(|_| {
+                            near_sdk::env::panic_str(
+                                "ERR_INVALID_PUBKEY: malformed secp256k1 pubkey",
+                            )
+                        }),
                 },
             )
             .unwrap();
@@ -117,9 +125,9 @@ impl Transaction {
 
         // Post-NU6.3 v5 stays consensus-valid (ZIP 229), but shielded value must
         // enter the Ironwood pool (ZIP 2006) and only the v6 format carries an
-        // Ironwood bundle, so at Nu6_3 every bridge tx is built as v6 to keep the
-        // sighash and broadcast paths on one format.
-        if matches!(branch_id, BranchId::Nu6_3) {
+        // Ironwood bundle, so from Nu6_3 on every bridge tx is built as v6 to keep
+        // the sighash and broadcast paths on one format.
+        if crate::zcash_utils::psbt_wrapper::is_ironwood(branch_id) {
             TransactionData::from_parts_v6(
                 branch_id,
                 lock_time,

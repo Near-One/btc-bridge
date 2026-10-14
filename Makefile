@@ -4,6 +4,14 @@ BRIDGE_MANIFEST := $(MAKEFILE_DIR)/contracts/satoshi-bridge/Cargo.toml
 
 RFLAGS="-C link-arg=-s"
 
+# `halo2_gadgets` (via orchard) unconditionally enables `rand/sys_rng`, which
+# pulls in `getrandom`. getrandom >= 0.3 refuses to compile for
+# wasm32-unknown-unknown unless a backend is named, and a NEAR contract has no
+# OS entropy source: `unsupported` compiles and returns an error if anything
+# ever actually asks for randomness. cargo-near always appends `--cfg near`, but
+# it replaces its default `-C link-arg=-s`, so that has to be repeated here.
+WASM_RUSTFLAGS = --env 'RUSTFLAGS=-C link-arg=-s --cfg getrandom_backend="unsupported"'
+
 FEATURES = bitcoin zcash
 
 release: $(addprefix build-,$(FEATURES)) release-nbtc
@@ -28,7 +36,7 @@ $(foreach feature,$(FEATURES), \
 
 $(foreach feature,$(FEATURES), \
 	$(eval build-local-$(feature): ; \
-		cargo near build non-reproducible-wasm --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST) --no-abi && \
+		cargo near build non-reproducible-wasm --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST) --no-abi $(WASM_RUSTFLAGS) && \
 		mkdir -p res && mv ./target/near/satoshi_bridge/satoshi_bridge.wasm ./res/$(feature)_bridge.wasm \
 	) \
 )

@@ -12,6 +12,11 @@ crate-type = ["cdylib", "rlib"]
 image = "sourcescan/cargo-near:0.21.1-rust-1.96.0"
 image_digest = "sha256:ccb22bb4e677ed022d8b9d1aa1b32f0af52dd0471ef1c32e48dedbf68ee6ee17"
 passed_env = []
+# `--env RUSTFLAGS=...` names a getrandom backend: getrandom >= 0.3 (pulled in by
+# orchard -> halo2_gadgets -> rand/sys_rng) refuses to compile for
+# wasm32-unknown-unknown otherwise. `unsupported` errors at runtime, which is
+# correct for a contract with no OS entropy source. cargo-near replaces its
+# default `-C link-arg=-s` when RUSTFLAGS is given, so it is repeated here.
 container_build_command = [
     "cargo",
     "near",
@@ -19,13 +24,15 @@ container_build_command = [
     "non-reproducible-wasm",
     "--locked",
     "--no-abi",
+    "--env",
+    "RUSTFLAGS=-C link-arg=-s --cfg getrandom_backend=\"unsupported\"",
 ]
 
 [package.metadata.near.reproducible_build.variant.bitcoin]
-container_build_command = ["cargo", "near", "build", "non-reproducible-wasm", "--locked", "--no-abi", "--no-default-features", "--features", "bitcoin"]
+container_build_command = ["cargo", "near", "build", "non-reproducible-wasm", "--locked", "--no-abi", "--no-default-features", "--features", "bitcoin", "--env", "RUSTFLAGS=-C link-arg=-s --cfg getrandom_backend=\"unsupported\""]
 
 [package.metadata.near.reproducible_build.variant.zcash]
-container_build_command = ["cargo", "near", "build", "non-reproducible-wasm", "--locked", "--no-abi", "--no-default-features", "--features", "zcash"]
+container_build_command = ["cargo", "near", "build", "non-reproducible-wasm", "--locked", "--no-abi", "--no-default-features", "--features", "zcash", "--env", "RUSTFLAGS=-C link-arg=-s --cfg getrandom_backend=\"unsupported\""]
 
 [dependencies]
 near-sdk.workspace = true
@@ -38,13 +45,16 @@ k256 = "0.13.1"
 sha3.workspace = true
 ed25519-dalek = "2.1.0"
 crypto-shared = { git = "https://github.com/near/mpc_old", rev = "0afee9004a1b1c3386940e60c28cff7cf1b5978c" }
-zcash_primitives = { version = "=0.29.0", default-features = false, features = ["circuits", "transparent-inputs"], optional = true }
-zcash_transparent = { version = "=0.9.0", features = ["transparent-inputs"], optional = true }
-orchard = { version = "=0.15.0", default-features = false, optional = true }
-sapling-crypto = { version = "0.7.0", default-features = false, optional = true }
-zcash_script = { version = "0.4.5", optional = true }
-zcash_protocol = { version = "=0.10.0" }
-zcash_address = { version = "=0.13.0" }
+zcash_primitives = { version = "=0.31.0-pre.1", default-features = false, features = ["circuits", "transparent-inputs"], optional = true }
+zcash_transparent = { version = "=0.11.0-pre.1", features = ["transparent-inputs"], optional = true }
+orchard = { version = "=0.16.0", default-features = false, optional = true }
+sapling-crypto = { version = "0.9.0", default-features = false, optional = true }
+zcash_script = { version = "0.6", optional = true }
+# Must match the `secp256k1` major version used by `zcash_transparent`; `bitcoin`
+# pins an older one, so keys are converted between the two via SEC1 bytes.
+secp256k1 = { version = "0.33", default-features = false, optional = true }
+zcash_protocol = { version = "=0.11.0-pre.0" }
+zcash_address = { version = "=0.14.0-pre.1" }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2.12", features = ["custom"] }
@@ -52,12 +62,13 @@ getrandom = { version = "0.2.12", features = ["custom"] }
 [dev-dependencies]
 near-workspaces = { version = "0.22", features = ["unstable"] }
 tokio = { version = "1.12.0", features = ["full"] }
-rand = "0.8"
+# Must match the `rand_core` major version used by `orchard`.
+rand = "0.10"
 hex = "0.4"
 bs58 = "0.5"
 near-account-id-v1 = { package = "near-account-id", version = "1" }
 
 [features]
 default = []
-zcash = ["zcash_primitives", "zcash_transparent", "orchard", "sapling-crypto", "zcash_script"]
+zcash = ["zcash_primitives", "zcash_transparent", "orchard", "sapling-crypto", "zcash_script", "secp256k1"]
 bitcoin = []
