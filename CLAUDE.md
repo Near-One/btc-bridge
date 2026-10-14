@@ -37,19 +37,21 @@ make clippy-zcash           # Clippy for Zcash
 **Deposit (BTC → nBTC)**
 ```
 1. User sends BTC to deposit address (derived from DepositMsg hash)
-2. Relayer: bridge.verify_deposit(tx_proof)
-3. Bridge verifies with Light Client → calls nbtc.mint(user, amount)
+2. Relayer: bridge.verify_deposit_v2(deposit_msg, tx_bytes, vout, proof)
+3. Bridge verifies with Light Client → calls nbtc.mint or nbtc.safe_mint (see Safe Deposits)
 4. UTXO added to bridge's available set
 ```
 
 **Withdraw (nBTC → BTC)**
 ```
-1. User: nbtc.ft_transfer(bridge, amount, WithdrawMsg)
+1. User: nbtc.ft_transfer_call(bridge, amount, msg)
+   msg = TokenReceiverMessage::Withdraw { target_btc_address, input, output, max_gas_fee, chain_specific_data }
    → Tokens TRANSFERRED to bridge (not burned yet!)
-2. nBTC: bridge.ft_on_transfer(user, amount, msg) → Bridge returns 0 (keeps tokens)
-3. Bridge creates BTC tx, Chain Signatures signs
+2. nBTC: bridge.ft_on_transfer(user, amount, msg)
+   → Bridge validates the BTC tx built from input/output, stores it as pending, returns 0 (keeps tokens)
+3. Relayer: bridge.sign_btc_transaction(...) for each input → Chain Signatures signs
 4. Tx broadcast to Bitcoin network
-5. Relayer: bridge.verify_withdraw(tx_proof)
+5. Relayer: bridge.verify_withdraw_v2(tx_id, proof)
 6. Bridge verifies → calls nbtc.burn(user, amount, relayer, fee)
    → Burns from bridge balance (tokens already there!)
 ```
@@ -59,7 +61,7 @@ make clippy-zcash           # Clippy for Zcash
 ## Security Invariants
 
 ### Token Flow (NEP-141)
-- **Withdraw tokens already transferred:** By the time `burn()` is called, tokens are in bridge balance via `ft_transfer`
+- **Withdraw tokens already transferred:** By the time `burn()` is called, tokens are in bridge balance via `ft_transfer_call`
 - **burn_account_id is for events only:** Actual burn happens from bridge balance, not from burn_account_id
 - **ft_on_transfer return value:** `0` = keep all tokens, `amount` = refund amount
 - Only burn after BTC tx is verified on-chain
@@ -91,38 +93,36 @@ make clippy-zcash           # Clippy for Zcash
 
 ---
 
-## Safe Functions (Omni Bridge Integration)
+## Safe Deposits (Omni Bridge Integration)
 
-The bridge provides "safe" versions of deposit/mint functions primarily used by Omni Bridge:
+`verify_deposit_v2` (and `dao_verify_deposit`) has two flows, selected by `deposit_msg.safe_deposit`:
 
-### verify_deposit vs safe_verify_deposit
-
-**verify_deposit (standard):**
-- Normal deposit flow with fees
+**Standard (`safe_deposit: None`):**
 - Charges deposit bridge fee
-- Pays for user's token storage
-- Requires `safe_deposit: None` in DepositMsg
-- Does NOT revert on mint failures (uses lost & found)
+- Mints via `nbtc.mint`, which registers the recipient at the token contract's expense
+- Mint failures go to lost & found
+- Bitcoin only: Zcash accepts only safe deposits
 
-**safe_verify_deposit (integration):**
+**Safe (`safe_deposit: Some(SafeDepositMsg)`):**
 - Primarily used by Omni Bridge
 - NO fees charged
-- User must attach NEAR for storage (via `#[payable]`)
-- **Reverts entire transaction if mint fails** (no lost & found)
-- Requires `safe_deposit: Some(SafeDepositMsg)` in DepositMsg
-- **post_actions must be None** (not supported in safe mode)
-- Safer for integrations - atomic success/failure
+- Caller attaches `required_balance_for_safe_deposit()`; any surplus is refunded
+- Recipient must already be registered in nBTC
+- `post_actions` are not executed (rejected on Zcash)
+- Not atomic: the outcome is decided asynchronously in `safe_mint_callback`
 
 ### mint vs safe_mint (nbtc contract)
 
-**mint (standard):**
-- Mints tokens unconditionally
-- If account not registered → panics or creates account
+**mint:** mints to the recipient, registering the account if needed.
 
-**safe_mint (integration):**
-- Checks if account is registered first
-- If NOT registered → returns `U128(0)` instead of panicking
-- Used by safe_verify_deposit to detect failures
+**safe_mint:**
+- Mints the amount to the bridge account first
+- Recipient NOT registered → returns `U128(0)`
+- Otherwise transfers to the recipient via `ft_transfer` (returns the amount), or via `ft_transfer_call` if `SafeDepositMsg.msg` is set (returns the amount used by the receiver)
+
+**safe_mint_callback (bridge):**
+- Result `0` → burns the minted amount from the bridge, does not add the UTXO, removes the verified-deposit marker (the deposit can be verified again later) and refunds the storage deposit
+- Any other result, including a failed or unparsable one → deposit is final and the UTXO is added
 
 ---
 
@@ -145,5 +145,5 @@ These patterns are intentional. Do not flag or "fix" them:
 
 ---
 
-*Version: 2.1*
-*Last Updated: 2026-02-16*
+*Version: 2.2*
+*Last Updated: 2026-10-14*
