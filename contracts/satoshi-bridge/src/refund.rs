@@ -158,6 +158,7 @@ impl Contract {
                 "refund_address does not match deposit_msg.refund_address"
             );
         }
+        self.assert_valid_refund_address(&refund_address);
 
         let transaction =
             crate::WrappedTransaction::decode(&tx_bytes.0, &self.internal_config().chain)
@@ -279,12 +280,24 @@ impl Contract {
             .amount
             .checked_sub(refund_request.gas_fee)
             .expect("Deposit amount too small to cover gas fee");
-        require!(refund_amount > 0, "Refund amount is zero after gas fee");
+        require!(
+            refund_amount >= config.min_change_amount,
+            "Refund amount after gas fee is dust"
+        );
 
         RefundExecutionInputs {
             outpoint,
             deposit_output,
             refund_amount,
+        }
+    }
+
+    /// Panic unless `refund_address` parses as an address of the configured chain.
+    pub(crate) fn assert_valid_refund_address(&self, refund_address: &str) {
+        if let Err(e) =
+            crate::network::Address::parse(refund_address, self.internal_config().chain.clone())
+        {
+            env::panic_str(&format!("Invalid refund address {refund_address}: {e}"));
         }
     }
 
@@ -569,9 +582,12 @@ impl Contract {
         );
 
         let resolved_gas_fee = gas_fee.unwrap_or_else(|| self.get_refund_gas_fee());
+        let refund_amount = amount
+            .checked_sub(resolved_gas_fee)
+            .expect("Gas fee must be less than deposit amount");
         require!(
-            resolved_gas_fee < amount,
-            "Gas fee must be less than deposit amount"
+            refund_amount >= config.min_change_amount,
+            "Refund amount after gas fee is dust"
         );
 
         Event::RefundRequested {

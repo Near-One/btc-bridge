@@ -1,6 +1,6 @@
 use bitcoin::hashes::Hash;
 
-use crate::{env, Timestamp};
+use crate::{env, require, NearToken, Promise, Timestamp};
 
 pub const UTXO_STORAGE_KEY_TAG: &str = "@";
 
@@ -22,6 +22,18 @@ pub fn generate_utxo_storage_key(txid: String, vout: u32) -> String {
         UTXO_STORAGE_KEY_TAG,
         vout.to_string().as_str()
     )
+}
+
+/// Require at least `required` to be attached and refund any surplus to the caller.
+pub fn charge_attached_deposit(required: NearToken) {
+    let attached = env::attached_deposit();
+    require!(attached >= required, "Insufficient deposit for storage");
+    let surplus = attached.saturating_sub(required);
+    if !surplus.is_zero() {
+        Promise::new(env::predecessor_account_id())
+            .transfer(surplus)
+            .detach();
+    }
 }
 
 pub fn to_nano(sec: u32) -> Timestamp {

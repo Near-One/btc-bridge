@@ -11,7 +11,7 @@ release: $(addprefix build-,$(FEATURES)) release-nbtc
 release-nbtc:
 	$(call build_release_wasm,nbtc,nbtc)
 
-build-local: $(addprefix build-local-,$(FEATURES)) nbtc mock-chain-signatures mock-btc-light-client mock-dapp
+build-local: $(addprefix build-local-,$(FEATURES)) nbtc mock-chain-signatures mock-btc-light-client mock-dapp mock-refund-rejector
 
 lint: $(addprefix clippy-,$(FEATURES)) $(addprefix fmt-,$(FEATURES))
 	@cargo fmt --all
@@ -45,9 +45,20 @@ $(foreach feature,$(FEATURES), \
 	$(eval test-$(feature): ; cargo test --no-default-features --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST)) \
 )
 
+# Per-feature CI target so the legs run as parallel jobs. nextest packs tests
+# across binaries; -j8 is pinned, not core count. 8 measured fastest: 4 and
+# 16 are both slower and 24 fails. build-local: test_upgrade needs both.
+$(foreach feature,$(FEATURES), \
+	$(eval test-ci-$(feature): build-local ; \
+		cargo nextest run -j8 --no-fail-fast --no-default-features --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST)) \
+)
+
 
 mock-dapp: contracts/mock-dapp
 	$(call local_build_wasm,mock-dapp,mock_dapp)
+
+mock-refund-rejector: contracts/mock-refund-rejector
+	$(call local_build_wasm,mock-refund-rejector,mock_refund_rejector)
 
 mock-chain-signatures: contracts/mock-chain-signatures
 	$(call local_build_wasm,mock-chain-signatures,mock_chain_signatures)
