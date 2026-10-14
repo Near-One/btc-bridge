@@ -364,6 +364,11 @@ async fn test_zcash_refund_transparent() {
     let pending_keys = pending_infos.keys().cloned().collect::<Vec<_>>();
     let pending_values = pending_infos.values().cloned().collect::<Vec<_>>();
     pending_values[0].assert_pending_sign();
+    let expiry_heights = context
+        .list_btc_pending_expiry_heights(pending_keys.clone())
+        .await
+        .unwrap();
+    assert_eq!(expiry_heights[&pending_keys[0]], Some(0));
 
     check!(context.sign_btc_transaction("alice", &pending_keys[0], 0, 0));
 

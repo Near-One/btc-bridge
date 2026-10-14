@@ -382,6 +382,12 @@ async fn test_shielded_withdraw_rbf_across_nu63_activation() {
         .expect("replacement tx id")
         .clone();
     pending_infos[&rbf_id].assert_pending_sign();
+    let expiry_heights = context
+        .list_btc_pending_expiry_heights(vec![rbf_id.clone(), "missing".to_string()])
+        .await
+        .unwrap();
+    assert_eq!(expiry_heights[&rbf_id], Some(POST_NU6_3_HEIGHT + 10_000));
+    assert_eq!(expiry_heights["missing"], None);
 
     // Signing the replacement exercises the v6 sighash with the Ironwood digest.
     check!(context.sign_btc_transaction("alice", &rbf_id, 0, 0));
