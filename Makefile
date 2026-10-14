@@ -4,15 +4,11 @@ BRIDGE_MANIFEST := $(MAKEFILE_DIR)/contracts/satoshi-bridge/Cargo.toml
 
 RFLAGS="-C link-arg=-s"
 
-# `halo2_gadgets` (via orchard) unconditionally enables `rand/sys_rng`, which
-# pulls in `getrandom`. getrandom >= 0.3 refuses to compile for
-# wasm32-unknown-unknown unless a backend is named, and a NEAR contract has no
-# OS entropy source: `unsupported` compiles and returns an error if anything
-# ever actually asks for randomness. cargo-near always appends `--cfg near`, but
-# it replaces its default `-C link-arg=-s`, so that has to be repeated here.
-WASM_RUSTFLAGS = --env 'RUSTFLAGS=-C link-arg=-s --cfg getrandom_backend="unsupported"'
-
 FEATURES = bitcoin zcash
+
+# Tests additionally need the Orchard proving circuit for the bundle fixtures.
+TEST_FEATURES_bitcoin = bitcoin
+TEST_FEATURES_zcash = zcash,test-fixtures
 
 release: $(addprefix build-,$(FEATURES)) release-nbtc
 
@@ -36,13 +32,13 @@ $(foreach feature,$(FEATURES), \
 
 $(foreach feature,$(FEATURES), \
 	$(eval build-local-$(feature): ; \
-		cargo near build non-reproducible-wasm --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST) --no-abi $(WASM_RUSTFLAGS) && \
+		cargo near build non-reproducible-wasm --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST) --no-abi && \
 		mkdir -p res && mv ./target/near/satoshi_bridge/satoshi_bridge.wasm ./res/$(feature)_bridge.wasm \
 	) \
 )
 
 $(foreach feature,$(FEATURES), \
-	$(eval clippy-$(feature): ; cargo clippy --no-default-features --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST) -- $(LINT_OPTIONS)) \
+	$(eval clippy-$(feature): ; cargo clippy --all-targets --no-default-features --features "$(TEST_FEATURES_$(feature))" --manifest-path $(BRIDGE_MANIFEST) -- $(LINT_OPTIONS)) \
 )
 
 $(foreach feature,$(FEATURES), \
@@ -50,7 +46,7 @@ $(foreach feature,$(FEATURES), \
 )
 
 $(foreach feature,$(FEATURES), \
-	$(eval test-$(feature): ; cargo test --no-default-features --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST)) \
+	$(eval test-$(feature): ; cargo test --no-default-features --features "$(TEST_FEATURES_$(feature))" --manifest-path $(BRIDGE_MANIFEST)) \
 )
 
 # Per-feature CI target so the legs run as parallel jobs. nextest packs tests
@@ -58,7 +54,7 @@ $(foreach feature,$(FEATURES), \
 # 16 are both slower and 24 fails. build-local: test_upgrade needs both.
 $(foreach feature,$(FEATURES), \
 	$(eval test-ci-$(feature): build-local ; \
-		cargo nextest run -j8 --no-fail-fast --no-default-features --features "$(feature)" --manifest-path $(BRIDGE_MANIFEST)) \
+		cargo nextest run -j8 --no-fail-fast --no-default-features --features "$(TEST_FEATURES_$(feature))" --manifest-path $(BRIDGE_MANIFEST)) \
 )
 
 

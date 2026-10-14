@@ -223,21 +223,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32637268377fc7b10a8c6d51de3e7fba1ce5dd371a96e342b34e6078db558e7f"
 
 [[package]]
-name = "bellman"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "973b16549796a1274a63e00159a03250e66e8263e2ac6344b1c9fdfe9b7a8325"
-dependencies = [
- "bitvec",
- "blake2s_simd",
- "byteorder",
- "ff 0.14.0",
- "group 0.14.0",
- "rand_core 0.10.1",
- "subtle",
-]
-
-[[package]]
 name = "bip32"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -376,7 +361,6 @@ checksum = "18f887f26229478dcd0e0d063566b51c68fb55a38fba21799c5f3371a74ec61f"
 dependencies = [
  "ff 0.14.0",
  "group 0.14.0",
- "pairing",
  "rand_core 0.10.1",
  "subtle",
  "zeroize",
@@ -1874,20 +1858,6 @@ name = "glob"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
-
-[[package]]
-name = "groth16"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8bb1e0bde2dbacd81474ae216c5dd4901307bd1c75fd26ed49590e88048c8442"
-dependencies = [
- "bellman",
- "byteorder",
- "ff 0.14.0",
- "group 0.14.0",
- "pairing",
- "rand_core 0.10.1",
-]
 
 [[package]]
 name = "group"
@@ -3715,15 +3685,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pairing"
-version = "0.24.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "33f6413397336802d16a342e69a5bd9c8b8cc2fa9fc9298044cd3443f77f1010"
-dependencies = [
- "group 0.14.0",
-]
-
-[[package]]
 name = "parking_lot"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4400,17 +4361,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a2cbdcfeef20006adf72699cd466f21fe349674277cc05d3fc9b7302db7b182"
 dependencies = [
  "aes",
- "bellman",
  "bitvec",
  "blake2b_simd",
  "blake2s_simd",
  "bls12_381",
  "corez",
- "document-features",
  "ff 0.14.0",
  "fpe",
  "getset",
- "groth16",
  "group 0.14.0",
  "hex",
  "incrementalmerkletree",
@@ -4421,7 +4379,6 @@ dependencies = [
  "rand_core 0.10.1",
  "redjubjub",
  "subtle",
- "tracing",
  "zcash_note_encryption",
  "zcash_spec",
  "zip32",

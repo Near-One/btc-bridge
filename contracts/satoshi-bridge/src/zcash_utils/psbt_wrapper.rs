@@ -602,10 +602,8 @@ fn get_branch_id(current_height: u32, config: &Config) -> BranchId {
 }
 
 /// Whether transactions at this branch id must be built as v6 with the shielded
-/// bundle routed into the Ironwood slot instead of the Orchard slot.
-///
-/// NU6.3 opened the Ironwood pool and closed the Orchard pool to new value (ZIP
-/// 2006); NU7 inherits both, so it uses the same v6 + Ironwood-slot layout.
+/// bundle routed into the Ironwood slot instead of the Orchard slot. NU7
+/// inherits the NU6.3 layout.
 pub(crate) fn is_ironwood(branch_id: BranchId) -> bool {
     matches!(branch_id, BranchId::Nu6_3 | BranchId::Nu7)
 }
