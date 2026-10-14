@@ -9,22 +9,6 @@ use zcash_transparent::address::Script;
 use zcash_transparent::bundle::{Authorized, Bundle, TxIn, TxOut as ZcashTxOut};
 use zcash_transparent::sighash::TransparentAuthorizingContext;
 
-/// Transparent authorization carrying only what the sighash commits to: the
-/// value and scriptPubKey of each coin being spent.
-///
-/// This duplicates `zcash_transparent::bundle::EffectsOnly`, which holds exactly
-/// the same data but cannot be constructed from outside that crate. The
-/// alternative, `builder::Unauthorized` via `TransparentBuilder`, additionally
-/// demands a `SpendInfo::P2pkh { pubkey: secp256k1::PublicKey }` per input — and
-/// the only use the crate makes of that pubkey is re-deriving `hash160(pubkey)`
-/// to compare against the coin's scriptPubKey. It never reaches the sighash,
-/// where `script_code` for a P2PKH input is the scriptPubKey itself.
-///
-/// Avoiding it drops the last live reference into the zcash-side libsecp256k1
-/// (`ec_pubkey_parse` / `ec_pubkey_serialize` and the point decompression behind
-/// them), worth ~21 KiB of wasm. The C library itself stays linked: its context
-/// constructors are force-exported, and `zcash_transparent` pulls the crate in
-/// regardless through `zcash_script/descriptor`.
 #[derive(Debug)]
 pub struct TransparentEffects {
     coins: Vec<ZcashTxOut>,
@@ -108,16 +92,11 @@ impl Transaction {
             vin.len() == coins.len(),
             "ERR_INPUT_COIN_MISMATCH: every input needs the coin it spends"
         );
-        // `TransparentBuilder::build` returned `None` for a bundle with neither
-        // inputs nor outputs, and every caller unwrapped it.
         require!(
             !vin.is_empty() || !vout.is_empty(),
             "ERR_EMPTY_TRANSPARENT_BUNDLE: no inputs and no outputs"
         );
 
-        // The builder used to route each output through `TransparentAddress`,
-        // which rejected anything that was not P2PKH or P2SH and then rebuilt
-        // the identical script from the hash. Keep the check, skip the detour.
         for output in vout {
             let script = bitcoin::Script::from_bytes(&output.script_pubkey().0 .0);
             require!(
