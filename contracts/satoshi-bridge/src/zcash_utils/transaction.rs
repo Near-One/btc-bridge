@@ -1,14 +1,39 @@
 use crate::network;
 use bitcoin::hashes::Hash;
 use bitcoin::{absolute, ScriptBuf, TxOut, Txid};
+use near_sdk::require;
 use zcash_primitives::transaction::{Transaction as ZCashTransaction, TransactionData, TxVersion};
 use zcash_protocol::consensus::{BlockHeight, BranchId};
-use zcash_transparent::builder::{SpendInfo, TransparentBuilder, TransparentInputInfo};
-use zcash_transparent::bundle::Authorized;
+use zcash_protocol::value::Zatoshis;
+use zcash_transparent::address::Script;
+use zcash_transparent::bundle::{Authorized, Bundle, TxIn, TxOut as ZcashTxOut};
+use zcash_transparent::sighash::TransparentAuthorizingContext;
+
+#[derive(Debug)]
+pub struct TransparentEffects {
+    coins: Vec<ZcashTxOut>,
+}
+
+impl zcash_transparent::bundle::Authorization for TransparentEffects {
+    type ScriptSig = ();
+}
+
+impl TransparentAuthorizingContext for TransparentEffects {
+    fn input_amounts(&self) -> Vec<Zatoshis> {
+        self.coins.iter().map(|coin| coin.value()).collect()
+    }
+
+    fn input_scriptpubkeys(&self) -> Vec<Script> {
+        self.coins
+            .iter()
+            .map(|coin| coin.script_pubkey().clone())
+            .collect()
+    }
+}
 
 pub struct TransparentUnauthorized;
 impl zcash_primitives::transaction::Authorization for TransparentUnauthorized {
-    type TransparentAuth = zcash_transparent::builder::Unauthorized;
+    type TransparentAuth = TransparentEffects;
     type SaplingAuth = sapling_crypto::bundle::Authorized;
     type OrchardAuth = orchard::bundle::Authorized;
 }
@@ -58,67 +83,48 @@ impl Transaction {
         Ok(Self { inner_tx: tx })
     }
 
-    pub fn get_transparent_builder(
-        vin: &[zcash_transparent::bundle::TxIn<Authorized>],
-        vout: &[zcash_transparent::bundle::TxOut],
-        input: &[zcash_transparent::bundle::TxOut],
-        public_keys: &[bitcoin::PublicKey],
-    ) -> TransparentBuilder {
-        let mut builder = zcash_transparent::builder::TransparentBuilder::empty();
-
-        for index in 0..vin.len() {
-            let input_info = TransparentInputInfo::from_parts(
-                vin[index].prevout().clone(),
-                input[index].clone(),
-                SpendInfo::P2pkh {
-                    // `bitcoin` and `zcash_transparent` depend on different major
-                    // versions of `secp256k1`, so round-trip through the SEC1
-                    // encoding rather than passing the inner key across.
-                    pubkey: secp256k1::PublicKey::from_slice(&public_keys[index].inner.serialize())
-                        .unwrap_or_else(|_| {
-                            near_sdk::env::panic_str(
-                                "ERR_INVALID_PUBKEY: malformed secp256k1 pubkey",
-                            )
-                        }),
-                },
-            )
-            .unwrap();
-            builder.add_input(input_info);
-        }
+    pub fn build_transparent_bundle(
+        vin: &[TxIn<Authorized>],
+        vout: &[ZcashTxOut],
+        coins: &[ZcashTxOut],
+    ) -> Bundle<TransparentEffects> {
+        require!(
+            vin.len() == coins.len(),
+            "ERR_INPUT_COIN_MISMATCH: every input needs the coin it spends"
+        );
+        require!(
+            !vin.is_empty() || !vout.is_empty(),
+            "ERR_EMPTY_TRANSPARENT_BUNDLE: no inputs and no outputs"
+        );
 
         for output in vout {
-            let script_bytes = &output.script_pubkey().0 .0;
-            let script = bitcoin::Script::from_bytes(script_bytes);
-            let to = if script.is_p2sh() {
-                zcash_transparent::address::TransparentAddress::ScriptHash(
-                    script_bytes[2..22].try_into().unwrap(),
-                )
-            } else if script.is_p2pkh() {
-                zcash_transparent::address::TransparentAddress::PublicKeyHash(
-                    script_bytes[3..23].try_into().unwrap(),
-                )
-            } else {
-                near_sdk::env::panic_str(
-                    "ERR_UNSUPPORTED_OUTPUT_SCRIPT: only P2PKH and P2SH transparent outputs are supported",
-                )
-            };
-            builder.add_output(&to, output.value()).unwrap();
+            let script = bitcoin::Script::from_bytes(&output.script_pubkey().0 .0);
+            require!(
+                script.is_p2pkh() || script.is_p2sh(),
+                "ERR_UNSUPPORTED_OUTPUT_SCRIPT: only P2PKH and P2SH transparent outputs are supported"
+            );
         }
 
-        builder
+        Bundle {
+            vin: vin
+                .iter()
+                .map(|txin| TxIn::from_parts(txin.prevout().clone(), (), txin.sequence()))
+                .collect(),
+            vout: vout.to_vec(),
+            authorization: TransparentEffects {
+                coins: coins.to_vec(),
+            },
+        }
     }
 
     pub fn to_zcash_tx(
-        vin: &[zcash_transparent::bundle::TxIn<Authorized>],
-        vout: &[zcash_transparent::bundle::TxOut],
-        input: &[zcash_transparent::bundle::TxOut],
+        vin: &[TxIn<Authorized>],
+        vout: &[ZcashTxOut],
+        coins: &[ZcashTxOut],
         expiry_height: u32,
-        public_keys: &[bitcoin::PublicKey],
         branch_id: BranchId,
     ) -> TransactionData<TransparentUnauthorized> {
-        let transparent_bundle = Self::get_transparent_builder(vin, vout, input, public_keys)
-            .build()
-            .unwrap();
+        let transparent_bundle = Self::build_transparent_bundle(vin, vout, coins);
 
         let lock_time = 0;
         let expiry_height = BlockHeight::from_u32(expiry_height);
@@ -155,10 +161,7 @@ impl Transaction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zcash_protocol::value::Zatoshis;
     use zcash_script::script::Code;
-    use zcash_transparent::address::Script;
-    use zcash_transparent::bundle::TxOut as ZcashTxOut;
 
     fn p2sh_script() -> Vec<u8> {
         let mut s = vec![0xa9, 0x14];
@@ -182,11 +185,70 @@ mod tests {
                 Zatoshis::from_u64(50_000).unwrap(),
                 Script(Code(script.clone())),
             )];
-            let bundle = Transaction::get_transparent_builder(&[], &vout, &[], &[])
-                .build()
-                .unwrap();
+            let bundle = Transaction::build_transparent_bundle(&[], &vout, &[]);
             assert_eq!(bundle.vout[0].script_pubkey().0 .0, script);
         }
+    }
+
+    /// Pins the transparent sighash against the digest produced while the
+    /// bundle was still assembled by `TransparentBuilder` (via
+    /// `SpendInfo::P2pkh`). Dropping that path must not move the sighash, or
+    /// every Chain Signatures signature would be made over the wrong payload.
+    #[test]
+    fn transparent_sighash_matches_the_transparent_builder() {
+        // The builder only accepted a coin whose scriptPubKey hashed to the
+        // spending pubkey, so the pinned digest is tied to this exact script.
+        let pubkey = bitcoin::PublicKey::from_slice(
+            &hex::decode("0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798")
+                .unwrap(),
+        )
+        .unwrap();
+        let coin = ZcashTxOut::new(
+            Zatoshis::from_u64(100_000).unwrap(),
+            Script(Code(
+                bitcoin::ScriptBuf::new_p2pkh(&pubkey.pubkey_hash()).to_bytes(),
+            )),
+        );
+        let vin = vec![TxIn::<Authorized>::from_parts(
+            zcash_transparent::bundle::OutPoint::new([0x44u8; 32], 1),
+            Script::default(),
+            u32::MAX,
+        )];
+        let vout = vec![ZcashTxOut::new(
+            Zatoshis::from_u64(90_000).unwrap(),
+            Script(Code(p2sh_script())),
+        )];
+
+        let tx_data = Transaction::to_zcash_tx(
+            &vin,
+            &vout,
+            std::slice::from_ref(&coin),
+            2_000_000,
+            BranchId::Nu6,
+        );
+        let txid_parts = tx_data.digest(zcash_primitives::transaction::txid::TxIdDigester);
+        let bundle = tx_data.transparent_bundle().unwrap();
+        let sig_input = zcash_primitives::transaction::sighash::SignableInput::Transparent(
+            zcash_transparent::sighash::SignableInput::from_parts(
+                bundle,
+                zcash_transparent::sighash::SighashType::ALL,
+                0,
+                coin.script_pubkey(),
+                coin.script_pubkey(),
+                coin.value(),
+            )
+            .unwrap(),
+        );
+
+        let sighash = zcash_primitives::transaction::sighash::signature_hash(
+            &tx_data,
+            &sig_input,
+            &txid_parts,
+        );
+        assert_eq!(
+            hex::encode(sighash.as_ref()),
+            "3a377cd591fd60bbdf2d1075bb51b661fddeb1182c29f4ac46f5dcc459963b2a",
+        );
     }
 
     #[test]
@@ -198,6 +260,6 @@ mod tests {
             Zatoshis::from_u64(50_000).unwrap(),
             Script(Code(witness_script)),
         )];
-        let _ = Transaction::get_transparent_builder(&[], &vout, &[], &[]).build();
+        let _ = Transaction::build_transparent_bundle(&[], &vout, &[]);
     }
 }
