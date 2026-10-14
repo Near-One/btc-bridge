@@ -76,6 +76,9 @@ jobs:
   wasm-size:
     if: github.event_name == 'pull_request'
     runs-on: warp-ubuntu-latest-x64-4x
+    permissions:
+      contents: read
+      pull-requests: write
     env:
       # the script builds in the work tree while the checkout is detached at
       # the base commit, so it can't locate the repo relative to itself
@@ -118,13 +121,53 @@ jobs:
           "$RUNNER_TEMP/wasm-size.sh" --out "$RUNNER_TEMP/base.tsv" bitcoin zcash
           git checkout --detach ${{ github.sha }}
 
+      # fails on a regression, but only after the report has been published, so
+      # the table is on the PR either way
       - name: Compare
+        id: compare
+        continue-on-error: true
         run: |
           "$RUNNER_TEMP/wasm-size.sh" \
             --input "$RUNNER_TEMP/head.tsv" \
             --baseline "$RUNNER_TEMP/base.tsv" \
             --threshold "$THRESHOLD" \
-            --markdown "$GITHUB_STEP_SUMMARY"
+            --markdown "$RUNNER_TEMP/report.md"
+
+      - name: Publish report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          # fork PRs get a read-only token, so skip the comment there rather
+          # than failing the job on a 403
+          CAN_COMMENT: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          MARKER: '<!-- wasm-size-report -->'
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # always() also covers an earlier step blowing up before any report
+          [ -f "$RUNNER_TEMP/report.md" ] || { echo "no report, the build failed"; exit 0; }
+
+          BODY="$RUNNER_TEMP/comment.md"
+          {
+            echo "$MARKER"
+            cat "$RUNNER_TEMP/report.md"
+            echo
+            echo "<sub>\`${HEAD_SHA:0:7}\` vs base \`${BASE_SHA:0:7}\` · [run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)</sub>"
+          } > "$BODY"
+
+          cat "$BODY" >> "$GITHUB_STEP_SUMMARY"
+          [ "$CAN_COMMENT" = "true" ] || { echo "fork PR, skipping the comment"; exit 0; }
+
+          # one sticky comment, found by the marker and edited in place, so a
+          # busy PR does not collect a table per push
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+                 -q ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@"$BODY" -q .html_url
+          else
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@"$BODY" -q .html_url
+          fi
 
       - name: Upload size report
         if: always()
@@ -135,3 +178,9 @@ jobs:
             ${{ runner.temp }}/head.tsv
             ${{ runner.temp }}/base.tsv
           if-no-files-found: ignore
+
+      - name: Fail on regression
+        if: steps.compare.outcome == 'failure'
+        run: |
+          echo "::error::WASM size grew more than ${THRESHOLD}% — see the report on the PR"
+          exit 1
