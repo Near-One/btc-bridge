@@ -14,7 +14,7 @@ near-sdk = { version = "=5.28.0", features = ["unstable"] }
 near-contract-standards = "=5.28.0"
 hex="0.4.3"
 sha3 = "0.10"
-bitcoin = { version = "0.32.0", default-features = false, features = ["serde"] }
+bitcoin = { version = "0.32.0", default-features = false, features = ["serde", "secp-lowmemory"] }
 near-plugins = "0.5.2"
 omni-utils = { git = "https://github.com/near-one/omni-utils", rev = "f9bc3ea4a72e97f02660b8f1c0b2f79a9fbde3a4" }
 
