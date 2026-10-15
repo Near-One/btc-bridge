@@ -79,22 +79,12 @@ impl Contract {
         sign_index: usize,
         key_version: u32,
     ) -> Promise {
-        let pending_info = self.internal_unwrap_btc_pending_info(&btc_pending_sign_id);
-
-        let public_keys: Vec<_> = pending_info
-            .vutxos
-            .iter()
-            .map(|vutxo| self.generate_btc_public_key(&vutxo.get_path()))
-            .collect();
-
         let btc_pending_info = self.internal_unwrap_btc_pending_info(&btc_pending_sign_id);
         require!(
             btc_pending_info.signatures[sign_index].is_none(),
             "Already signed"
         );
-        let payload = btc_pending_info
-            .get_psbt()
-            .get_hash_to_sign(sign_index, &public_keys);
+        let payload = btc_pending_info.get_psbt().get_hash_to_sign(sign_index);
         let path = btc_pending_info.vutxos[sign_index].get_path();
         self.sign_promise(SignRequest {
             payload,
