@@ -4386,7 +4386,7 @@ dependencies = [
 
 [[package]]
 name = "satoshi-bridge"
-version = "0.9.7-rc.3"
+version = "0.9.7-rc.4"
 dependencies = [
  "bitcoin",
  "bs58 0.5.1",
