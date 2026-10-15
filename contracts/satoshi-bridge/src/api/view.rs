@@ -8,6 +8,14 @@ use crate::{
 const REQUIRED_BALANCE_FOR_DEPOSIT: NearToken =
     NearToken::from_yoctonear(1_200_000_000_000_000_000_000);
 
+const WITHDRAW_RBF_BASE_STORAGE_BYTES: u64 = if cfg!(feature = "zcash") {
+    15_000
+} else {
+    1_000
+};
+const WITHDRAW_RBF_STORAGE_BYTES_PER_INPUT: u64 = 300;
+const WITHDRAW_RBF_STORAGE_BYTES_PER_OUTPUT: u64 = 100;
+
 #[near(serializers = [json])]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 pub struct Metadata {
@@ -84,6 +92,20 @@ impl Contract {
 
     pub fn get_config(&self) -> Config {
         self.internal_config().clone()
+    }
+
+    pub fn get_required_confirmations(
+        &self,
+        block_height: u64,
+        amount: U128,
+        relayer_account_id: Option<AccountId>,
+        has_extra_msg: Option<bool>,
+    ) -> u64 {
+        self.required_confirmations(block_height, amount.0)
+            + self.confirmations_delta_for(
+                relayer_account_id.as_ref(),
+                has_extra_msg.unwrap_or(false),
+            )
     }
 
     pub fn get_account(&self, account_id: &AccountId) -> Option<Account> {
@@ -355,5 +377,13 @@ impl Contract {
         // is an anti-spam fee on this permissionless entrypoint (the deposit is NOT refunded).
         // Refunds are a rare, abnormal event anyway.
         NearToken::from_near(2)
+    }
+
+    pub fn required_balance_for_withdraw_rbf(&self) -> NearToken {
+        let config = self.internal_config();
+        let max_storage_bytes = WITHDRAW_RBF_BASE_STORAGE_BYTES
+            + WITHDRAW_RBF_STORAGE_BYTES_PER_INPUT * u64::from(config.max_withdrawal_input_number)
+            + WITHDRAW_RBF_STORAGE_BYTES_PER_OUTPUT * (u64::from(config.max_change_number) + 1);
+        env::storage_byte_cost().saturating_mul(max_storage_bytes.into())
     }
 }

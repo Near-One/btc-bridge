@@ -61,7 +61,7 @@ async fn deposit_and_request_refund(
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
         refund_address: Some(refund_address.to_string()),
     };
     let deposit_address = context
@@ -117,6 +117,7 @@ async fn test_zcash_refund_shielded_to_unified_address() {
 
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let deposit_amount: u64 = 150_000;
     let gas_fee: u64 = 10_000; // default = ZIP-317 minimum
@@ -130,7 +131,7 @@ async fn test_zcash_refund_shielded_to_unified_address() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
         refund_address: Some(recipient_ua.clone()),
     };
 
@@ -279,6 +280,7 @@ async fn test_zcash_refund_orchard_amount_mismatch() {
 
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     // deposit 150000, gas 50000 → refund_amount should be 100000.
     // The supplied bundle pays 170000 to the same recipient (so only the amount is wrong).
@@ -314,6 +316,7 @@ async fn test_zcash_refund_orchard_wrong_recipient() {
 
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     // deposit 220000, gas 50000 → refund_amount 170000.
     // Bundle A (custom key) pays 170000 to UA-A; refund_address is the default UA-B.
@@ -348,6 +351,7 @@ async fn test_zcash_refund_orchard_wrong_recipient() {
 async fn test_zcash_refund_transparent() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     // A Zcash testnet transparent address.
     let refund_taddr = "tmD67UTsZ4iBbhCae4D43k1x8fhFNhwd4Jn";
@@ -395,6 +399,7 @@ async fn test_zcash_refund_transparent() {
 async fn test_zcash_refund_transparent_p2sh() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let refund_p2sh_addr = "t26YqBabLj2kpZUPd3xCBhVHucMSV83GWSw";
     let key = deposit_and_request_refund(&context, refund_p2sh_addr, 150_000).await;
@@ -450,6 +455,7 @@ async fn test_zcash_refund_transparent_tex_address() {
     for (chain, refund_tex) in cases {
         let worker = near_workspaces::sandbox().await.unwrap();
         let context = Context::new(&worker, Some(chain.to_string())).await;
+        check!(context.storage_deposit("nbtc", "alice"));
 
         let key = deposit_and_request_refund(&context, refund_tex, 150_000).await;
 
@@ -497,6 +503,7 @@ async fn test_zcash_refund_transparent_tex_address() {
 async fn test_zcash_execute_refund_twice() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let refund_taddr = ZEC_REFUND_TADDR;
     let key = deposit_and_request_refund(&context, refund_taddr, 150_000).await;
@@ -598,6 +605,7 @@ async fn test_zcash_execute_refund_twice() {
 async fn test_zcash_refund_reject() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let key = deposit_and_request_refund(&context, ZEC_REFUND_TADDR, 100_000).await;
 
@@ -609,6 +617,28 @@ async fn test_zcash_refund_reject() {
     );
 }
 
+/// Once `execute_refund` has run, nobody — including DAO — can reject the request.
+#[tokio::test]
+#[cfg(feature = "zcash")]
+async fn test_zcash_reject_refund_blocked_after_execute() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
+
+    let key = deposit_and_request_refund(&context, ZEC_REFUND_TADDR, 100_000).await;
+
+    check!(context.execute_refund("root", &key, None));
+
+    check!(
+        context.reject_refund("bob", &key),
+        "Refund already executed, cannot reject"
+    );
+    check!(
+        context.reject_refund("root", &key),
+        "Refund already executed, cannot reject"
+    );
+}
+
 /// request_refund succeeds even when deposit_msg.refund_address is None
 /// (address supplied as a separate parameter).
 #[tokio::test]
@@ -616,12 +646,13 @@ async fn test_zcash_refund_reject() {
 async fn test_zcash_refund_no_refund_address() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
         refund_address: None,
     };
     let deposit_address = context
@@ -652,12 +683,13 @@ async fn test_zcash_refund_no_refund_address() {
 async fn test_zcash_refund_duplicate_request() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -702,12 +734,13 @@ async fn test_zcash_refund_duplicate_request() {
 async fn test_zcash_refund_then_deposit_fails() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -803,12 +836,13 @@ async fn test_zcash_refund_then_deposit_fails() {
 async fn test_zcash_refund_race_deposit_wins() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -857,12 +891,13 @@ async fn test_zcash_refund_race_deposit_wins() {
 async fn test_zcash_refund_after_deposit_fails() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -907,12 +942,13 @@ async fn test_zcash_refund_after_deposit_fails() {
 async fn test_zcash_refund_reject_then_deposit_succeeds() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -960,12 +996,13 @@ async fn test_zcash_refund_reject_then_deposit_succeeds() {
 async fn test_zcash_refund_double_request_after_execute() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -1021,12 +1058,13 @@ async fn test_zcash_refund_double_request_after_execute() {
 async fn test_zcash_refund_spoofed_refund_address() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let real_deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -1047,7 +1085,7 @@ async fn test_zcash_refund_spoofed_refund_address() {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
         refund_address: Some("tmEgW8c44RQQfft9FHXnqGp8XEcQQSRcUXD".to_string()),
     };
 
@@ -1077,6 +1115,7 @@ async fn test_zcash_refund_spoofed_refund_address() {
 async fn test_zcash_refund_race_safe_deposit_wins() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -1133,6 +1172,7 @@ async fn test_zcash_refund_race_safe_deposit_wins() {
 async fn test_zcash_refund_after_safe_deposit_fails() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -1185,6 +1225,7 @@ async fn test_zcash_refund_after_safe_deposit_fails() {
 async fn test_zcash_refund_then_safe_deposit_fails() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
@@ -1286,12 +1327,13 @@ async fn test_zcash_refund_then_safe_deposit_fails() {
 async fn test_zcash_refund_address_matches_deposit_msg() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -1318,12 +1360,13 @@ async fn test_zcash_refund_address_matches_deposit_msg() {
 async fn test_zcash_refund_address_none_in_deposit_msg() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
         refund_address: None,
     };
     let deposit_address = context
@@ -1350,12 +1393,13 @@ async fn test_zcash_refund_address_none_in_deposit_msg() {
 async fn test_zcash_refund_address_mismatch() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
@@ -1394,12 +1438,13 @@ async fn test_zcash_refund_address_mismatch() {
 async fn test_zcash_refund_operator_skips_timelock() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
 
     let deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
         refund_address: Some(ZEC_REFUND_TADDR.to_string()),
     };
     let deposit_address = context
