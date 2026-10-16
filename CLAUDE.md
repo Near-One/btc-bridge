@@ -100,7 +100,7 @@ make clippy-zcash           # Clippy for Zcash
 **Standard (`safe_deposit: None`):**
 - Charges deposit bridge fee
 - Mints via `nbtc.mint`, which registers the recipient at the token contract's expense
-- Mint failures go to lost & found
+- Mint failure: `mint_callback` does not add the UTXO and removes the verified-deposit marker, so the deposit can be verified again later
 - Bitcoin only: Zcash accepts only safe deposits
 
 **Safe (`safe_deposit: Some(SafeDepositMsg)`):**
@@ -145,5 +145,5 @@ These patterns are intentional. Do not flag or "fix" them:
 
 ---
 
-*Version: 2.2*
-*Last Updated: 2026-10-14*
+*Version: 2.3*
+*Last Updated: 2026-10-16*
