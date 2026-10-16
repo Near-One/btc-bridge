@@ -110,12 +110,17 @@ impl Contract {
                     original_tx_btc_pending_info.get_cancel_rbf_reserved()
                 {
                     if cancel_rbf_reserved > 0 {
-                        self.data_mut().cur_reserved_protocol_fee -= cancel_rbf_reserved;
-                        if btc_pending_info.is_cancel_withdraw_rbf() {
-                            self.data_mut().acc_protocol_fee_for_gas += cancel_rbf_reserved;
+                        let used_reserved = if btc_pending_info.is_cancel_withdraw_rbf() {
+                            btc_pending_info.burn_amount.saturating_sub(
+                                btc_pending_info.transfer_amount - btc_pending_info.withdraw_fee,
+                            )
                         } else {
-                            self.data_mut().cur_available_protocol_fee += cancel_rbf_reserved;
-                        }
+                            0
+                        };
+                        self.data_mut().cur_reserved_protocol_fee -= cancel_rbf_reserved;
+                        self.data_mut().acc_protocol_fee_for_gas += used_reserved;
+                        self.data_mut().cur_available_protocol_fee +=
+                            cancel_rbf_reserved - used_reserved;
                     }
                 }
             } else {
