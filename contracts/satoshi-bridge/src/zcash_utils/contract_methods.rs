@@ -47,6 +47,7 @@ macro_rules! define_rbf_callback {
                 presecessor_account_id: AccountId,
                 #[callback_unwrap] last_block_height: u32,
             ) {
+                self.require_pending_sign_capacity(&account_id);
                 let expiry_height = self.get_expiry_height(&chain_specific_data, last_block_height);
                 let orchard_bundle_bytes = chain_specific_data.map(|c| c.orchard_bundle_bytes);
 
