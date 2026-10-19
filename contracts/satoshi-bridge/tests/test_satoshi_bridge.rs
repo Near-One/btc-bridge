@@ -151,35 +151,42 @@ async fn test_base() {
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
-    check!(printr "alice 10000" context.verify_deposit_v2(
-        "relayer",
-        DepositMsg {
-            recipient_id: context.get_account_by_name("alice").sdk_id(),
-            post_actions: None,
-            extra_msg: None,
-            safe_deposit: chain_safe_deposit(),
-            refund_address: None,
-        },
-        generate_transaction_bytes(
-            vec![(
-                "a2a5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f19",
+    check!(
+        context.verify_deposit_v2(
+            "relayer",
+            DepositMsg {
+                recipient_id: context.get_account_by_name("alice").sdk_id(),
+                post_actions: None,
+                extra_msg: None,
+                safe_deposit: chain_safe_deposit(),
+                refund_address: None,
+            },
+            generate_transaction_bytes(
+                vec![(
+                    "a2a5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f19",
+                    1,
+                    None,
+                )],
+                vec![
+                    (alice_btc_deposit_address.as_str(), 10000),
+                    (TARGET_ADDRESS, 90000)
+                ],
+            ),
+            0,
+            proof_json(
+                "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
                 1,
-                None,
-            )],
-            vec![
-                (alice_btc_deposit_address.as_str(), 10000),
-                (TARGET_ADDRESS, 90000)
-            ],
+                vec![]
+            )
         ),
-        0,
-        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
-    ));
+        "Deposit amount is less than the minimum"
+    );
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
     assert_eq!(context.ft_balance_of("root").await.unwrap().0, 0);
     assert_eq!(context.get_utxos_paged().await.unwrap().len(), 0);
     assert_eq!(
         context.get_unavailable_utxos_paged().await.unwrap().len(),
-        1
+        0
     );
     assert_eq!(
         context
@@ -226,7 +233,7 @@ async fn test_base() {
     assert_eq!(context.get_utxos_paged().await.unwrap().len(), 1);
     assert_eq!(
         context.get_unavailable_utxos_paged().await.unwrap().len(),
-        1
+        0
     );
     assert_eq!(
         context
@@ -280,7 +287,7 @@ async fn test_base() {
     assert_eq!(context.get_utxos_paged().await.unwrap().len(), 1);
     assert_eq!(
         context.get_unavailable_utxos_paged().await.unwrap().len(),
-        1
+        0
     );
     check!(context.verify_deposit_v2(
         "relayer",
@@ -314,7 +321,7 @@ async fn test_base() {
     assert_eq!(context.get_utxos_paged().await.unwrap().len(), 2);
     assert_eq!(
         context.get_unavailable_utxos_paged().await.unwrap().len(),
-        1
+        0
     );
     assert_eq!(context.ft_balance_of("relayer").await.unwrap().0, 0);
     assert_eq!(
@@ -4167,4 +4174,70 @@ async fn test_zcash_requires_safe_deposit() {
 
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
     assert!(context.get_utxos_paged().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_below_min_deposit_succeeds_after_min_lowered() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    register_deposit_recipients(&context).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: chain_safe_deposit(),
+        refund_address: None,
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "a2a5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f19",
+            1,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 10000), (TARGET_ADDRESS, 90000)],
+    );
+    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+
+    check!(
+        context.verify_deposit_v2(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            0,
+            proof_json(blockhash.clone(), 1, vec![])
+        ),
+        "Deposit amount is less than the minimum"
+    );
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+    assert_eq!(context.get_utxos_paged().await.unwrap().len(), 0);
+    assert_eq!(
+        context.get_unavailable_utxos_paged().await.unwrap().len(),
+        0
+    );
+
+    context
+        .root
+        .call(context.bridge_contract.id(), "update_config")
+        .args_json(near_sdk::serde_json::json!({ "update": { "min_deposit_amount": "10000" } }))
+        .deposit(NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+
+    check!(context.verify_deposit_v2(
+        "relayer",
+        deposit_msg,
+        tx_bytes,
+        0,
+        proof_json(blockhash, 1, vec![])
+    ));
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 10000);
+    assert_eq!(context.get_utxos_paged().await.unwrap().len(), 1);
 }

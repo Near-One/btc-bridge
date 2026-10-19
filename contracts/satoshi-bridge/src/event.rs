@@ -35,11 +35,6 @@ pub enum Event<'a> {
         burn_amount: U128,
         success: bool,
     },
-    UnavailableUtxo {
-        recipient_id: &'a AccountId,
-        utxo_storage_key: &'a String,
-        amount: U128,
-    },
     GenerateBtcPendingInfo {
         account_id: &'a AccountId,
         btc_pending_id: &'a String,
