@@ -59,6 +59,17 @@ impl BlockAmountRing {
         }
     }
 
+    /// Reverts a previous `bump` of `amount` for `block_height`. No-op if the
+    /// slot no longer holds that block.
+    pub fn unbump(&mut self, block_height: u64, amount: u128) {
+        let i = self.slot(block_height);
+        if let Some(c) = &mut self.cells[i] {
+            if c.block_height == block_height {
+                c.cumulative_sats = c.cumulative_sats.saturating_sub(amount);
+            }
+        }
+    }
+
     pub fn get(&self, block_height: u64) -> Option<u128> {
         let i = self.slot(block_height);
         match &self.cells[i] {
@@ -127,6 +138,14 @@ impl Contract {
             actual >= required,
             "Not enough confirmations for the block-cumulative bridge amount"
         );
+    }
+
+    pub(crate) fn unbump_block_amount(&mut self, block_height: Option<u64>, amount: u128) {
+        if let Some(block_height) = block_height {
+            self.data_mut()
+                .block_bridge_amounts
+                .unbump(block_height, amount);
+        }
     }
 
     pub(crate) fn resize_block_amount_ring(&mut self) {
@@ -318,6 +337,43 @@ mod tests {
         assert_eq!(ring.peek(96, 10), None);
         assert_eq!(ring.peek(104, 10), Some(10));
         assert_eq!(ring.get(100), Some(500));
+    }
+
+    #[test]
+    fn unbump_reverts_bump() {
+        let mut ring = BlockAmountRing::new(4);
+        ring.bump(100, 500);
+        ring.bump(100, 300);
+        ring.unbump(100, 300);
+        assert_eq!(ring.get(100), Some(500));
+        ring.unbump(100, 500);
+        assert_eq!(ring.get(100), Some(0));
+    }
+
+    #[test]
+    fn unbump_ignores_evicted_block() {
+        let mut ring = BlockAmountRing::new(4);
+        ring.bump(100, 500);
+        ring.bump(104, 999);
+        ring.unbump(100, 500);
+        assert_eq!(ring.get(104), Some(999));
+        assert_eq!(ring.get(100), None);
+    }
+
+    #[test]
+    fn unbump_empty_slot_is_noop() {
+        let mut ring = BlockAmountRing::new(4);
+        ring.unbump(100, 500);
+        assert_eq!(ring.get(100), None);
+        assert_eq!(ring.bump(100, 10), Some(10));
+    }
+
+    #[test]
+    fn unbump_underflow_saturates() {
+        let mut ring = BlockAmountRing::new(4);
+        ring.bump(100, 10);
+        ring.unbump(100, 20);
+        assert_eq!(ring.get(100), Some(0));
     }
 
     #[test]
