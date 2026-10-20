@@ -10,7 +10,7 @@ use crate::{
     btc_light_client::TxInclusionInfo,
     burn::GAS_FOR_BURN_CALL,
     charge_attached_deposit,
-    deposit_msg::get_deposit_path,
+    deposit_msg::{assert_recipient_is_not_bridge, get_deposit_path},
     env, ext_nbtc, generate_utxo_storage_key,
     mint::{GAS_FOR_MINT_CALL, GAS_FOR_MINT_CALL_BACK},
     near, require, serde_json, AccountId, Contract, ContractExt, DepositMsg, Event, Gas, NearToken,
@@ -265,6 +265,7 @@ impl Contract {
         vout: u32,
         balance: u64,
     ) -> Promise {
+        assert_recipient_is_not_bridge(&deposit_msg);
         require!(balance > 0, "Invalid deposit_amount");
         // Round-trip through `Txid` so the key is spelled the way every other producer of a
         // UTXO storage key spells it.

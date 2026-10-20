@@ -3967,29 +3967,10 @@ async fn test_verify_active_utxo_management_v2() {
     );
 }
 
-// safe_mint (in nbtc) must reject account_id == bridge_id. Otherwise the
-// bridge-to-bridge ft_transfer* inside safe_mint would panic with
-// "sender == receiver" from the NEP-141 standard, leaving the bridge with
-// no minted tokens while the outer callback mistakenly records success.
 #[tokio::test]
-async fn test_safe_verify_deposit_to_bridge_recipient_is_rejected() {
+async fn test_deposit_to_bridge_recipient_is_rejected() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
-
-    let deposit_msg = DepositMsg {
-        recipient_id: context.get_account_by_name("bridge").sdk_id(),
-        post_actions: None,
-        extra_msg: None,
-        safe_deposit: Some(satoshi_bridge::SafeDepositMsg {
-            msg: "".to_string(),
-        }),
-        refund_address: None,
-    };
-
-    let deposit_address = context
-        .get_user_deposit_address(deposit_msg.clone())
-        .await
-        .unwrap();
 
     let tx_bytes = generate_transaction_bytes(
         vec![(
@@ -3997,41 +3978,67 @@ async fn test_safe_verify_deposit_to_bridge_recipient_is_rejected() {
             0,
             None,
         )],
+        vec![(TARGET_ADDRESS, 100_000)],
+    );
+    let safe_deposits = if cfg!(feature = "zcash") {
+        vec![chain_safe_deposit()]
+    } else {
         vec![
-            (deposit_address.as_str(), 100_000),
-            (TARGET_ADDRESS, 90_000),
-        ],
-    );
+            None,
+            Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
+        ]
+    };
+    for safe_deposit in safe_deposits {
+        let deposit_msg = DepositMsg {
+            recipient_id: context.get_account_by_name("bridge").sdk_id(),
+            post_actions: None,
+            extra_msg: None,
+            safe_deposit,
+            refund_address: None,
+        };
 
-    let outcome = context
-        .verify_deposit_v2(
-            "relayer",
-            deposit_msg,
-            tx_bytes,
-            0,
-            proof_json(
-                "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
-                1,
-                vec![],
+        let view_err = context
+            .bridge_contract
+            .call("get_user_deposit_address")
+            .args_json(near_sdk::serde_json::json!({ "deposit_msg": deposit_msg }))
+            .view()
+            .await
+            .unwrap_err();
+        let view_err = format!("{view_err:?}");
+        assert!(
+            view_err.contains("recipient_id must not be the bridge"),
+            "{view_err}"
+        );
+
+        check!(
+            context.dao_verify_deposit(
+                "root",
+                deposit_msg.clone(),
+                TARGET_ADDRESS,
+                "2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e",
+                0,
+                100_000,
             ),
-        )
-        .await
-        .unwrap();
+            "recipient_id must not be the bridge"
+        );
 
-    // safe_mint's require! must surface as a receipt failure.
-    let failures = outcome.receipt_failures();
-    assert!(
-        !failures.is_empty(),
-        "safe_mint must reject bridge as recipient"
-    );
-    let failure_text = format!("{:?}", failures);
-    assert!(
-        failure_text.contains("safe_mint: account_id must not be the bridge"),
-        "expected safe_mint guard in failures, got: {failure_text}"
-    );
+        check!(
+            context.verify_deposit_v2(
+                "relayer",
+                deposit_msg,
+                tx_bytes.clone(),
+                0,
+                proof_json(
+                    "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+                    1,
+                    vec![],
+                ),
+            ),
+            "recipient_id must not be the bridge"
+        );
+    }
 
-    // No tokens were minted anywhere.
-    assert_eq!(context.ft_balance_of("bridge").await.unwrap().0, 0);
+    assert!(context.get_utxos_paged().await.unwrap().is_empty());
     assert_eq!(context.ft_total_supply().await.unwrap().0, 0);
 }
 

@@ -52,6 +52,13 @@ pub fn get_deposit_path(deposit_msg: &DepositMsg) -> String {
     hex::encode(env::sha256(deposit_msg_string.as_bytes()))
 }
 
+pub fn assert_recipient_is_not_bridge(deposit_msg: &DepositMsg) {
+    require!(
+        deposit_msg.recipient_id != env::current_account_id(),
+        "recipient_id must not be the bridge"
+    );
+}
+
 pub fn assert_post_actions_supported(deposit_msg: &DepositMsg) {
     if cfg!(feature = "zcash") {
         require!(
