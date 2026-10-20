@@ -497,36 +497,53 @@ impl Contract {
         mint_amount: U128,
         pending_utxo_info: PendingUTXOInfo,
     ) -> bool {
-        let is_success = !is_refund_required();
+        let outcome = safe_mint_outcome();
+        let is_success = matches!(outcome, SafeMintOutcome::Minted);
         let relayer_account_id = env::signer_account_id();
+        let utxo_storage_key = &pending_utxo_info.utxo_storage_key;
 
-        self.internal_remove_utxo_in_progress(&pending_utxo_info.utxo_storage_key);
-
-        if is_success {
-            Event::UtxoAdded {
-                utxo_storage_keys: vec![pending_utxo_info.utxo_storage_key.clone()],
-                balances: Some(vec![U128(pending_utxo_info.utxo.balance.into())]),
+        match outcome {
+            SafeMintOutcome::Minted => {
+                self.internal_remove_utxo_in_progress(utxo_storage_key);
+                Event::UtxoAdded {
+                    utxo_storage_keys: vec![utxo_storage_key.clone()],
+                    balances: Some(vec![U128(pending_utxo_info.utxo.balance.into())]),
+                }
+                .emit();
+                self.internal_set_utxo(utxo_storage_key, pending_utxo_info.utxo.clone());
             }
-            .emit();
-            self.internal_set_utxo(&pending_utxo_info.utxo_storage_key, pending_utxo_info.utxo);
-        } else {
-            self.data_mut()
-                .verified_deposit_utxo
-                .remove(&pending_utxo_info.utxo_storage_key);
+            SafeMintOutcome::NotMinted => {
+                self.internal_remove_utxo_in_progress(utxo_storage_key);
+                self.data_mut()
+                    .verified_deposit_utxo
+                    .remove(utxo_storage_key);
 
-            ext_nbtc::ext(self.internal_config().nbtc_account_id.clone())
-                .with_static_gas(GAS_FOR_BURN_CALL)
-                .burn(
-                    env::current_account_id(),
-                    mint_amount,
-                    relayer_account_id,
-                    U128(0),
-                )
-                .detach();
+                ext_nbtc::ext(self.internal_config().nbtc_account_id.clone())
+                    .with_static_gas(GAS_FOR_BURN_CALL)
+                    .burn(
+                        env::current_account_id(),
+                        mint_amount,
+                        relayer_account_id,
+                        U128(0),
+                    )
+                    .detach();
 
-            Promise::new(env::signer_account_id())
-                .transfer(self.required_balance_for_safe_deposit())
-                .detach();
+                Promise::new(env::signer_account_id())
+                    .transfer(self.required_balance_for_safe_deposit())
+                    .detach();
+            }
+            SafeMintOutcome::Unresolved => {
+                self.internal_set_utxo_in_progress(
+                    utxo_storage_key,
+                    UTXOStatus::DepositMintUnresolved(pending_utxo_info.utxo.clone().into()),
+                );
+                Event::DepositMintUnresolved {
+                    recipient_id: &recipient_id,
+                    utxo_storage_key,
+                    amount: mint_amount,
+                }
+                .emit();
+            }
         }
 
         Event::VerifyDepositDetails {
@@ -542,23 +559,24 @@ impl Contract {
     }
 }
 
-/// Refund only if `safe_mint` returned 0. Any other outcome (non-zero
-/// amount, unparseable payload, panic) is treated as "UTXO spent, no
-/// refund" — for safety, to avoid a potential double spend.
-fn is_refund_required() -> bool {
+enum SafeMintOutcome {
+    Minted,
+    NotMinted,
+    Unresolved,
+}
+
+/// `U128(0)` means nothing reached the recipient (unregistered account, or the receiver's
+/// `ft_on_transfer` refunded everything or panicked), so the deposit is released. Any non-zero
+/// amount means the UTXO is spent. A failed or unparseable result cannot tell whether the
+/// tokens were delivered, so the deposit is left for the DAO to resolve.
+fn safe_mint_outcome() -> SafeMintOutcome {
     match env::promise_result_checked(0, MAX_FT_TRANSFER_CALL_RESULT) {
-        Ok(value) => {
-            if let Ok(amount) = near_sdk::serde_json::from_slice::<U128>(&value) {
-                // Normal case: refund if the used token amount is zero
-                // The amount can be zero if the `ft_on_transfer` in the receiver contract returns an amount instead of `0`, or if it panics.
-                amount.0 == 0
-            } else {
-                // Unexpected case: don't refund
-                false
-            }
-        }
-        // Unexpected case: don't refund
-        Err(_) => false,
+        Ok(value) => match near_sdk::serde_json::from_slice::<U128>(&value) {
+            Ok(amount) if amount.0 == 0 => SafeMintOutcome::NotMinted,
+            Ok(_) => SafeMintOutcome::Minted,
+            Err(_) => SafeMintOutcome::Unresolved,
+        },
+        Err(_) => SafeMintOutcome::Unresolved,
     }
 }
 

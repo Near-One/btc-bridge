@@ -86,6 +86,15 @@ pub enum Event<'a> {
         utxo_storage_keys: Vec<String>,
         balances: Option<Vec<U128>>,
     },
+    DepositMintUnresolved {
+        recipient_id: &'a AccountId,
+        utxo_storage_key: &'a String,
+        amount: U128,
+    },
+    DepositMintResolved {
+        utxo_storage_keys: Vec<String>,
+        minted: bool,
+    },
     UtxoRemoved {
         utxo_storage_keys: Vec<String>,
     },

@@ -299,6 +299,50 @@ impl Contract {
         self.internal_config().assert_valid();
     }
 
+    /// Resolve safe deposits whose `safe_mint` result could not be read, after confirming
+    /// off-chain that nBTC was delivered: the UTXOs are registered as bridge liquidity.
+    #[payable]
+    #[access_control_any(roles(Role::DAO, Role::DepositMintResolver))]
+    pub fn confirm_unresolved_deposit_mints(&mut self, utxo_storage_keys: Vec<String>) {
+        assert_one_yocto();
+        let mut balances = Vec::with_capacity(utxo_storage_keys.len());
+        for utxo_storage_key in &utxo_storage_keys {
+            let utxo = self.internal_take_unresolved_deposit_mint(utxo_storage_key);
+            balances.push(U128::from(u128::from(utxo.balance)));
+            self.internal_set_utxo(utxo_storage_key, utxo);
+        }
+        Event::UtxoAdded {
+            utxo_storage_keys: utxo_storage_keys.clone(),
+            balances: Some(balances),
+        }
+        .emit();
+        Event::DepositMintResolved {
+            utxo_storage_keys,
+            minted: true,
+        }
+        .emit();
+    }
+
+    /// Resolve safe deposits whose `safe_mint` result could not be read, after confirming
+    /// off-chain that no nBTC was delivered: the deposits are released so they can be
+    /// verified again or refunded.
+    #[payable]
+    #[access_control_any(roles(Role::DAO, Role::DepositMintResolver))]
+    pub fn reject_unresolved_deposit_mints(&mut self, utxo_storage_keys: Vec<String>) {
+        assert_one_yocto();
+        for utxo_storage_key in &utxo_storage_keys {
+            self.internal_take_unresolved_deposit_mint(utxo_storage_key);
+            self.data_mut()
+                .verified_deposit_utxo
+                .remove(utxo_storage_key);
+        }
+        Event::DepositMintResolved {
+            utxo_storage_keys,
+            minted: false,
+        }
+        .emit();
+    }
+
     /// Register the UTXO of a deposit whose `mint_callback` failed after nBTC was already minted.
     #[payable]
     #[access_control_any(roles(Role::DAO))]

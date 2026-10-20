@@ -99,6 +99,13 @@ impl Contract {
     pub fn internal_remove_utxo_in_progress(&mut self, utxo_storage_key: &str) {
         self.data_mut().utxos_in_progress.remove(utxo_storage_key);
     }
+
+    pub fn internal_take_unresolved_deposit_mint(&mut self, utxo_storage_key: &str) -> UTXO {
+        match self.data_mut().utxos_in_progress.remove(utxo_storage_key) {
+            Some(UTXOStatus::DepositMintUnresolved(vutxo)) => vutxo.into(),
+            _ => env::panic_str("Deposit mint is not unresolved"),
+        }
+    }
 }
 
 #[near(serializers = [json])]
@@ -117,4 +124,5 @@ pub fn out_point_to_utxo_storage_key(out_point: &OutPoint) -> String {
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 pub enum UTXOStatus {
     DepositInProgress(VUTXO),
+    DepositMintUnresolved(VUTXO),
 }

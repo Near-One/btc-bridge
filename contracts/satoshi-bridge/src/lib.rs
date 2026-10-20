@@ -114,6 +114,7 @@ pub enum Role {
     RefundOperator,
     UnpauseManager,
     MigrationOperator,
+    DepositMintResolver,
 }
 
 /// Transaction inclusion proof with coinbase verification (v2).
