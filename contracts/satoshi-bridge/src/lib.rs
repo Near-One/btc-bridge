@@ -114,6 +114,7 @@ pub enum Role {
     RefundOperator,
     UnpauseManager,
     MigrationOperator,
+    TrustedWithdrawSender,
 }
 
 /// Transaction inclusion proof with coinbase verification (v2).
