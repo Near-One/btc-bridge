@@ -56,12 +56,12 @@ impl FungibleTokenReceiver for Contract {
                 max_gas_fee,
                 chain_specific_data,
             } => {
-                if self.pa_is_paused(PUBLIC_WITHDRAW_FEATURE.to_string()) {
-                    require!(
-                        self.acl_has_role(Role::TrustedWithdrawSender.into(), sender_id.clone()),
-                        "Withdraw sender is not allowed"
-                    );
-                }
+                require!(
+                    !self.pa_is_paused(PUBLIC_WITHDRAW_FEATURE.to_string())
+                        || self.acl_has_role(Role::TrustedWithdrawSender.into(), sender_id.clone()),
+                    "Withdraw sender is not allowed"
+                );
+
                 self.ft_on_transfer_withdraw_chain_specific(
                     sender_id,
                     amount,
