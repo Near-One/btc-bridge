@@ -42,8 +42,8 @@ impl BranchIdUpdateBlockHeight {
                 nu6_1_update: 3146400,
                 nu6_2_update: 3364600,
                 nu6_3_update: 3428143,
-                // NU7 has no mainnet activation height yet.
-                nu7_update: 0,
+                // https://github.com/ZcashFoundation/zebra/blob/v7.0.0/zebra-chain/src/parameters/constants.rs#L106
+                nu7_update: 3543405,
             },
             Chain::ZcashTestnet => Self {
                 nu6_1_update: 3536500,
@@ -646,8 +646,14 @@ mod tests {
             Chain::ZcashMainnet.get_branch_id(3_428_143),
             BranchId::Nu6_3
         );
-        // NU7 is not scheduled on mainnet, so NU6.3 stays in effect indefinitely.
-        assert_eq!(Chain::ZcashMainnet.get_branch_id(u32::MAX), BranchId::Nu6_3);
+
+        // Mainnet: NU7 at 3_543_405.
+        assert_eq!(
+            Chain::ZcashMainnet.get_branch_id(3_543_404),
+            BranchId::Nu6_3
+        );
+        assert_eq!(Chain::ZcashMainnet.get_branch_id(3_543_405), BranchId::Nu7);
+        assert_eq!(Chain::ZcashMainnet.get_branch_id(u32::MAX), BranchId::Nu7);
     }
 
     /// The consensus branch ids the bridge commits to in sighashes. A wrong

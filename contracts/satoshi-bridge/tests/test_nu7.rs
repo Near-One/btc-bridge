@@ -252,3 +252,95 @@ async fn test_transparent_withdraw_rbf_across_nu7_activation() {
     let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
     pending_infos[&rbf_id].assert_pending_verify();
 }
+
+#[tokio::test]
+async fn test_concurrent_withdraw_rbf_respects_pending_sign_limit() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some("ZcashTestnet".to_string())).await;
+    check!(context.storage_deposit("nbtc", "alice"));
+
+    check!(context.set_deposit_bridge_fee(10000, 0, 9000));
+    check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
+    let config = context.get_bridge_config().await.unwrap();
+
+    let (utxo_txid, utxo_vout) = deposit_for_alice(&context, 500_000).await;
+    context.set_light_client_block_height(POST_NU7_HEIGHT).await;
+
+    let utxo_value = 500_000u128;
+    let withdraw_amount = 200_000u128;
+    let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
+    let recipient_script_pubkey = Address::parse(ZEC_TADDR, Chain::ZcashTestnet)
+        .expect("Invalid recipient address")
+        .script_pubkey()
+        .expect("Failed to get script pubkey");
+    let withdraw_change_address = context.get_change_address().await.unwrap();
+    let change_script_pubkey = Address::parse(&withdraw_change_address, Chain::ZcashTestnet)
+        .expect("Invalid change address")
+        .script_pubkey()
+        .expect("Failed to get script pubkey");
+    let outputs = |gas_fee: u128| {
+        let recipient_amount = withdraw_amount - withdraw_fee - gas_fee;
+        vec![
+            TxOut {
+                value: Amount::from_sat(recipient_amount as u64),
+                script_pubkey: recipient_script_pubkey.clone(),
+            },
+            TxOut {
+                value: Amount::from_sat((utxo_value - withdraw_amount + withdraw_fee) as u64),
+                script_pubkey: change_script_pubkey.clone(),
+            },
+        ]
+    };
+
+    check!(context.do_withdraw(
+        "alice",
+        "bridge",
+        withdraw_amount,
+        TokenReceiverMessage::Withdraw {
+            target_btc_address: ZEC_TADDR.to_string(),
+            input: vec![OutPoint {
+                txid: utxo_txid.parse().unwrap(),
+                vout: utxo_vout.parse().unwrap(),
+            }],
+            output: outputs(10_000),
+            max_gas_fee: None,
+            chain_specific_data: None,
+        }
+    ));
+    let original_id = context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .keys()
+        .next()
+        .unwrap()
+        .clone();
+    check!(context.sign_btc_transaction("alice", &original_id, 0, 0));
+
+    let rbf_call = |gas_fee: u128| {
+        near_workspaces::operations::Function::new("withdraw_rbf")
+            .args_json(json!({
+                "original_btc_pending_verify_id": original_id,
+                "output": outputs(gas_fee),
+                "chain_specific_data": null,
+            }))
+            .deposit(near_sdk::NearToken::from_near(1))
+            .gas(near_sdk::Gas::from_tgas(140))
+    };
+    let outcome = context
+        .get_account_by_name("alice")
+        .batch(context.bridge_contract.id())
+        .call(rbf_call(20_000))
+        .call(rbf_call(30_000))
+        .transact()
+        .await
+        .unwrap();
+    let failures = format!("{:?}", outcome.receipt_failures());
+    assert!(
+        failures.contains("Too many pending sign transactions"),
+        "{failures}"
+    );
+
+    let pending_infos = context.get_btc_pending_infos_paged().await.unwrap();
+    assert_eq!(pending_infos.len(), 2);
+}
