@@ -1,6 +1,5 @@
 use crate::*;
 use near_plugins::{access_control_any, pause};
-use near_sdk::json_types::Base64VecU8;
 
 #[trusted_relayer]
 #[near]
@@ -19,7 +18,9 @@ impl Contract {
     /// # Arguments
     ///
     /// * `deposit_msg` - Information used to generate the deposit address path.
-    /// * `tx_bytes` - Successfully confirmed BTC transaction bytes.
+    /// * `tx_bytes` - The confirmed transaction, either as a base64 string of the full
+    ///   transaction bytes, or — Zcash only — as a JSON object holding a ZIP-244 compact
+    ///   commitment set ([`CompactTxProof`]).
     /// * `vout` - The index of the output where the user sent BTC to the deposit address.
     /// * `proof` - Transaction inclusion proof with coinbase verification.
     ///
@@ -32,16 +33,17 @@ impl Contract {
     pub fn verify_deposit_v2(
         &mut self,
         deposit_msg: DepositMsg,
-        tx_bytes: Base64VecU8,
+        tx_bytes: DepositTxProof,
         vout: usize,
         proof: TxInclusionProof,
     ) -> Promise {
         assert_post_actions_supported(&deposit_msg);
+        let tx_summary = self.internal_resolve_deposit_tx(tx_bytes);
         let coinbase_proof = (proof.coinbase_tx_id, proof.coinbase_merkle_proof);
         if deposit_msg.safe_deposit.is_some() {
             self.internal_safe_verify_deposit_entry(
                 deposit_msg,
-                tx_bytes.0,
+                tx_summary,
                 vout,
                 proof.tx_block_blockhash,
                 proof.tx_index,
@@ -51,7 +53,7 @@ impl Contract {
         } else {
             self.internal_verify_deposit_entry(
                 deposit_msg,
-                tx_bytes.0,
+                tx_summary,
                 vout,
                 proof.tx_block_blockhash,
                 proof.tx_index,
@@ -299,7 +301,9 @@ impl Contract {
     ///   it must match the provided `refund_address`.
     /// * `refund_address` - BTC address to send the refund to. If `deposit_msg.refund_address`
     ///   is `None`, this value is used directly.
-    /// * `tx_bytes` - BTC transaction bytes proving the deposit.
+    /// * `tx_bytes` - The deposit transaction, in either form accepted by
+    ///   `verify_deposit_v2`: a base64 string of the full bytes, or — Zcash only — a
+    ///   compact ZIP-244 commitment set.
     /// * `vout` - Output index of the deposit in the transaction.
     /// * `proof` - Transaction inclusion proof for Light Client verification, bundling:
     ///   `tx_block_blockhash` (block hash containing the transaction), `tx_index`
@@ -315,7 +319,7 @@ impl Contract {
         &mut self,
         deposit_msg: DepositMsg,
         refund_address: String,
-        tx_bytes: Base64VecU8,
+        tx_bytes: DepositTxProof,
         vout: usize,
         proof: TxInclusionProof,
         gas_fee: Option<U128>,

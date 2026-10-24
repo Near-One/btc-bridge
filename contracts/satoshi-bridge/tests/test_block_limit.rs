@@ -659,7 +659,7 @@ async fn test_failed_safe_mint_does_not_inflate_block_cumulative() {
             "{:?}",
             outcome.receipt_failures()
         );
-        assert_eq!(outcome.json::<bool>().unwrap(), false);
+        assert!(!outcome.json::<bool>().unwrap());
     }
     assert_eq!(context.ft_balance_of("bob").await.unwrap().0, 0);
 

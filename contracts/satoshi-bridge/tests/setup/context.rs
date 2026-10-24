@@ -691,54 +691,25 @@ impl Context {
             .await
     }
 
-    pub async fn dao_verify_deposit(
+    /// `complete_failed_deposit_mint` with a compact proof as `tx_bytes`.
+    pub async fn complete_failed_deposit_mint_compact(
         &self,
         user: &str,
         deposit_msg: DepositMsg,
-        deposit_address: &str,
-        tx_id: &str,
+        tx_bytes: Value,
         vout: u32,
-        balance: u128,
-    ) -> Result<ExecutionFinalResult> {
-        // The safe flow pays for the recipient's token storage, the standard flow does not.
-        let deposit = if deposit_msg.safe_deposit.is_some() {
-            self.required_balance_for_safe_deposit().await.unwrap()
-        } else {
-            NearToken::from_yoctonear(1)
-        };
-        self.dao_verify_deposit_with_deposit(
-            user,
-            deposit_msg,
-            deposit_address,
-            tx_id,
-            vout,
-            balance,
-            deposit,
-        )
-        .await
-    }
-
-    pub async fn dao_verify_deposit_with_deposit(
-        &self,
-        user: &str,
-        deposit_msg: DepositMsg,
-        deposit_address: &str,
-        tx_id: &str,
-        vout: u32,
-        balance: u128,
-        deposit: NearToken,
+        protocol_fee: u128,
     ) -> Result<ExecutionFinalResult> {
         self.get_account_by_name(user)
-            .call(self.bridge_contract.id(), "dao_verify_deposit")
+            .call(self.bridge_contract.id(), "complete_failed_deposit_mint")
             .args_json(json!({
                 "deposit_msg": deposit_msg,
-                "deposit_address": deposit_address,
-                "tx_id": tx_id,
+                "tx_bytes": tx_bytes,
                 "vout": vout,
-                "balance": U128(balance),
+                "protocol_fee": U128(protocol_fee),
             }))
             .max_gas()
-            .deposit(deposit)
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }
@@ -985,6 +956,55 @@ impl Context {
             .args_json(json!({
                 "deposit_msg": deposit_msg,
                 "tx_bytes": Base64VecU8(tx_bytes),
+                "vout": vout,
+                "proof": proof,
+            }))
+            .deposit(deposit)
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    /// `verify_deposit_v2` with hand-built arguments, for cases the typed
+    /// helpers cannot express.
+    pub async fn verify_deposit_v2_raw(
+        &self,
+        user: &str,
+        args: Value,
+    ) -> Result<ExecutionFinalResult> {
+        let deposit = if args["deposit_msg"]["safe_deposit"].is_null() {
+            NearToken::from_yoctonear(0)
+        } else {
+            self.required_balance_for_safe_deposit().await.unwrap()
+        };
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "verify_deposit_v2")
+            .args_json(args)
+            .deposit(deposit)
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    /// `verify_deposit_v2` with a compact proof as `tx_bytes`.
+    pub async fn verify_deposit_v2_compact(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        tx_bytes: Value,
+        vout: u32,
+        proof: Value,
+    ) -> Result<ExecutionFinalResult> {
+        let deposit = if deposit_msg.safe_deposit.is_some() {
+            self.required_balance_for_safe_deposit().await.unwrap()
+        } else {
+            NearToken::from_yoctonear(0)
+        };
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "verify_deposit_v2")
+            .args_json(json!({
+                "deposit_msg": deposit_msg,
+                "tx_bytes": tx_bytes,
                 "vout": vout,
                 "proof": proof,
             }))
@@ -1468,6 +1488,43 @@ impl Context {
                 "deposit_msg": deposit_msg,
                 "refund_address": refund_address,
                 "tx_bytes": Base64VecU8(tx_bytes),
+                "vout": vout,
+                "proof": {
+                    "tx_block_blockhash": tx_block_blockhash,
+                    "tx_index": tx_index,
+                    "merkle_proof": merkle_proof,
+                    "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
+                    "coinbase_merkle_proof": Vec::<String>::new(),
+                },
+                "gas_fee": gas_fee,
+            }))
+            .deposit(self.required_balance_for_request_refund().await?)
+            .max_gas()
+            .transact()
+            .await
+    }
+
+    /// `request_refund` with a compact proof as `tx_bytes`, where the typed helper
+    /// would send the full bytes.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn request_refund_compact(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        refund_address: &str,
+        tx_bytes: Value,
+        vout: u32,
+        tx_block_blockhash: String,
+        tx_index: u64,
+        merkle_proof: Vec<String>,
+        gas_fee: Option<U128>,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "request_refund")
+            .args_json(json!({
+                "deposit_msg": deposit_msg,
+                "refund_address": refund_address,
+                "tx_bytes": tx_bytes,
                 "vout": vout,
                 "proof": {
                     "tx_block_blockhash": tx_block_blockhash,
