@@ -164,6 +164,25 @@ impl Contract {
     }
 }
 
+#[near]
+impl Contract {
+    /// Expiry height of each pending transaction (`None` if not found). 0 means it never expires.
+    pub fn list_btc_pending_expiry_heights(
+        &self,
+        btc_pending_ids: Vec<String>,
+    ) -> HashMap<String, Option<u32>> {
+        btc_pending_ids
+            .into_iter()
+            .map(|key| {
+                let expiry_height = self
+                    .internal_view_btc_pending_info(&key)
+                    .map(|info| info.get_psbt().get_expiry_height());
+                (key, expiry_height)
+            })
+            .collect()
+    }
+}
+
 impl Contract {
     pub(crate) fn get_expiry_height(
         &self,

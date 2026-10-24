@@ -1177,6 +1177,19 @@ impl Context {
             .json::<HashMap<String, BTCPendingInfo>>()
     }
 
+    pub async fn list_btc_pending_expiry_heights(
+        &self,
+        btc_pending_ids: Vec<String>,
+    ) -> Result<HashMap<String, Option<u32>>> {
+        self.bridge_contract
+            .call("list_btc_pending_expiry_heights")
+            .args_json(json!({ "btc_pending_ids": btc_pending_ids }))
+            .view()
+            .await
+            .unwrap()
+            .json::<HashMap<String, Option<u32>>>()
+    }
+
     pub async fn withdraw_gas_token(
         &self,
         user: &str,
