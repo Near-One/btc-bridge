@@ -1024,9 +1024,15 @@ impl Context {
         user: &str,
         args: Value,
     ) -> Result<ExecutionFinalResult> {
+        let deposit = if args["deposit_msg"]["safe_deposit"].is_null() {
+            NearToken::from_yoctonear(0)
+        } else {
+            self.required_balance_for_safe_deposit().await.unwrap()
+        };
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "verify_deposit_v2")
             .args_json(args)
+            .deposit(deposit)
             .max_gas()
             .transact()
             .await

@@ -324,7 +324,7 @@ impl Contract {
             .checked_sub(refund_request.gas_fee)
             .expect("Deposit amount too small to cover gas fee");
         require!(
-            refund_amount >= config.min_change_amount,
+            refund_amount >= self.internal_config().min_change_amount,
             "Refund amount after gas fee is dust"
         );
 

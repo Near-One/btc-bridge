@@ -4,7 +4,9 @@ use bitcoin::{Amount, OutPoint, TxOut};
 use near_sdk::Gas;
 use near_sdk::{AccountId, NearToken};
 use satoshi_bridge::network::{Address, Chain};
-use satoshi_bridge::{DepositMsg, PendingInfoState, PostAction, TokenReceiverMessage};
+#[cfg(not(feature = "zcash"))]
+use satoshi_bridge::PendingInfoState;
+use satoshi_bridge::{DepositMsg, PostAction, TokenReceiverMessage};
 use setup::*;
 use std::string::ToString;
 
