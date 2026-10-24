@@ -1,7 +1,7 @@
 use crate::{
-    assert_one_yocto, assert_post_actions_supported, env, get_deposit_path, near, require,
-    AccessControllable, Account, AccountId, ConfigUpdate, Contract, ContractExt, DepositMsg,
-    DepositTxProof, Event, HashSet, Promise, Role, U128,
+    assert_one_yocto, env, get_deposit_path, near, require, AccessControllable, Account, AccountId,
+    ConfigUpdate, Contract, ContractExt, DepositMsg, DepositTxProof, Event, HashSet, Promise, Role,
+    U128,
 };
 
 use near_plugins::access_control_any;
@@ -361,31 +361,6 @@ impl Contract {
         .emit();
 
         utxo_storage_key
-    }
-
-    /// Credit a deposit without `tx_bytes` and without an inclusion proof, for a transaction
-    /// `verify_deposit_v2` cannot handle within the gas limit (a Zcash deposit with a large
-    /// shielded bundle). The DAO vouches for `tx_id`, `vout` and `balance`.
-    ///
-    /// The safe flow needs `required_balance_for_safe_deposit` attached for the recipient's
-    /// token storage, so only the standard flow is held to the one-yocto guard.
-    #[payable]
-    #[access_control_any(roles(Role::DAO))]
-    pub fn dao_verify_deposit(
-        &mut self,
-        deposit_msg: DepositMsg,
-        deposit_address: String,
-        tx_id: String,
-        vout: u32,
-        balance: U128,
-    ) -> Promise {
-        assert_post_actions_supported(&deposit_msg);
-        if deposit_msg.safe_deposit.is_none() {
-            assert_one_yocto();
-        }
-        let balance =
-            u64::try_from(balance.0).unwrap_or_else(|_| env::panic_str("balance overflow"));
-        self.internal_dao_verify_deposit(deposit_msg, deposit_address, tx_id, vout, balance)
     }
 
     #[payable]
