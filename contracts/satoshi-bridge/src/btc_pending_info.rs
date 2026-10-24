@@ -275,12 +275,12 @@ impl BTCPendingInfo {
     pub fn do_cancel(&mut self, gas_fee: u128, cancel_rbf_reserved: u128) {
         match self.state.borrow_mut() {
             PendingInfoState::WithdrawOriginal(state) => {
-                state.max_gas_fee = gas_fee;
+                state.max_gas_fee = state.max_gas_fee.max(gas_fee);
                 state.last_rbf_time_sec = Some(nano_to_sec(env::block_timestamp()));
                 state.cancel_rbf_reserved = Some(cancel_rbf_reserved.into());
             }
             PendingInfoState::ActiveUtxoManagementOriginal(state) => {
-                state.max_gas_fee = gas_fee;
+                state.max_gas_fee = state.max_gas_fee.max(gas_fee);
                 state.last_rbf_time_sec = Some(nano_to_sec(env::block_timestamp()));
                 state.cancel_rbf_reserved = Some(cancel_rbf_reserved.into());
             }
