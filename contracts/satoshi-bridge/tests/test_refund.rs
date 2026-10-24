@@ -97,8 +97,10 @@ async fn test_refund_basic_flow() {
         "Refund timelock has not passed yet"
     );
 
-    // 7. Fast-forward past timelock (3600 seconds = ~3600 blocks)
-    worker.fast_forward(4000).await.unwrap();
+    // 7. Fast-forward past the 200s timelock. A sandbox block advances the clock
+    // by ~0.3s, so 1000 blocks is ~300s -- comfortably past, and 4x cheaper than
+    // the 4000 this used to forward.
+    worker.fast_forward(1000).await.unwrap();
 
     // 8. Execute refund — timelock passed, should succeed
 
@@ -1385,6 +1387,77 @@ async fn test_refund_address_mismatch() {
 
 #[tokio::test]
 #[cfg(not(feature = "zcash"))]
+async fn test_deposit_address_rejects_invalid_refund_address() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    for refund_address in ["not-an-address", "mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn"] {
+        let deposit_msg = DepositMsg {
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
+            post_actions: None,
+            extra_msg: None,
+            safe_deposit: None,
+            refund_address: Some(refund_address.to_string()),
+        };
+        let err = context
+            .bridge_contract
+            .call("get_user_deposit_address")
+            .args_json(json!({ "deposit_msg": deposit_msg }))
+            .view()
+            .await
+            .unwrap_err();
+        assert!(format!("{err:?}").contains("Invalid refund address"));
+    }
+}
+
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_request_refund_rejects_invalid_refund_address() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: None,
+    };
+
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "b4b4069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f33",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 50_000)],
+    );
+
+    for refund_address in ["not-an-address", "mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn"] {
+        check!(
+            context.request_refund(
+                "alice",
+                deposit_msg.clone(),
+                refund_address,
+                tx_bytes.clone(),
+                0,
+                "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+                1,
+                vec![],
+                None
+            ),
+            "Invalid refund address"
+        );
+    }
+}
+
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_refund_operator_skips_timelock() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -1624,7 +1697,8 @@ async fn test_refund_execute_twice_different_account() {
 
     // (2) After the timelock, bob's call reaches the finalize step but rebuilds the
     // identical tx (same id) and is rejected — no duplicate, no hijack.
-    worker.fast_forward(4000).await.unwrap();
+    // 1000 blocks is ~300s, past the 200s timelock.
+    worker.fast_forward(1000).await.unwrap();
     check!(
         context.execute_refund("bob", &key),
         "pending info already exist"
@@ -1792,10 +1866,7 @@ async fn test_request_refund_input_capacity() {
     );
 }
 
-/// After `execute_refund` the UTXO is also inserted into `verified_deposit_utxo` (to
-/// block a later deposit) while the request is kept with `executed == true`. That must
-/// NOT let a non-privileged account reject the in-flight refund via the "already
-/// deposited" path — only DAO/Operator can. Regression test for that access check.
+/// Once `execute_refund` has run, nobody — including DAO — can reject the request.
 #[tokio::test]
 #[cfg(not(feature = "zcash"))]
 async fn test_reject_refund_blocked_after_execute() {
@@ -1849,20 +1920,264 @@ async fn test_reject_refund_blocked_after_execute() {
         .await
         .unwrap()
         .unwrap();
-    worker.fast_forward(4000).await.unwrap();
+    // 1000 blocks is ~300s, past the 200s timelock.
+    worker.fast_forward(1000).await.unwrap();
 
     // Execute the refund — this inserts the UTXO into verified_deposit_utxo and keeps
     // the request with executed == true. Must actually succeed for the test to be meaningful.
     check!(context.execute_refund("alice", &key));
 
-    // A non-privileged account must NOT be able to reject the now in-flight refund.
     check!(
         context.reject_refund("bob", &key),
-        "Only DAO/Operator can reject, or UTXO must be already verified via deposit"
+        "Refund already executed, cannot reject"
+    );
+    check!(
+        context.reject_refund("root", &key),
+        "Refund already executed, cannot reject"
+    );
+}
+
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_refund_request_survives_reject_during_pending_safe_mint() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let rejector = worker
+        .dev_deploy(&std::fs::read("../../res/mock_refund_rejector.wasm").unwrap())
+        .await
+        .unwrap();
+    rejector
+        .as_account()
+        .call(context.nbtc_contract.id(), "storage_deposit")
+        .args_json(json!({"registration_only": true}))
+        .deposit(near_sdk::NearToken::from_near(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+
+    let reject_msg = json!({
+        "bridge_id": context.bridge_contract.id(),
+        "utxo_id": "",
+    })
+    .to_string();
+    let deposit_msg = DepositMsg {
+        recipient_id: rejector.id().as_str().parse().unwrap(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: reject_msg }),
+        refund_address: Some(TARGET_ADDRESS.to_string()),
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "a8a8069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f25",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 100_000)],
+    );
+    let vout: u32 = 0;
+    let key = utxo_storage_key(&tx_bytes, vout);
+    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+
+    check!(context.request_refund(
+        "alice",
+        deposit_msg.clone(),
+        TARGET_ADDRESS,
+        tx_bytes.clone(),
+        vout,
+        blockhash.clone(),
+        1,
+        vec![],
+        None
+    ));
+
+    let outcome = context
+        .verify_deposit_v2(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            vout,
+            proof_json(blockhash.clone(), 1, vec![]),
+        )
+        .await
+        .unwrap();
+    let failures = format!("{:?}", outcome.receipt_failures());
+    assert!(
+        failures.contains("Only DAO/Operator can reject"),
+        "{failures}"
     );
 
-    // DAO can still reject it.
-    check!(context.reject_refund("root", &key));
+    let rejector_balance: near_sdk::json_types::U128 = context
+        .nbtc_contract
+        .view("ft_balance_of")
+        .args_json(json!({"account_id": rejector.id()}))
+        .await
+        .unwrap()
+        .json()
+        .unwrap();
+    assert_eq!(rejector_balance.0, 0);
+    assert_eq!(context.get_utxos_paged().await.unwrap().len(), 0);
+    let refund_requests: std::collections::HashMap<String, near_sdk::serde_json::Value> = context
+        .bridge_contract
+        .view("get_refund_requests_paged")
+        .args_json(json!({}))
+        .await
+        .unwrap()
+        .json()
+        .unwrap();
+    assert!(refund_requests.contains_key(&key));
+
+    check!(
+        context.request_refund(
+            "alice",
+            deposit_msg,
+            TARGET_ADDRESS,
+            tx_bytes,
+            vout,
+            blockhash,
+            1,
+            vec![],
+            None
+        ),
+        "Refund request already exists for this UTXO"
+    );
+}
+
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_refund_rejects_amount_below_min_change_amount() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    context
+        .get_account_by_name("root")
+        .call(context.bridge_contract.id(), "update_config")
+        .args_json(
+            json!({"update": {"min_change_amount": "20000", "unhealthy_utxo_amount": 30000}}),
+        )
+        .deposit(near_sdk::NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: Some(TARGET_ADDRESS.to_string()),
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+
+    let dust_tx_bytes = generate_transaction_bytes(
+        vec![(
+            "e6e6069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f23",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 60_000)],
+    );
+    check!(
+        context.request_refund(
+            "alice",
+            deposit_msg.clone(),
+            TARGET_ADDRESS,
+            dust_tx_bytes,
+            0,
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![],
+            None
+        ),
+        "Refund amount after gas fee is dust"
+    );
+
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "f7f7069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f24",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 70_000)],
+    );
+    check!(context.request_refund(
+        "alice",
+        deposit_msg,
+        TARGET_ADDRESS,
+        tx_bytes,
+        0,
+        "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+        1,
+        vec![],
+        None
+    ));
+}
+
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
+async fn test_below_min_deposit_can_be_refunded() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: None,
+        refund_address: Some(TARGET_ADDRESS.to_string()),
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "a8a8069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f25",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 15_000)],
+    );
+    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+
+    check!(
+        context.verify_deposit_v2(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            0,
+            proof_json(blockhash.clone(), 1, vec![])
+        ),
+        "Deposit amount is less than the minimum"
+    );
+
+    check!(context.request_refund(
+        "root",
+        deposit_msg,
+        TARGET_ADDRESS,
+        tx_bytes.clone(),
+        0,
+        blockhash,
+        1,
+        vec![],
+        Some(near_sdk::json_types::U128(5_000))
+    ));
+
+    let key = utxo_storage_key(&tx_bytes, 0);
+    check!(context.execute_refund("root", &key));
 }
 
 /// Bitcoin has no compact form — a txid there is a flat SHA256d, not a hash tree —

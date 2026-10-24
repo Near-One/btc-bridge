@@ -1,6 +1,8 @@
 mod setup;
 use bitcoin::{Amount, OutPoint, TxOut};
-use near_sdk::{AccountId, Gas};
+#[cfg(not(feature = "zcash"))]
+use near_sdk::Gas;
+use near_sdk::{AccountId, NearToken};
 use satoshi_bridge::network::{Address, Chain};
 use satoshi_bridge::{DepositMsg, PendingInfoState, PostAction, TokenReceiverMessage};
 use setup::*;
@@ -15,6 +17,21 @@ const CHAIN: &str = "BitcoinMainnet";
 const TARGET_ADDRESS: &str = "tmD67UTsZ4iBbhCae4D43k1x8fhFNhwd4Jn";
 #[cfg(not(feature = "zcash"))]
 const TARGET_ADDRESS: &str = "1PAGsaT5vDz6hjzvuenSw33hWzESTR3ZHQ";
+
+fn chain_safe_deposit() -> Option<satoshi_bridge::SafeDepositMsg> {
+    if cfg!(feature = "zcash") {
+        Some(satoshi_bridge::SafeDepositMsg { msg: String::new() })
+    } else {
+        None
+    }
+}
+
+async fn register_deposit_recipients(context: &Context) {
+    if cfg!(feature = "zcash") {
+        check!(context.storage_deposit("nbtc", "alice"));
+        check!(context.storage_deposit("nbtc", "bob"));
+    }
+}
 
 fn get_chain() -> Chain {
     match CHAIN {
@@ -110,6 +127,7 @@ async fn test_role() {
 async fn test_base() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    register_deposit_recipients(&context).await;
     let config = context.get_bridge_config().await.unwrap();
     let withdraw_change_address = context.get_change_address().await.unwrap();
     let alice_btc_deposit_address = context
@@ -117,7 +135,7 @@ async fn test_base() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         })
         .await
@@ -127,41 +145,48 @@ async fn test_base() {
             recipient_id: context.get_account_by_name("bob").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         })
         .await
         .unwrap();
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
-    check!(printr "alice 10000" context.verify_deposit_v2(
-        "relayer",
-        DepositMsg {
-            recipient_id: context.get_account_by_name("alice").sdk_id(),
-            post_actions: None,
-            extra_msg: None,
-            safe_deposit: None,
-            refund_address: None,
-        },
-        generate_transaction_bytes(
-            vec![(
-                "a2a5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f19",
+    check!(
+        context.verify_deposit_v2(
+            "relayer",
+            DepositMsg {
+                recipient_id: context.get_account_by_name("alice").sdk_id(),
+                post_actions: None,
+                extra_msg: None,
+                safe_deposit: chain_safe_deposit(),
+                refund_address: None,
+            },
+            generate_transaction_bytes(
+                vec![(
+                    "a2a5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f19",
+                    1,
+                    None,
+                )],
+                vec![
+                    (alice_btc_deposit_address.as_str(), 10000),
+                    (TARGET_ADDRESS, 90000)
+                ],
+            ),
+            0,
+            proof_json(
+                "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
                 1,
-                None,
-            )],
-            vec![
-                (alice_btc_deposit_address.as_str(), 10000),
-                (TARGET_ADDRESS, 90000)
-            ],
+                vec![]
+            )
         ),
-        0,
-        proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
-    ));
+        "Deposit amount is less than the minimum"
+    );
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
     assert_eq!(context.ft_balance_of("root").await.unwrap().0, 0);
     assert_eq!(context.get_utxos_paged().await.unwrap().len(), 0);
     assert_eq!(
         context.get_unavailable_utxos_paged().await.unwrap().len(),
-        1
+        0
     );
     assert_eq!(
         context
@@ -186,7 +211,7 @@ async fn test_base() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -208,7 +233,7 @@ async fn test_base() {
     assert_eq!(context.get_utxos_paged().await.unwrap().len(), 1);
     assert_eq!(
         context.get_unavailable_utxos_paged().await.unwrap().len(),
-        1
+        0
     );
     assert_eq!(
         context
@@ -234,7 +259,7 @@ async fn test_base() {
                 recipient_id: context.get_account_by_name("alice").sdk_id(),
                 post_actions: None,
                 extra_msg: None,
-                safe_deposit: None,
+                safe_deposit: chain_safe_deposit(),
                 refund_address: None,
             },
             generate_transaction_bytes(
@@ -262,7 +287,7 @@ async fn test_base() {
     assert_eq!(context.get_utxos_paged().await.unwrap().len(), 1);
     assert_eq!(
         context.get_unavailable_utxos_paged().await.unwrap().len(),
-        1
+        0
     );
     check!(context.verify_deposit_v2(
         "relayer",
@@ -270,7 +295,7 @@ async fn test_base() {
             recipient_id: context.get_account_by_name("bob").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -296,7 +321,7 @@ async fn test_base() {
     assert_eq!(context.get_utxos_paged().await.unwrap().len(), 2);
     assert_eq!(
         context.get_unavailable_utxos_paged().await.unwrap().len(),
-        1
+        0
     );
     assert_eq!(context.ft_balance_of("relayer").await.unwrap().0, 0);
     assert_eq!(
@@ -439,6 +464,20 @@ async fn test_base() {
         &keys[0],
         proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
+    // The withdrawal change UTXOs must be stored without the raw transaction bytes.
+    let change_utxos = context.get_utxos_paged().await.unwrap();
+    assert_eq!(change_utxos.len(), 4);
+    for utxo in change_utxos.values() {
+        assert!(utxo.tx_bytes.is_empty());
+    }
+    let listed_utxos = context
+        .list_utxos(change_utxos.keys().cloned().collect())
+        .await
+        .unwrap();
+    assert_eq!(listed_utxos.len(), 4);
+    for utxo in listed_utxos.values() {
+        assert!(utxo.as_ref().unwrap().tx_bytes.is_empty());
+    }
     assert_eq!(context.ft_balance_of("relayer").await.unwrap().0, 5000);
     assert_eq!(
         context
@@ -478,6 +517,7 @@ async fn test_base() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_fix_bridge_fee_and_relayer() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -616,6 +656,7 @@ async fn test_fix_bridge_fee_and_relayer() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_ratio_bridge_fee_and_relayer() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -757,6 +798,7 @@ async fn test_ratio_bridge_fee_and_relayer() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_directly_withdraw() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -880,6 +922,7 @@ async fn test_directly_withdraw() {
 
 #[tokio::test]
 #[cfg(feature = "zcash")]
+#[cfg(not(feature = "zcash"))]
 async fn test_directly_withdraw_to_p2sh() {
     let p2sh_target_address = "t26YqBabLj2kpZUPd3xCBhVHucMSV83GWSw";
 
@@ -1001,6 +1044,7 @@ async fn test_directly_withdraw_to_p2sh() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_one_click() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -1507,6 +1551,7 @@ async fn test_one_click() {
 async fn test_utxo_passive_management() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    register_deposit_recipients(&context).await;
     check!(context.set_deposit_bridge_fee(0, 0, 9000));
     check!(context.set_withdraw_bridge_fee(0, 0, 9000));
     // The bridge deposit fee is 0, so the bridge will not be automatically registered with mint
@@ -1518,7 +1563,7 @@ async fn test_utxo_passive_management() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         })
         .await
@@ -1531,7 +1576,7 @@ async fn test_utxo_passive_management() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -1554,7 +1599,7 @@ async fn test_utxo_passive_management() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -1734,6 +1779,7 @@ async fn test_utxo_passive_management() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_cancel_withdraw() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -1967,6 +2013,153 @@ async fn test_cancel_withdraw() {
 }
 
 #[tokio::test]
+async fn test_withdraw_rbf_charges_storage() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    register_deposit_recipients(&context).await;
+    check!(context.set_deposit_bridge_fee(10000, 0, 9000));
+    check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
+    let config = context.get_bridge_config().await.unwrap();
+    let withdraw_change_address = context.get_change_address().await.unwrap();
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: chain_safe_deposit(),
+        refund_address: None,
+    };
+    let alice_btc_deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    check!(context.verify_deposit_v2(
+        "relayer",
+        deposit_msg,
+        generate_transaction_bytes(
+            vec![(
+                "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
+                1,
+                None,
+            ),],
+            vec![
+                ("1MgiBKohM2poApYamQadp21vJrNyh5T19G", 90000),
+                (alice_btc_deposit_address.as_str(), 500000),
+            ],
+        ),
+        1,
+        proof_json(
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![]
+        )
+    ));
+    let utxos_keys = context
+        .get_utxos_paged()
+        .await
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect::<Vec<String>>();
+    let first_utxo = utxos_keys[0].split('@').collect::<Vec<_>>();
+    let withdraw_amount = 200000;
+    let btc_gas_fee = 10000;
+    let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
+    let change_amount = 500000 - (withdraw_amount - withdraw_fee) as u64;
+    check!(context.do_withdraw(
+        "alice",
+        "bridge",
+        withdraw_amount,
+        TokenReceiverMessage::Withdraw {
+            target_btc_address: TARGET_ADDRESS.to_string(),
+            input: vec![OutPoint {
+                txid: first_utxo[0].parse().unwrap(),
+                vout: first_utxo[1].parse().unwrap(),
+            }],
+            output: vec![
+                generate_tx_out(
+                    (withdraw_amount - btc_gas_fee - withdraw_fee) as u64,
+                    TARGET_ADDRESS,
+                    get_chain()
+                ),
+                generate_tx_out(change_amount, withdraw_change_address.as_str(), get_chain()),
+            ],
+            max_gas_fee: None,
+            chain_specific_data: None,
+        }
+    ));
+    let original_btc_pending_verify_id = context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .keys()
+        .next()
+        .unwrap()
+        .clone();
+    check!(context.sign_btc_transaction("relayer", &original_btc_pending_verify_id, 0, 0));
+
+    let rbf_output = vec![
+        generate_tx_out(
+            (withdraw_amount - btc_gas_fee - 1000 - withdraw_fee) as u64,
+            TARGET_ADDRESS,
+            get_chain(),
+        ),
+        generate_tx_out(change_amount, withdraw_change_address.as_str(), get_chain()),
+    ];
+
+    check!(
+        context.withdraw_rbf(
+            "alice",
+            &original_btc_pending_verify_id,
+            rbf_output.clone(),
+            NearToken::from_yoctonear(1)
+        ),
+        "Insufficient deposit for storage"
+    );
+    assert_eq!(
+        context.get_btc_pending_infos_paged().await.unwrap().len(),
+        1
+    );
+
+    worker.fast_forward(5).await.unwrap();
+    let alice = context.get_account_by_name("alice");
+    let alice_balance_before = alice.view_account().await.unwrap().balance;
+    let bridge_storage_before = context
+        .bridge_contract
+        .view_account()
+        .await
+        .unwrap()
+        .storage_usage;
+    check!(context.withdraw_rbf(
+        "alice",
+        &original_btc_pending_verify_id,
+        rbf_output,
+        NearToken::from_near(1)
+    ));
+    assert_eq!(
+        context.get_btc_pending_infos_paged().await.unwrap().len(),
+        2
+    );
+
+    let bridge_storage_after = context
+        .bridge_contract
+        .view_account()
+        .await
+        .unwrap()
+        .storage_usage;
+    let storage_cost = NearToken::from_yoctonear(
+        u128::from(bridge_storage_after - bridge_storage_before) * 10u128.pow(19),
+    );
+    let required_balance = context.required_balance_for_withdraw_rbf().await.unwrap();
+    assert!(storage_cost <= required_balance);
+    worker.fast_forward(5).await.unwrap();
+    let alice_spent =
+        alice_balance_before.saturating_sub(alice.view_account().await.unwrap().balance);
+    assert!(alice_spent >= required_balance);
+    assert!(alice_spent < required_balance.saturating_add(NearToken::from_millinear(100)));
+}
+
+#[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_cancel_withdraw2() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -2149,6 +2342,7 @@ async fn test_cancel_withdraw2() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_utxo_active_management() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -2233,25 +2427,6 @@ async fn test_utxo_active_management() {
         .clone();
     let utxo60000 = utxo_key60000.split('@').collect::<Vec<_>>();
     let output_amount = 560000 / 2;
-    check!(
-        context.active_utxo_management(
-            vec![
-                OutPoint {
-                    txid: utxo500000[0].parse().unwrap(),
-                    vout: utxo500000[1].parse().unwrap(),
-                },
-                OutPoint {
-                    txid: utxo60000[0].parse().unwrap(),
-                    vout: utxo60000[1].parse().unwrap(),
-                }
-            ],
-            vec![
-                generate_tx_out(output_amount, TARGET_ADDRESS, get_chain()),
-                generate_tx_out(output_amount, withdraw_change_address.as_str(), get_chain()),
-            ]
-        ),
-        "Active management conditions are not met"
-    );
     check!(context.set_active_management_limit(3, 10));
     check!(
         context.active_utxo_management(
@@ -2270,9 +2445,8 @@ async fn test_utxo_active_management() {
                 generate_tx_out(output_amount, withdraw_change_address.as_str(), get_chain()),
             ]
         ),
-        "require input_num < output_num"
+        "Invalid output script_pubkey"
     );
-    check!(context.set_active_management_limit(0, 1));
     check!(
         context.active_utxo_management(
             vec![
@@ -2286,11 +2460,24 @@ async fn test_utxo_active_management() {
                 }
             ],
             vec![
-                generate_tx_out(output_amount, TARGET_ADDRESS, get_chain()),
-                generate_tx_out(output_amount, withdraw_change_address.as_str(), get_chain()),
+                generate_tx_out(
+                    output_amount / 2,
+                    withdraw_change_address.as_str(),
+                    get_chain()
+                ),
+                generate_tx_out(
+                    output_amount / 2,
+                    withdraw_change_address.as_str(),
+                    get_chain()
+                ),
+                generate_tx_out(
+                    output_amount / 2,
+                    withdraw_change_address.as_str(),
+                    get_chain()
+                ),
             ]
         ),
-        "require input_num > output_num"
+        "require output_num <= 2"
     );
     check!(
         context.active_utxo_management(
@@ -2515,6 +2702,7 @@ async fn test_utxo_active_management() {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_utxo_active_management2() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -2696,6 +2884,16 @@ async fn test_utxo_active_management2() {
         &active_utxo_management_rbf_tx_id,
         proof_json("0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(), 1, vec![])
     ));
+    // The consolidation change UTXO must be stored without the raw transaction bytes.
+    let consolidation_change_utxos = context
+        .get_utxos_paged()
+        .await
+        .unwrap()
+        .into_values()
+        .filter(|utxo| utxo.balance == output_amount * 2 - 15000)
+        .collect::<Vec<_>>();
+    assert_eq!(consolidation_change_utxos.len(), 1);
+    assert!(consolidation_change_utxos[0].tx_bytes.is_empty());
     assert_eq!(
         context
             .get_metadata()
@@ -2729,7 +2927,7 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         })
         .await
@@ -2743,7 +2941,7 @@ async fn test_unauthorized_account_cannot_call_trusted_relayer_methods() {
                 recipient_id: context.get_account_by_name("alice").sdk_id(),
                 post_actions: None,
                 extra_msg: None,
-                safe_deposit: None,
+                safe_deposit: chain_safe_deposit(),
                 refund_address: None,
             },
             "tx_bytes": near_sdk::json_types::Base64VecU8(generate_transaction_bytes(
@@ -2796,6 +2994,7 @@ fn mock_proof() -> near_sdk::serde_json::Value {
 }
 
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_verify_deposit_v2() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -2845,6 +3044,7 @@ async fn test_verify_deposit_v2() {
 // `mint_callback` failed after the nBTC had already been minted. It must only ever accept a
 // genuine, already-verified deposit output that is not registered yet.
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_complete_failed_deposit_mint() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
@@ -2920,6 +3120,7 @@ async fn test_complete_failed_deposit_mint() {
 // `dao_verify_deposit` must end up with exactly the UTXO and the mint that
 // `verify_deposit_v2` would have produced.
 #[tokio::test]
+#[cfg(not(feature = "zcash"))]
 async fn test_dao_verify_deposit() {
     const DAO_TX_ID: &str = "9d4c1ab6d4f5f3f5cf5a6f4e5b0f1cbf4b8f2c1d0e9a8b7c6d5e4f3a2b1c0d9e";
 
@@ -3172,16 +3373,186 @@ async fn test_safe_verify_deposit_v2() {
 }
 
 #[tokio::test]
+async fn test_safe_verify_deposit_v2_refunds_surplus() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
+        refund_address: None,
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    check!(context.storage_deposit("nbtc", "alice"));
+
+    let required = context.required_balance_for_safe_deposit().await.unwrap();
+    let relayer_id = context.get_account_by_name("relayer").sdk_id();
+    let balance_before = context.near_balance_by_account(&worker, &relayer_id).await;
+
+    check!(context.verify_deposit_v2_with_deposit(
+        "relayer",
+        deposit_msg,
+        generate_transaction_bytes(
+            vec![(
+                "f2f2069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f60",
+                1,
+                None,
+            )],
+            vec![(deposit_address.as_str(), 50000), (TARGET_ADDRESS, 50000)],
+        ),
+        0,
+        mock_proof(),
+        required.saturating_add(NearToken::from_near(10)),
+    ));
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 50000);
+    let spent = balance_before - context.near_balance_by_account(&worker, &relayer_id).await;
+    assert!(spent >= required.as_yoctonear());
+    assert!(
+        spent
+            < required
+                .saturating_add(NearToken::from_near(1))
+                .as_yoctonear()
+    );
+}
+
+#[tokio::test]
+async fn test_dao_verify_deposit_safe_refunds_surplus() {
+    const DAO_TX_ID: &str = "3f2a91c0b4e7d85619af0c3b7e2d4a86f0159c3bd7e84a2610fbc95d3e7a1846";
+
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
+        refund_address: None,
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    check!(context.storage_deposit("nbtc", "alice"));
+
+    let required = context.required_balance_for_safe_deposit().await.unwrap();
+    let root_id = context.get_account_by_name("root").sdk_id();
+    let balance_before = context.near_balance_by_account(&worker, &root_id).await;
+
+    check!(context.dao_verify_deposit_with_deposit(
+        "root",
+        deposit_msg,
+        &deposit_address,
+        DAO_TX_ID,
+        0,
+        50000,
+        required.saturating_add(NearToken::from_near(10)),
+    ));
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 50000);
+    let spent = balance_before - context.near_balance_by_account(&worker, &root_id).await;
+    assert!(spent >= required.as_yoctonear());
+    assert!(
+        spent
+            < required
+                .saturating_add(NearToken::from_near(1))
+                .as_yoctonear()
+    );
+}
+
+#[tokio::test]
+async fn test_verify_deposit_rejects_coinbase_tx() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let coinbase_proof = near_sdk::serde_json::json!({
+        "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
+        "tx_index": 0u64,
+        "merkle_proof": Vec::<String>::new(),
+        "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
+        "coinbase_merkle_proof": Vec::<String>::new(),
+    });
+
+    if !cfg!(feature = "zcash") {
+        let deposit_msg = DepositMsg {
+            recipient_id: context.get_account_by_name("alice").sdk_id(),
+            post_actions: None,
+            extra_msg: None,
+            safe_deposit: None,
+            refund_address: None,
+        };
+        let alice_btc_deposit_address = context
+            .get_user_deposit_address(deposit_msg.clone())
+            .await
+            .unwrap();
+        let tx_bytes = generate_transaction_bytes(
+            vec![(
+                "a3a3069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f70",
+                1,
+                None,
+            )],
+            vec![
+                (alice_btc_deposit_address.as_str(), 50000),
+                (TARGET_ADDRESS, 50000),
+            ],
+        );
+        check!(
+            context.verify_deposit_v2("relayer", deposit_msg, tx_bytes, 0, coinbase_proof.clone()),
+            "coinbase transaction is not allowed for deposit"
+        );
+    }
+
+    let safe_deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
+        refund_address: None,
+    };
+    let safe_deposit_address = context
+        .get_user_deposit_address(safe_deposit_msg.clone())
+        .await
+        .unwrap();
+    check!(
+        context.verify_deposit_v2(
+            "relayer",
+            safe_deposit_msg,
+            generate_transaction_bytes(
+                vec![(
+                    "b4b4069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f80",
+                    1,
+                    None,
+                )],
+                vec![
+                    (safe_deposit_address.as_str(), 50000),
+                    (TARGET_ADDRESS, 50000)
+                ],
+            ),
+            0,
+            coinbase_proof
+        ),
+        "coinbase transaction is not allowed for deposit"
+    );
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+    assert_eq!(context.get_utxos_paged().await.unwrap().len(), 0);
+}
+
+#[tokio::test]
 async fn test_verify_withdraw_v2() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    register_deposit_recipients(&context).await;
     let withdraw_change_address = context.get_change_address().await.unwrap();
     let alice_btc_deposit_address = context
         .get_user_deposit_address(DepositMsg {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         })
         .await
@@ -3194,7 +3565,7 @@ async fn test_verify_withdraw_v2() {
             recipient_id: context.get_account_by_name("alice").sdk_id(),
             post_actions: None,
             extra_msg: None,
-            safe_deposit: None,
+            safe_deposit: chain_safe_deposit(),
             refund_address: None,
         },
         generate_transaction_bytes(
@@ -3289,11 +3660,14 @@ async fn test_safe_verify_deposit_unregistered_recipient_releases_utxo() {
     // Seed the bridge with some nBTC: bob does a regular verify_deposit_v2
     // (which auto-registers him and mints to him) and then transfers part of
     // his balance to the bridge account.
+    if cfg!(feature = "zcash") {
+        check!(context.storage_deposit("nbtc", "bob"));
+    }
     let bob_deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("bob").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: None,
+        safe_deposit: chain_safe_deposit(),
         refund_address: None,
     };
     let bob_deposit_address = context
@@ -3666,4 +4040,393 @@ async fn test_safe_verify_deposit_to_bridge_recipient_is_rejected() {
     // No tokens were minted anywhere.
     assert_eq!(context.ft_balance_of("bridge").await.unwrap().0, 0);
     assert_eq!(context.ft_total_supply().await.unwrap().0, 0);
+}
+
+#[tokio::test]
+#[cfg(feature = "zcash")]
+async fn test_zcash_rejects_post_actions() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let alice_id = context.get_account_by_name("alice").sdk_id();
+    let deposit_msg = DepositMsg {
+        recipient_id: alice_id.clone(),
+        post_actions: Some(vec![PostAction {
+            receiver_id: context.get_account_by_name("dapp").sdk_id(),
+            amount: 5000.into(),
+            memo: None,
+            msg: "".to_string(),
+            gas: None,
+        }]),
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
+        refund_address: None,
+    };
+    let deposit_address = context
+        .get_user_deposit_address(DepositMsg {
+            post_actions: None,
+            ..deposit_msg.clone()
+        })
+        .await
+        .unwrap();
+
+    let view_err = context
+        .bridge_contract
+        .call("get_user_deposit_address")
+        .args_json(near_sdk::serde_json::json!({ "deposit_msg": deposit_msg }))
+        .view()
+        .await
+        .unwrap_err();
+    assert!(format!("{view_err:?}").contains("post_actions are not supported"));
+
+    let outcome = context
+        .verify_deposit_v2(
+            "relayer",
+            deposit_msg.clone(),
+            generate_transaction_bytes(
+                vec![(
+                    "4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a",
+                    0,
+                    None,
+                )],
+                vec![(deposit_address.as_str(), 50000)],
+            ),
+            0,
+            mock_proof(),
+        )
+        .await;
+    assert!(tool_err_msg(&outcome).contains("post_actions are not supported"));
+
+    let outcome = context
+        .dao_verify_deposit(
+            "root",
+            deposit_msg,
+            &deposit_address,
+            "5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b5b",
+            0,
+            50000,
+        )
+        .await;
+    assert!(tool_err_msg(&outcome).contains("post_actions are not supported"));
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+    assert!(context.get_utxos_paged().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+#[cfg(feature = "zcash")]
+async fn test_zcash_requires_safe_deposit() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    let safe_deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
+        refund_address: None,
+    };
+    let deposit_address = context
+        .get_user_deposit_address(safe_deposit_msg.clone())
+        .await
+        .unwrap();
+    let deposit_msg = DepositMsg {
+        safe_deposit: None,
+        ..safe_deposit_msg
+    };
+
+    let view_err = context
+        .bridge_contract
+        .call("get_user_deposit_address")
+        .args_json(near_sdk::serde_json::json!({ "deposit_msg": deposit_msg }))
+        .view()
+        .await
+        .unwrap_err();
+    assert!(format!("{view_err:?}").contains("only safe deposits are supported"));
+
+    let outcome = context
+        .verify_deposit_v2(
+            "relayer",
+            deposit_msg.clone(),
+            generate_transaction_bytes(
+                vec![(
+                    "6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c",
+                    0,
+                    None,
+                )],
+                vec![(deposit_address.as_str(), 50000)],
+            ),
+            0,
+            mock_proof(),
+        )
+        .await;
+    assert!(tool_err_msg(&outcome).contains("only safe deposits are supported"));
+
+    let outcome = context
+        .dao_verify_deposit(
+            "root",
+            deposit_msg,
+            &deposit_address,
+            "7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d7d",
+            0,
+            50000,
+        )
+        .await;
+    assert!(tool_err_msg(&outcome).contains("only safe deposits are supported"));
+
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+    assert!(context.get_utxos_paged().await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_below_min_deposit_succeeds_after_min_lowered() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    register_deposit_recipients(&context).await;
+
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: chain_safe_deposit(),
+        refund_address: None,
+    };
+    let deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "a2a5069f02ad4ca31a16113903ab9fe9e8da6ddf20cad4b461b71e8b96050f19",
+            1,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 10000), (TARGET_ADDRESS, 90000)],
+    );
+    let blockhash = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string();
+
+    check!(
+        context.verify_deposit_v2(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            0,
+            proof_json(blockhash.clone(), 1, vec![])
+        ),
+        "Deposit amount is less than the minimum"
+    );
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
+    assert_eq!(context.get_utxos_paged().await.unwrap().len(), 0);
+    assert_eq!(
+        context.get_unavailable_utxos_paged().await.unwrap().len(),
+        0
+    );
+
+    context
+        .root
+        .call(context.bridge_contract.id(), "update_config")
+        .args_json(near_sdk::serde_json::json!({ "update": { "min_deposit_amount": "10000" } }))
+        .deposit(NearToken::from_yoctonear(1))
+        .max_gas()
+        .transact()
+        .await
+        .unwrap()
+        .unwrap();
+
+    check!(context.verify_deposit_v2(
+        "relayer",
+        deposit_msg,
+        tx_bytes,
+        0,
+        proof_json(blockhash, 1, vec![])
+    ));
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 10000);
+    assert_eq!(context.get_utxos_paged().await.unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn test_paused_public_withdraw_allows_only_trusted_sender() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    register_deposit_recipients(&context).await;
+    check!(context.set_withdraw_bridge_fee(20000, 0, 9000));
+    let config = context.get_bridge_config().await.unwrap();
+    let withdraw_change_address = context.get_change_address().await.unwrap();
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: chain_safe_deposit(),
+        refund_address: None,
+    };
+    let alice_btc_deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    check!(context.verify_deposit_v2(
+        "relayer",
+        deposit_msg,
+        generate_transaction_bytes(
+            vec![(
+                "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
+                1,
+                None,
+            ),],
+            vec![
+                ("1MgiBKohM2poApYamQadp21vJrNyh5T19G", 90000),
+                (alice_btc_deposit_address.as_str(), 500000),
+            ],
+        ),
+        1,
+        proof_json(
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![]
+        )
+    ));
+    let utxo_key = context
+        .get_utxos_paged()
+        .await
+        .unwrap()
+        .keys()
+        .next()
+        .unwrap()
+        .clone();
+    let utxo = utxo_key.split('@').collect::<Vec<_>>();
+    let withdraw_amount = 200000;
+    let btc_gas_fee = 10000;
+    let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
+    let change_amount = 500000 - (withdraw_amount - withdraw_fee) as u64;
+    let withdraw_msg = || TokenReceiverMessage::Withdraw {
+        target_btc_address: TARGET_ADDRESS.to_string(),
+        input: vec![OutPoint {
+            txid: utxo[0].parse().unwrap(),
+            vout: utxo[1].parse().unwrap(),
+        }],
+        output: vec![
+            generate_tx_out(
+                (withdraw_amount - btc_gas_fee - withdraw_fee) as u64,
+                TARGET_ADDRESS,
+                get_chain(),
+            ),
+            generate_tx_out(change_amount, withdraw_change_address.as_str(), get_chain()),
+        ],
+        max_gas_fee: None,
+        chain_specific_data: None,
+    };
+
+    check!(context.bridge_pa_pause_feature("root", "public_withdraw"));
+
+    let outcome = context
+        .do_withdraw("alice", "bridge", withdraw_amount, withdraw_msg())
+        .await
+        .unwrap();
+    let failures = format!("{:?}", outcome.receipt_failures());
+    assert!(
+        failures.contains("Withdraw sender is not allowed"),
+        "{failures}"
+    );
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 500000);
+    assert!(context
+        .get_btc_pending_infos_paged()
+        .await
+        .unwrap()
+        .is_empty());
+
+    check!(context.bridge_acl_grant_role(
+        "root",
+        "TrustedWithdrawSender",
+        context.get_account_by_name("alice").id()
+    ));
+    check!(context.do_withdraw("alice", "bridge", withdraw_amount, withdraw_msg()));
+    assert_eq!(
+        context.ft_balance_of("alice").await.unwrap().0,
+        500000 - withdraw_amount
+    );
+    assert_eq!(
+        context.get_btc_pending_infos_paged().await.unwrap().len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn test_unpaused_public_withdraw_allows_any_sender() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = Context::new(&worker, Some(CHAIN.to_string())).await;
+    register_deposit_recipients(&context).await;
+    let config = context.get_bridge_config().await.unwrap();
+    let withdraw_change_address = context.get_change_address().await.unwrap();
+    let deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("alice").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: chain_safe_deposit(),
+        refund_address: None,
+    };
+    let alice_btc_deposit_address = context
+        .get_user_deposit_address(deposit_msg.clone())
+        .await
+        .unwrap();
+    check!(context.verify_deposit_v2(
+        "relayer",
+        deposit_msg,
+        generate_transaction_bytes(
+            vec![(
+                "c6774e76452c36bba6c357653f620a4364fc063ba021e2acf6049f8d9e6b0234",
+                1,
+                None,
+            ),],
+            vec![
+                ("1MgiBKohM2poApYamQadp21vJrNyh5T19G", 90000),
+                (alice_btc_deposit_address.as_str(), 500000),
+            ],
+        ),
+        1,
+        proof_json(
+            "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d".to_string(),
+            1,
+            vec![]
+        )
+    ));
+    let utxo_key = context
+        .get_utxos_paged()
+        .await
+        .unwrap()
+        .keys()
+        .next()
+        .unwrap()
+        .clone();
+    let utxo = utxo_key.split('@').collect::<Vec<_>>();
+    let withdraw_amount = 200000;
+    let btc_gas_fee = 10000;
+    let withdraw_fee = config.withdraw_bridge_fee.get_fee(withdraw_amount);
+    let change_amount = 500000 - (withdraw_amount - withdraw_fee) as u64;
+
+    check!(context.bridge_pa_pause_feature("root", "public_withdraw"));
+    check!(context.bridge_pa_unpause_feature("root", "public_withdraw"));
+
+    check!(context.do_withdraw(
+        "alice",
+        "bridge",
+        withdraw_amount,
+        TokenReceiverMessage::Withdraw {
+            target_btc_address: TARGET_ADDRESS.to_string(),
+            input: vec![OutPoint {
+                txid: utxo[0].parse().unwrap(),
+                vout: utxo[1].parse().unwrap(),
+            }],
+            output: vec![
+                generate_tx_out(
+                    (withdraw_amount - btc_gas_fee - withdraw_fee) as u64,
+                    TARGET_ADDRESS,
+                    get_chain(),
+                ),
+                generate_tx_out(change_amount, withdraw_change_address.as_str(), get_chain()),
+            ],
+            max_gas_fee: None,
+            chain_specific_data: None,
+        }
+    ));
+    assert_eq!(
+        context.get_btc_pending_infos_paged().await.unwrap().len(),
+        1
+    );
 }

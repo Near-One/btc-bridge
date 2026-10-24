@@ -9,9 +9,13 @@ on:
 permissions:
   checks: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  rust-checks:
-    runs-on: warp-ubuntu-latest-x64-4x
+  lint:
+    runs-on: warp-ubuntu-latest-x64-2x
     steps:
       - uses: actions/checkout@v5
         with:
@@ -31,14 +35,156 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           cache-provider: warpbuild
+          key: lint
 
       - name: Run lint
         run: make lint
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        feature: [bitcoin, zcash]
+    runs-on: warp-ubuntu-latest-x64-4x
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # Per-leg key: the features compile disjoint dep trees, so one shared
+      # key means each leg evicts the other.
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-provider: warpbuild
+          key: test-${{ matrix.feature }}
 
       - name: Install cargo-near
         run: |
           curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/releases/latest/download/cargo-near-installer.sh | sh
 
-      - name: Run tests
-        run: make test
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
 
+      - name: Run ${{ matrix.feature }} tests
+        run: make test-ci-${{ matrix.feature }}
+
+  # Builds the bitcoin and zcash wasm on this branch and on the PR base, and
+  # fails when one of them grew past the threshold. Contract size drives both
+  # the storage stake and the deploy gas, and a dependency bump can add a few
+  # hundred KB without anything in the diff hinting at it.
+  wasm-size:
+    if: github.event_name == 'pull_request'
+    runs-on: warp-ubuntu-latest-x64-4x
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      # the script builds in the work tree while the checkout is detached at
+      # the base commit, so it can't locate the repo relative to itself
+      REPO_ROOT: ${{ github.workspace }}
+      # growth above this fails the job; raise it in the PR when an increase
+      # is intended and explained
+      THRESHOLD: 2
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # the base commit has to be reachable for the baseline build
+          fetch-depth: 0
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-provider: warpbuild
+          key: wasm-size
+
+      - name: Install cargo-near
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/releases/latest/download/cargo-near-installer.sh | sh
+
+      - name: Measure this branch
+        run: |
+          # the base commit predates this script, so the baseline step runs a
+          # copy kept outside the work tree
+          cp scripts/wasm-size.sh "$RUNNER_TEMP/wasm-size.sh"
+          "$RUNNER_TEMP/wasm-size.sh" --out "$RUNNER_TEMP/head.tsv" bitcoin zcash
+
+      - name: Measure the base branch
+        run: |
+          git checkout --detach ${{ github.event.pull_request.base.sha }}
+          "$RUNNER_TEMP/wasm-size.sh" --out "$RUNNER_TEMP/base.tsv" bitcoin zcash
+          git checkout --detach ${{ github.sha }}
+
+      # fails on a regression, but only after the report has been published, so
+      # the table is on the PR either way
+      - name: Compare
+        id: compare
+        continue-on-error: true
+        run: |
+          "$RUNNER_TEMP/wasm-size.sh" \
+            --input "$RUNNER_TEMP/head.tsv" \
+            --baseline "$RUNNER_TEMP/base.tsv" \
+            --threshold "$THRESHOLD" \
+            --markdown "$RUNNER_TEMP/report.md"
+
+      - name: Publish report
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          # fork PRs get a read-only token, so skip the comment there rather
+          # than failing the job on a 403
+          CAN_COMMENT: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          MARKER: '<!-- wasm-size-report -->'
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # always() also covers an earlier step blowing up before any report
+          [ -f "$RUNNER_TEMP/report.md" ] || { echo "no report, the build failed"; exit 0; }
+
+          BODY="$RUNNER_TEMP/comment.md"
+          {
+            echo "$MARKER"
+            cat "$RUNNER_TEMP/report.md"
+            echo
+            echo "<sub>\`${HEAD_SHA:0:7}\` vs base \`${BASE_SHA:0:7}\` · [run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)</sub>"
+          } > "$BODY"
+
+          cat "$BODY" >> "$GITHUB_STEP_SUMMARY"
+          [ "$CAN_COMMENT" = "true" ] || { echo "fork PR, skipping the comment"; exit 0; }
+
+          # one sticky comment, found by the marker and edited in place, so a
+          # busy PR does not collect a table per push
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+                 -q ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@"$BODY" -q .html_url
+          else
+            gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" -F body=@"$BODY" -q .html_url
+          fi
+
+      - name: Upload size report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-sizes
+          path: |
+            ${{ runner.temp }}/head.tsv
+            ${{ runner.temp }}/base.tsv
+          if-no-files-found: ignore
+
+      - name: Fail on regression
+        if: steps.compare.outcome == 'failure'
+        run: |
+          echo "::error::WASM size grew more than ${THRESHOLD}% — see the report on the PR"
+          exit 1

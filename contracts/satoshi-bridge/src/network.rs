@@ -3,7 +3,7 @@ use bitcoin::hashes::Hash;
 use bitcoin::{base58, bech32, PubkeyHash, ScriptHash, WitnessProgram, WitnessVersion};
 use near_sdk::near;
 use std::fmt;
-use zcash_address::unified::{Container, Receiver};
+use zcash_address::unified::{Container, Receiver, Uitem};
 use zcash_address::{ConversionError, ToAddress, ZcashAddress};
 #[cfg(feature = "zcash")]
 use zcash_protocol::consensus::BranchId;
@@ -31,6 +31,7 @@ pub struct BranchIdUpdateBlockHeight {
     pub nu6_1_update: u32,
     pub nu6_2_update: u32,
     pub nu6_3_update: u32,
+    pub nu7_update: u32,
 }
 
 #[cfg(feature = "zcash")]
@@ -41,11 +42,15 @@ impl BranchIdUpdateBlockHeight {
                 nu6_1_update: 3146400,
                 nu6_2_update: 3364600,
                 nu6_3_update: 3428143,
+                // https://github.com/ZcashFoundation/zebra/blob/v7.0.0/zebra-chain/src/parameters/constants.rs#L106
+                nu7_update: 3543405,
             },
             Chain::ZcashTestnet => Self {
                 nu6_1_update: 3536500,
                 nu6_2_update: 4052000,
                 nu6_3_update: 4134000,
+                // https://zips.z.cash/zip-0259
+                nu7_update: 4465026,
             },
             _ => unreachable!(),
         }
@@ -55,6 +60,9 @@ impl Chain {
     #[cfg(feature = "zcash")]
     pub fn get_branch_id(&self, block_height: u32) -> BranchId {
         let block_height_update = BranchIdUpdateBlockHeight::new(self);
+        if block_height_update.nu7_update != 0 && block_height >= block_height_update.nu7_update {
+            return BranchId::Nu7;
+        }
         if block_height_update.nu6_3_update != 0 && block_height >= block_height_update.nu6_3_update
         {
             return BranchId::Nu6_3;
@@ -222,14 +230,14 @@ impl Address {
                 let receiver_list = address.items_as_parsed();
                 for receiver in receiver_list {
                     match receiver {
-                        Receiver::P2pkh(data) => {
+                        Uitem::Data(Receiver::P2pkh(data)) => {
                             return Ok(bitcoin::ScriptBuf::new_p2pkh(
                                 &PubkeyHash::from_slice(&data[..]).map_err(|err| {
                                     format!("Error on parsing Pubkey Hash: {err:?}").to_string()
                                 })?,
                             ))
                         }
-                        Receiver::P2sh(data) => {
+                        Uitem::Data(Receiver::P2sh(data)) => {
                             return Ok(bitcoin::ScriptBuf::new_p2sh(
                                 &ScriptHash::from_slice(&data[..]).map_err(|err| {
                                     format!("Error on parsing Script Hash: {err:?}").to_string()
@@ -252,7 +260,7 @@ impl Address {
                 let receiver_list = address.items_as_parsed();
                 for receiver in receiver_list {
                     match receiver {
-                        Receiver::Orchard(bytes) => return Ok(*bytes),
+                        Uitem::Data(Receiver::Orchard(bytes)) => return Ok(*bytes),
                         _ => continue,
                     }
                 }
@@ -621,6 +629,14 @@ mod tests {
             BranchId::Nu6_3
         );
 
+        // Testnet: NU7 at 4_465_026 (ZIP-0259).
+        assert_eq!(
+            Chain::ZcashTestnet.get_branch_id(4_465_025),
+            BranchId::Nu6_3
+        );
+        assert_eq!(Chain::ZcashTestnet.get_branch_id(4_465_026), BranchId::Nu7);
+        assert_eq!(Chain::ZcashTestnet.get_branch_id(u32::MAX), BranchId::Nu7);
+
         // Mainnet: NU6.3 at 3_428_143.
         assert_eq!(
             Chain::ZcashMainnet.get_branch_id(3_428_142),
@@ -630,6 +646,24 @@ mod tests {
             Chain::ZcashMainnet.get_branch_id(3_428_143),
             BranchId::Nu6_3
         );
-        assert_eq!(Chain::ZcashMainnet.get_branch_id(u32::MAX), BranchId::Nu6_3);
+
+        // Mainnet: NU7 at 3_543_405.
+        assert_eq!(
+            Chain::ZcashMainnet.get_branch_id(3_543_404),
+            BranchId::Nu6_3
+        );
+        assert_eq!(Chain::ZcashMainnet.get_branch_id(3_543_405), BranchId::Nu7);
+        assert_eq!(Chain::ZcashMainnet.get_branch_id(u32::MAX), BranchId::Nu7);
+    }
+
+    /// The consensus branch ids the bridge commits to in sighashes. A wrong
+    /// value here silently produces transactions the network will reject.
+    #[cfg(feature = "zcash")]
+    #[test]
+    fn test_branch_id_consensus_values() {
+        use zcash_protocol::consensus::BranchId;
+
+        assert_eq!(u32::from(BranchId::Nu6_3), 0x37a5_165b);
+        assert_eq!(u32::from(BranchId::Nu7), 0x7719_0ad9);
     }
 }

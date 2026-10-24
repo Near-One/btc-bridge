@@ -86,12 +86,6 @@ impl Contract {
             .insert(utxo_storage_key.to_owned(), utxo.into());
     }
 
-    pub fn internal_set_unavailable_utxo(&mut self, utxo_storage_key: &str, utxo: UTXO) {
-        self.data_mut()
-            .unavailable_utxos
-            .insert(utxo_storage_key.to_owned(), utxo.into());
-    }
-
     pub fn internal_set_utxo_in_progress(&mut self, utxo_storage_key: &str, status: UTXOStatus) {
         self.data_mut()
             .utxos_in_progress

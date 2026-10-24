@@ -729,6 +729,28 @@ impl Context {
         } else {
             NearToken::from_yoctonear(1)
         };
+        self.dao_verify_deposit_with_deposit(
+            user,
+            deposit_msg,
+            deposit_address,
+            tx_id,
+            vout,
+            balance,
+            deposit,
+        )
+        .await
+    }
+
+    pub async fn dao_verify_deposit_with_deposit(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        deposit_address: &str,
+        tx_id: &str,
+        vout: u32,
+        balance: u128,
+        deposit: NearToken,
+    ) -> Result<ExecutionFinalResult> {
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "dao_verify_deposit")
             .args_json(json!({
@@ -915,6 +937,26 @@ impl Context {
             .await
     }
 
+    pub async fn withdraw_rbf(
+        &self,
+        user: &str,
+        original_btc_pending_verify_id: &str,
+        output: Vec<TxOut>,
+        deposit: NearToken,
+    ) -> Result<ExecutionFinalResult> {
+        self.get_account_by_name(user)
+            .call(self.bridge_contract.id(), "withdraw_rbf")
+            .args_json(json!({
+                "original_btc_pending_verify_id": original_btc_pending_verify_id,
+                "output": output,
+                "chain_specific_data": null,
+            }))
+            .max_gas()
+            .deposit(deposit)
+            .transact()
+            .await
+    }
+
     pub async fn sign_btc_transaction(
         &self,
         user: &str,
@@ -948,6 +990,19 @@ impl Context {
         } else {
             NearToken::from_yoctonear(0)
         };
+        self.verify_deposit_v2_with_deposit(user, deposit_msg, tx_bytes, vout, proof, deposit)
+            .await
+    }
+
+    pub async fn verify_deposit_v2_with_deposit(
+        &self,
+        user: &str,
+        deposit_msg: DepositMsg,
+        tx_bytes: Vec<u8>,
+        vout: u32,
+        proof: Value,
+        deposit: NearToken,
+    ) -> Result<ExecutionFinalResult> {
         self.get_account_by_name(user)
             .call(self.bridge_contract.id(), "verify_deposit_v2")
             .args_json(json!({
@@ -1153,6 +1208,19 @@ impl Context {
             .await
             .unwrap()
             .json::<HashMap<String, UTXO>>()
+    }
+
+    pub async fn list_utxos(
+        &self,
+        utxo_storage_keys: Vec<String>,
+    ) -> Result<HashMap<String, Option<UTXO>>> {
+        self.bridge_contract
+            .call("list_utxos")
+            .args_json(json!({ "utxo_storage_keys": utxo_storage_keys }))
+            .view()
+            .await
+            .unwrap()
+            .json::<HashMap<String, Option<UTXO>>>()
     }
 
     pub async fn get_unavailable_utxos_paged(&self) -> Result<HashMap<String, UTXO>> {
@@ -1545,6 +1613,16 @@ impl Context {
     pub async fn required_balance_for_request_refund(&self) -> Result<NearToken> {
         self.bridge_contract
             .call("required_balance_for_request_refund")
+            .args_json(json!({}))
+            .view()
+            .await
+            .unwrap()
+            .json::<NearToken>()
+    }
+
+    pub async fn required_balance_for_withdraw_rbf(&self) -> Result<NearToken> {
+        self.bridge_contract
+            .call("required_balance_for_withdraw_rbf")
             .args_json(json!({}))
             .view()
             .await
