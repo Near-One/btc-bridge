@@ -115,7 +115,7 @@ impl Contract {
         &mut self,
         pending_utxo_info: &PendingUTXOInfo,
         confirmations_delta: u64,
-    ) {
+    ) -> u64 {
         let result_bytes = env::promise_result_checked(0, MAX_INCLUSION_INFO_RESULT)
             .expect("Call verify_transaction_inclusion_with_heights failed");
         let info: Option<TxInclusionInfo> = serde_json::from_slice(&result_bytes)
@@ -127,6 +127,7 @@ impl Contract {
             u128::from(pending_utxo_info.utxo.balance),
             confirmations_delta,
         );
+        info.tx_block_height
     }
 
     pub(crate) fn internal_build_deposit_utxo_info(
@@ -338,7 +339,12 @@ impl Contract {
                 .then(
                     Self::ext(env::current_account_id())
                         .with_static_gas(GAS_FOR_MINT_CALL_BACK)
-                        .safe_mint_callback(recipient_id, deposit_amount.into(), pending_utxo_info),
+                        .safe_mint_callback(
+                            recipient_id,
+                            deposit_amount.into(),
+                            pending_utxo_info,
+                            None,
+                        ),
                 );
         }
 
@@ -368,6 +374,7 @@ impl Contract {
             relayer_fee.into(),
             pending_utxo_info,
             post_actions,
+            None,
         )
     }
 }
@@ -385,7 +392,8 @@ impl Contract {
         post_actions: Option<Vec<PostAction>>,
         confirmations_delta: u64,
     ) -> PromiseOrValue<bool> {
-        self.process_inclusion_and_check(&pending_utxo_info, confirmations_delta);
+        let block_height =
+            self.process_inclusion_and_check(&pending_utxo_info, confirmations_delta);
         require!(
             self.data_mut()
                 .verified_deposit_utxo
@@ -403,6 +411,7 @@ impl Contract {
             relayer_fee,
             pending_utxo_info,
             post_actions,
+            Some(block_height),
         )
         .into()
     }
@@ -416,7 +425,8 @@ impl Contract {
         pending_utxo_info: PendingUTXOInfo,
         confirmations_delta: u64,
     ) -> PromiseOrValue<bool> {
-        self.process_inclusion_and_check(&pending_utxo_info, confirmations_delta);
+        let block_height =
+            self.process_inclusion_and_check(&pending_utxo_info, confirmations_delta);
         require!(
             self.data_mut()
                 .verified_deposit_utxo
@@ -438,7 +448,12 @@ impl Contract {
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_FOR_MINT_CALL_BACK)
-                    .safe_mint_callback(recipient_id.clone(), mint_amount, pending_utxo_info),
+                    .safe_mint_callback(
+                        recipient_id.clone(),
+                        mint_amount,
+                        pending_utxo_info,
+                        Some(block_height),
+                    ),
             )
             .into()
     }
@@ -449,6 +464,7 @@ impl Contract {
         recipient_id: AccountId,
         mint_amount: U128,
         pending_utxo_info: PendingUTXOInfo,
+        bumped_block_height: Option<u64>,
     ) -> bool {
         let is_success = !is_refund_required();
         let relayer_account_id = env::signer_account_id();
@@ -466,6 +482,10 @@ impl Contract {
             self.data_mut()
                 .verified_deposit_utxo
                 .remove(&pending_utxo_info.utxo_storage_key);
+            self.unbump_block_amount(
+                bumped_block_height,
+                u128::from(pending_utxo_info.utxo.balance),
+            );
 
             ext_nbtc::ext(self.internal_config().nbtc_account_id.clone())
                 .with_static_gas(GAS_FOR_BURN_CALL)

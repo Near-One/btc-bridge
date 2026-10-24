@@ -614,3 +614,55 @@ async fn test_ring_grow_forgotten_block_restarts_from_zero() {
 
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 18_000);
 }
+
+#[tokio::test]
+async fn test_failed_safe_mint_does_not_inflate_block_cumulative() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let (context, deposit_address) = setup_two_tier_context(&worker).await;
+
+    let bob_deposit_msg = DepositMsg {
+        recipient_id: context.get_account_by_name("bob").sdk_id(),
+        post_actions: None,
+        extra_msg: None,
+        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
+        refund_address: None,
+    };
+    let bob_deposit_address = context
+        .get_user_deposit_address(bob_deposit_msg.clone())
+        .await
+        .unwrap();
+    let bob_tx_bytes = generate_transaction_bytes(
+        vec![(format!("{:064x}", 100).as_str(), 0, None)],
+        vec![(bob_deposit_address.as_str(), 6000)],
+    );
+
+    set_heights(
+        &context,
+        BASE_BLOCK_HEIGHT,
+        BASE_BLOCK_HEIGHT + LOW_TIER_CONFIRMATIONS - 1,
+    )
+    .await;
+
+    for _ in 0..2 {
+        let outcome = context
+            .verify_deposit_v2(
+                "relayer",
+                bob_deposit_msg.clone(),
+                bob_tx_bytes.clone(),
+                0,
+                proof_json(BLOCKHASH.to_string(), 1, vec![]),
+            )
+            .await
+            .unwrap();
+        assert!(
+            outcome.receipt_failures().is_empty(),
+            "{:?}",
+            outcome.receipt_failures()
+        );
+        assert_eq!(outcome.json::<bool>().unwrap(), false);
+    }
+    assert_eq!(context.ft_balance_of("bob").await.unwrap().0, 0);
+
+    check!(verify_deposit(&context, &deposit_address, 6000, 1));
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 6000);
+}
