@@ -84,6 +84,7 @@ impl Contract {
 
         let need_signature_num = psbt.get_input_num();
         let psbt_hex = psbt.serialize();
+        let expiry_height = psbt.get_expiry_height();
         let btc_pending_id = psbt.get_pending_id();
         let btc_pending_info = BTCPendingInfo {
             account_id: account_id.clone(),
@@ -120,6 +121,7 @@ impl Contract {
         Event::GenerateBtcPendingInfo {
             account_id: &account_id,
             btc_pending_id: &btc_pending_id,
+            expiry_height,
         }
         .emit();
     }

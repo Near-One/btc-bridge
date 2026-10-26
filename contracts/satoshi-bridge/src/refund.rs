@@ -345,6 +345,7 @@ impl Contract {
         });
 
         let psbt_hex = psbt.serialize();
+        let expiry_height = psbt.get_expiry_height();
         let btc_pending_id = psbt.get_pending_id();
 
         if !self.check_account_exists(&caller) {
@@ -400,6 +401,7 @@ impl Contract {
         Event::GenerateBtcPendingInfo {
             account_id: &caller,
             btc_pending_id: &btc_pending_id,
+            expiry_height,
         }
         .emit();
 

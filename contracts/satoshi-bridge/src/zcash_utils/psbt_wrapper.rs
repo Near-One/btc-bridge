@@ -159,8 +159,8 @@ impl PsbtWrapper {
         self.vout.len()
     }
 
-    pub fn get_expiry_height(&self) -> u32 {
-        self.expiry_height
+    pub fn get_expiry_height(&self) -> Option<u32> {
+        Some(self.expiry_height)
     }
 
     pub fn has_orchard_bundle(&self) -> bool {
