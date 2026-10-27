@@ -1,9 +1,24 @@
 use crate::{env, network::Address, BtcPublicKey, Contract};
 
-use k256::elliptic_curve::{bigint::ArrayEncoding, sec1::ToEncodedPoint, PrimeField};
+use k256::elliptic_curve::{
+    bigint::ArrayEncoding,
+    sec1::{FromEncodedPoint, ToEncodedPoint},
+    PrimeField,
+};
 use sha3::{Digest, Sha3_256};
 
 const EPSILON_DERIVATION_PREFIX: &str = "near-mpc-recovery v0.1.0 epsilon derivation:";
+
+fn near_public_key_to_affine_point(pk: near_sdk::PublicKey) -> k256::AffinePoint {
+    let mut bytes = pk.into_bytes();
+    bytes[0] = 0x04;
+    let point = k256::EncodedPoint::from_bytes(bytes).expect("Invalid MPC public key");
+    Option::from(k256::AffinePoint::from_encoded_point(&point)).expect("Invalid MPC public key")
+}
+
+fn derive_key(public_key: k256::AffinePoint, epsilon: k256::Scalar) -> k256::AffinePoint {
+    (k256::ProjectivePoint::GENERATOR * epsilon + public_key).to_affine()
+}
 
 fn derive_epsilon(account_id: &str, path: &str) -> k256::Scalar {
     let derivation_path = format!("{EPSILON_DERIVATION_PREFIX}{},{}", account_id, path);
@@ -27,14 +42,14 @@ impl Contract {
 
 impl Contract {
     pub fn generate_public_key(&self, path: &str) -> Vec<u8> {
-        let mpc_pk = crypto_shared::near_public_key_to_affine_point(
+        let mpc_pk = near_public_key_to_affine_point(
             self.internal_config()
                 .chain_signatures_root_public_key
                 .clone()
                 .expect("Missing chain_signatures_root_public_key"),
         );
         let epsilon = derive_epsilon(env::current_account_id().as_ref(), path);
-        let user_pk = crypto_shared::derive_key(mpc_pk, epsilon);
+        let user_pk = derive_key(mpc_pk, epsilon);
         let user_pk_encoded_point = user_pk.to_encoded_point(false);
         user_pk_encoded_point.as_bytes().to_vec()
     }
