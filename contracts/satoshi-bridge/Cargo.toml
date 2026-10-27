@@ -36,7 +36,6 @@ near-plugins.workspace = true
 omni-utils.workspace = true
 k256 = "0.13.1"
 sha3.workspace = true
-crypto-shared = { git = "https://github.com/near/mpc_old", rev = "0afee9004a1b1c3386940e60c28cff7cf1b5978c" }
 zcash_primitives = { version = "=0.31.0-pre.1", default-features = false, optional = true }
 zcash_transparent = { version = "=0.11.0-pre.1", optional = true }
 orchard = { version = "=0.16.0", default-features = false, optional = true }
@@ -51,6 +50,7 @@ zcash_address = { version = "=0.14.0-pre.1" }
 getrandom = { version = "0.2.12", features = ["custom"] }
 
 [dev-dependencies]
+crypto-shared = { git = "https://github.com/near/mpc_old", rev = "0afee9004a1b1c3386940e60c28cff7cf1b5978c" }
 near-sdk = { workspace = true, features = ["unit-testing"] }
 near-workspaces = { version = "0.22", features = ["unstable"] }
 tokio = { version = "1.12.0", features = ["full"] }
