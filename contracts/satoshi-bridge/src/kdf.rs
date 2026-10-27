@@ -74,7 +74,41 @@ impl Contract {
 
 #[cfg(test)]
 mod tests {
-    use super::derive_epsilon;
+    use super::{derive_epsilon, derive_key, near_public_key_to_affine_point};
+    use k256::elliptic_curve::sec1::ToEncodedPoint;
+    use near_sdk::PublicKey;
+    use std::str::FromStr;
+
+    const MPC_PK: &str = "secp256k1:4NfTiv3UsGahebgTaHyD9vF8KYKMBnfd6kh94mK6xv8fGBiJB8TBtFMP5WWXz6B89Ac1fbpzPwAvoyQebemHFwx3";
+
+    #[test]
+    fn test_near_public_key_to_affine_point_matches_crypto_shared() {
+        let pk = PublicKey::from_str(MPC_PK).unwrap();
+        let local = near_public_key_to_affine_point(pk.clone());
+        let original = crypto_shared::near_public_key_to_affine_point(pk);
+        assert_eq!(
+            local.to_encoded_point(false).as_bytes(),
+            original.to_encoded_point(false).as_bytes()
+        );
+    }
+
+    #[test]
+    fn test_derive_key_matches_crypto_shared() {
+        let pk = PublicKey::from_str(MPC_PK).unwrap();
+        let mpc_pk = crypto_shared::near_public_key_to_affine_point(pk.clone());
+        for account_id in ["test.near", "zcash_connector-20250714-143829.testnet"] {
+            for path in ["", "bitcoin-1", "a3f1c0de", "user.near:deposit:42"] {
+                let epsilon = derive_epsilon(account_id, path);
+                let local = derive_key(near_public_key_to_affine_point(pk.clone()), epsilon);
+                let original = crypto_shared::derive_key(mpc_pk, epsilon);
+                assert_eq!(
+                    local.to_encoded_point(false).as_bytes(),
+                    original.to_encoded_point(false).as_bytes(),
+                    "mismatch for account {account_id}, path {path:?}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn test_derive_epsilon_matches_crypto_shared() {
