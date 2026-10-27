@@ -9,9 +9,10 @@ impl Contract {
     /// transaction inclusion verification.
     ///
     /// The deposit flow is selected by `deposit_msg.safe_deposit`:
-    /// * `Some(..)` — safe deposit (e.g. Omni Bridge): charges no fee, reverts the whole
-    ///   transaction if minting fails (no lost & found), and the caller must attach NEAR for
-    ///   the user's token storage (see `required_balance_for_safe_deposit`).
+    /// * `Some(..)` — safe deposit (e.g. Omni Bridge): charges no fee, the caller must attach
+    ///   `required_balance_for_safe_deposit`, and the recipient must already be registered in
+    ///   nBTC. If nothing reaches the recipient, `safe_mint_callback` burns the minted amount and
+    ///   leaves the deposit unverified, so it can be verified again (no lost & found).
     /// * `None` — standard deposit: charges the deposit fee, pays the user's storage, and
     ///   routes mint failures to lost & found.
     ///

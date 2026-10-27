@@ -38,6 +38,7 @@ macro_rules! define_rbf_method {
             Event::GenerateBtcPendingInfo {
                 account_id: &account_id,
                 btc_pending_id: &btc_pending_id,
+                expiry_height: None,
             }
             .emit();
         }

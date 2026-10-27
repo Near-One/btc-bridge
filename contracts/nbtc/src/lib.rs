@@ -321,7 +321,9 @@ impl Contract {
     /// # Panics
     ///
     /// This function will panic if serialization fails.
+    #[payable]
     pub fn set_withdraw_relayer_address(&mut self, relayer: &AccountId) {
+        assert_one_yocto();
         self.assert_controller();
 
         env::storage_write(WITHDRAW_RELAYER_ADDRESS, &borsh::to_vec(relayer).unwrap());

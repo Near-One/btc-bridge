@@ -124,6 +124,10 @@ impl PsbtWrapper {
         serialize(&self.psbt.clone().extract_tx().expect("extract_tx failed"))
     }
 
+    pub fn get_expiry_height(&self) -> Option<u32> {
+        None
+    }
+
     pub fn get_pending_id(&self) -> String {
         self.psbt
             .clone()

@@ -408,10 +408,10 @@ async fn test_orchard_withdrawal_amount_mismatch() {
     );
 
     // Check the error message - the contract validates that the user's output amount
-    // matches the expected range based on withdraw_amount - withdraw_fee - gas_fee
+    // equals withdraw_amount - withdraw_fee - gas_fee
     let err_msg = setup::utils::tool_err_msg(&Ok(outcome));
     assert!(
-        err_msg.contains("output amount") && err_msg.contains("out of the valid range"),
+        err_msg.contains("output amount") && err_msg.contains("must be equal to"),
         "Expected output amount validation error, got: {}",
         err_msg
     );

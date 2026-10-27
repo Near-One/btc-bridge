@@ -38,6 +38,8 @@ pub enum Event<'a> {
     GenerateBtcPendingInfo {
         account_id: &'a AccountId,
         btc_pending_id: &'a String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        expiry_height: Option<u32>,
     },
     BtcInputSignature {
         account_id: &'a AccountId,
