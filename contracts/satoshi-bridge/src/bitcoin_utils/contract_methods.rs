@@ -54,6 +54,8 @@ impl Contract {
     ) {
     }
 
+    pub(crate) fn check_min_fee_chain_specific(_psbt: &PsbtWrapper, _gas_fee: u128) {}
+
     pub(crate) fn check_withdraw_chain_specific(
         original_tx_btc_pending_info: &BTCPendingInfo,
         gas_fee: u128,

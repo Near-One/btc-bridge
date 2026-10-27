@@ -138,6 +138,7 @@ impl Contract {
             })
             .sum::<u128>();
         let gas_fee = input_amount - output_amount;
+        Self::check_min_fee_chain_specific(psbt, gas_fee);
         if !is_cancel {
             require!(
                 gas_fee >= config.min_btc_gas_fee && gas_fee <= config.max_btc_gas_fee,
