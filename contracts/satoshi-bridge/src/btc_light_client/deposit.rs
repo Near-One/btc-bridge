@@ -231,9 +231,7 @@ impl Contract {
         charge_attached_deposit(self.required_balance_for_safe_deposit());
 
         let path = get_deposit_path(&deposit_msg);
-        let safe_deposit_msg = deposit_msg
-            .safe_deposit
-            .unwrap_or_else(|| env::panic_str("safe_deposit is required in the safe deposit flow"));
+        let safe_deposit_msg = deposit_msg.safe_deposit.unwrap_or_default();
 
         let pending_utxo_info = self.internal_build_deposit_utxo_info(path, &tx_summary, vout);
         let deposit_amount = u128::from(pending_utxo_info.utxo.balance);

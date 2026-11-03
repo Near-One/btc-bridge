@@ -101,7 +101,7 @@ make clippy-zcash           # Clippy for Zcash
 - Charges deposit bridge fee
 - Mints via `nbtc.mint`, which registers the recipient at the token contract's expense
 - Mint failure: `mint_callback` does not add the UTXO and removes the verified-deposit marker, so the deposit can be verified again later
-- Bitcoin only: Zcash accepts only safe deposits
+- Bitcoin only: on Zcash `safe_deposit: None` goes to the safe flow with an empty `msg`
 
 **Safe (`safe_deposit: Some(SafeDepositMsg)`):**
 - Primarily used by Omni Bridge
