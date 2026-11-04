@@ -63,6 +63,8 @@ pub use crate::utils::*;
 pub use crate::utxo::*;
 
 #[cfg(not(feature = "zcash"))]
+pub use crate::bitcoin_utils::deposit_msg::*;
+#[cfg(not(feature = "zcash"))]
 pub use crate::bitcoin_utils::psbt_wrapper;
 #[cfg(not(feature = "zcash"))]
 pub use crate::bitcoin_utils::transaction::Transaction as WrappedTransaction;
@@ -73,6 +75,8 @@ use crate::bitcoin_utils::types::{ChainSpecificData, CompactTxProof};
 pub use crate::zcash_utils::compact_txid::CompactTxProof;
 #[cfg(feature = "zcash")]
 pub use crate::zcash_utils::contract_methods::*;
+#[cfg(feature = "zcash")]
+pub use crate::zcash_utils::deposit_msg::*;
 #[cfg(feature = "zcash")]
 pub use crate::zcash_utils::psbt_wrapper;
 #[cfg(feature = "zcash")]

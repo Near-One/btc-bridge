@@ -3944,54 +3944,77 @@ async fn test_zcash_rejects_post_actions() {
 
 #[tokio::test]
 #[cfg(feature = "zcash")]
-async fn test_zcash_requires_safe_deposit() {
+async fn test_zcash_deposit_without_safe_deposit_is_handled_as_safe() {
     let worker = near_workspaces::sandbox().await.unwrap();
     let context = Context::new(&worker, Some(CHAIN.to_string())).await;
-    let safe_deposit_msg = DepositMsg {
+    let deposit_msg = DepositMsg {
         recipient_id: context.get_account_by_name("alice").sdk_id(),
         post_actions: None,
         extra_msg: None,
-        safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
+        safe_deposit: None,
         refund_address: None,
     };
     let deposit_address = context
-        .get_user_deposit_address(safe_deposit_msg.clone())
+        .get_user_deposit_address(deposit_msg.clone())
         .await
         .unwrap();
-    let deposit_msg = DepositMsg {
-        safe_deposit: None,
-        ..safe_deposit_msg
-    };
-
-    let view_err = context
-        .bridge_contract
-        .call("get_user_deposit_address")
-        .args_json(near_sdk::serde_json::json!({ "deposit_msg": deposit_msg }))
-        .view()
+    let safe_deposit_address = context
+        .get_user_deposit_address(DepositMsg {
+            safe_deposit: Some(satoshi_bridge::SafeDepositMsg { msg: String::new() }),
+            ..deposit_msg.clone()
+        })
         .await
-        .unwrap_err();
-    assert!(format!("{view_err:?}").contains("only safe deposits are supported"));
+        .unwrap();
+    assert_ne!(deposit_address, safe_deposit_address);
 
-    let outcome = context
-        .verify_deposit_v2(
+    let tx_bytes = generate_transaction_bytes(
+        vec![(
+            "6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c",
+            0,
+            None,
+        )],
+        vec![(deposit_address.as_str(), 50000)],
+    );
+    let safe_deposit_balance = context.required_balance_for_safe_deposit().await.unwrap();
+
+    check!(
+        context.verify_deposit_v2_with_deposit(
             "relayer",
             deposit_msg.clone(),
-            generate_transaction_bytes(
-                vec![(
-                    "6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c6c",
-                    0,
-                    None,
-                )],
-                vec![(deposit_address.as_str(), 50000)],
-            ),
+            tx_bytes.clone(),
             0,
             mock_proof(),
-        )
-        .await;
-    assert!(tool_err_msg(&outcome).contains("only safe deposits are supported"));
+            NearToken::from_yoctonear(0),
+        ),
+        "Insufficient"
+    );
 
+    let outcome = context
+        .verify_deposit_v2_with_deposit(
+            "relayer",
+            deposit_msg.clone(),
+            tx_bytes.clone(),
+            0,
+            mock_proof(),
+            safe_deposit_balance,
+        )
+        .await
+        .unwrap();
+    assert!(outcome.receipt_failures().is_empty());
     assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 0);
     assert!(context.get_utxos_paged().await.unwrap().is_empty());
+
+    check!(context.storage_deposit("nbtc", "alice"));
+    check!(context.verify_deposit_v2_with_deposit(
+        "relayer",
+        deposit_msg,
+        tx_bytes,
+        0,
+        mock_proof(),
+        safe_deposit_balance,
+    ));
+    assert_eq!(context.ft_balance_of("alice").await.unwrap().0, 50000);
+    assert_eq!(context.get_utxos_paged().await.unwrap().len(), 1);
 }
 
 #[tokio::test]

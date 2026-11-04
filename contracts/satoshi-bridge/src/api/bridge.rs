@@ -14,7 +14,8 @@ impl Contract {
     ///   nBTC. If nothing reaches the recipient, `safe_mint_callback` burns the minted amount and
     ///   leaves the deposit unverified, so it can be verified again (no lost & found).
     /// * `None` — standard deposit: charges the deposit fee, pays the user's storage, and
-    ///   routes mint failures to lost & found.
+    ///   routes mint failures to lost & found. On Zcash, `None` is handled as a safe deposit
+    ///   with an empty `msg`.
     ///
     /// # Arguments
     ///
@@ -41,7 +42,7 @@ impl Contract {
         assert_post_actions_supported(&deposit_msg);
         let tx_summary = self.internal_resolve_deposit_tx(tx_bytes);
         let coinbase_proof = (proof.coinbase_tx_id, proof.coinbase_merkle_proof);
-        if deposit_msg.safe_deposit.is_some() {
+        if is_safe_deposit(&deposit_msg) {
             self.internal_safe_verify_deposit_entry(
                 deposit_msg,
                 tx_summary,

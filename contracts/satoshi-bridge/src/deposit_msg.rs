@@ -1,6 +1,5 @@
 use crate::{
-    env, is_structure_equal, near, require, serde_json, AccountId, Contract, Event, Gas, Value,
-    U128,
+    env, is_structure_equal, near, serde_json, AccountId, Contract, Event, Gas, Value, U128,
 };
 
 const MAX_POST_ACTIONS_NUM: usize = 2;
@@ -29,7 +28,7 @@ pub struct DepositMsg {
 }
 
 #[near(serializers = [json])]
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct SafeDepositMsg {
     pub msg: String,
     // TODO: add relayer fee support in the future.
@@ -50,19 +49,6 @@ pub struct PostAction {
 pub fn get_deposit_path(deposit_msg: &DepositMsg) -> String {
     let deposit_msg_string = serde_json::to_string(&deposit_msg).unwrap();
     hex::encode(env::sha256(deposit_msg_string.as_bytes()))
-}
-
-pub fn assert_post_actions_supported(deposit_msg: &DepositMsg) {
-    if cfg!(feature = "zcash") {
-        require!(
-            deposit_msg.post_actions.is_none(),
-            "post_actions are not supported"
-        );
-        require!(
-            deposit_msg.safe_deposit.is_some(),
-            "only safe deposits are supported"
-        );
-    }
 }
 
 impl Contract {
