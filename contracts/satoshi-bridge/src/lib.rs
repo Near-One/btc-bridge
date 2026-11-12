@@ -129,6 +129,9 @@ pub struct TxInclusionProof {
     pub tx_block_blockhash: String,
     pub tx_index: u64,
     pub merkle_proof: Vec<String>,
+    /// Bitcoin: hex of SHA256 over the coinbase's non-witness serialization, in hash output
+    /// byte order (not reversed); the coinbase txid passed to the light client is its SHA256.
+    /// Zcash: the coinbase txid.
     pub coinbase_tx_id: String,
     pub coinbase_merkle_proof: Vec<String>,
 }
