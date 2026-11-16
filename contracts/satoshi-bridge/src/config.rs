@@ -93,11 +93,11 @@ pub struct Config {
     pub max_active_utxo_management_input_number: u8,
     // The maximum number of outputs allowed during active UTXO management.
     pub max_active_utxo_management_output_number: u8,
-    // When the number of UTXOs in the protocol is less than this configuration, UTXO management can be actively initiated.
-    // The number of inputs in the managed PSBT must be less than the number of outputs.
+    // Deprecated: active UTXO management is no longer gated on the protocol's UTXO count.
+    // Retained for state compatibility; the value is unused.
     pub active_management_lower_limit: u32,
-    // When the number of UTXOs in the protocol is greater than this configuration, UTXO management can be actively initiated.
-    // The number of inputs in the managed PSBT must be greater than the number of outputs.
+    // Deprecated: active UTXO management is no longer gated on the protocol's UTXO count.
+    // Retained for state compatibility; the value is unused.
     pub active_management_upper_limit: u32,
     // When the number of UTXOs in the protocol is less than this configuration, passive UTXO management will be triggered,
     // requiring that the number of inputs must be less than the number of changes.
@@ -105,16 +105,16 @@ pub struct Config {
     // When the number of UTXOs in the protocol is greater than this configuration, passive UTXO management will be triggered,
     // requiring that the number of inputs must be greater than the number of changes.
     pub passive_management_upper_limit: u32,
-    // The maximum number of transactions allowed to initiate RBF
+    // The maximum number of transactions allowed to initiate RBF. 0 disables user RBF.
     pub rbf_num_limit: u8,
     // If the transaction exceeds this configuration and has not been verified, the protocol will be allowed to cancel the transaction.
     pub max_btc_tx_pending_sec: u32,
     // UTXOs less than or equal to this amount are allowed to be merged through active management.
     pub unhealthy_utxo_amount: u64,
-    // Timelock for refunds where `deposit_msg.refund_address` is pre-authorized.
+    // Timelock for refunds where `deposit_msg.refund_address` is pre-authorized. 0 disables the delay.
     pub refund_timelock_sec: u64,
     // Timelock for refunds where the refund address comes from the request caller
-    // (`deposit_msg.refund_address` was None). Must be >= `refund_timelock_sec`.
+    // (`deposit_msg.refund_address` was None). Must be >= `refund_timelock_sec`. 0 disables the delay.
     pub unsafe_refund_timelock_sec: u64,
     #[cfg(feature = "zcash")]
     pub expiry_height_gap: u32,
@@ -179,6 +179,10 @@ impl Config {
         require!(
             self.refund_timelock_sec <= self.unsafe_refund_timelock_sec,
             "refund_timelock_sec must be <= unsafe_refund_timelock_sec"
+        );
+        require!(
+            self.min_deposit_amount > self.deposit_bridge_fee.fee_min,
+            "min_deposit_amount must be greater than deposit_bridge_fee.fee_min"
         );
     }
 
@@ -490,6 +494,23 @@ mod tests {
         unit_env
             .contract
             .set_confirmations_strategy(U128(20_000_000), 101);
+    }
+
+    #[test]
+    #[should_panic(expected = "min_deposit_amount must be greater than deposit_bridge_fee.fee_min")]
+    fn test_min_deposit_amount_not_above_deposit_fee_min_panics() {
+        let mut unit_env = init_unit_env();
+        testing_env!(unit_env
+            .context
+            .predecessor_account_id(owner_id())
+            .attached_deposit(NearToken::from_yoctonear(1))
+            .build());
+
+        let update: ConfigUpdate = serde_json::from_str(
+            r#"{ "deposit_bridge_fee": { "fee_min": "20000", "fee_rate": 0, "protocol_fee_rate": 9000 } }"#,
+        )
+        .unwrap();
+        unit_env.contract.update_config(update);
     }
 
     #[test]

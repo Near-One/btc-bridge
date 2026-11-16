@@ -1,7 +1,7 @@
 use crate::VRefundRequest;
 use crate::{
     env, near, AccountId, BlockAmountRing, BridgeFee, Config, ContractData, HashMap, HashSet,
-    IterableMap, IterableSet, LazyOption, LookupSet, PublicKey, StorageKey, VAccount,
+    IterableMap, IterableSet, LazyOption, LookupSet, PublicKey, StorageKey, UTXOStatus, VAccount,
     VBTCPendingInfo, VUTXO,
 };
 
@@ -55,6 +55,7 @@ impl From<ContractDataV0> for ContractData {
             accounts,
             utxos,
             unavailable_utxos,
+            utxos_in_progress: IterableMap::new(StorageKey::UTXOsInProgress),
             verified_deposit_utxo,
             btc_pending_infos,
             rbf_txs,
@@ -397,6 +398,7 @@ impl From<ContractDataV1> for ContractData {
             accounts,
             utxos,
             unavailable_utxos,
+            utxos_in_progress: IterableMap::new(StorageKey::UTXOsInProgress),
             verified_deposit_utxo,
             btc_pending_infos,
             rbf_txs,
@@ -470,6 +472,7 @@ impl From<ContractDataV2> for ContractData {
             accounts,
             utxos,
             unavailable_utxos,
+            utxos_in_progress: IterableMap::new(StorageKey::UTXOsInProgress),
             verified_deposit_utxo,
             btc_pending_infos,
             rbf_txs,
@@ -647,6 +650,7 @@ impl From<ContractDataV3> for ContractData {
             accounts,
             utxos,
             unavailable_utxos,
+            utxos_in_progress: IterableMap::new(StorageKey::UTXOsInProgress),
             verified_deposit_utxo,
             btc_pending_infos,
             rbf_txs,
@@ -836,6 +840,7 @@ impl From<ContractDataV4> for ContractData {
             accounts,
             utxos,
             unavailable_utxos,
+            utxos_in_progress: IterableMap::new(StorageKey::UTXOsInProgress),
             verified_deposit_utxo,
             btc_pending_infos,
             rbf_txs,
@@ -929,6 +934,7 @@ impl From<ContractDataV5> for ContractData {
             accounts,
             utxos,
             unavailable_utxos,
+            utxos_in_progress: IterableMap::new(StorageKey::UTXOsInProgress),
             verified_deposit_utxo,
             btc_pending_infos,
             rbf_txs,
@@ -1012,6 +1018,89 @@ impl From<ContractDataV6> for ContractData {
             config,
             accounts,
             utxos,
+            utxos_in_progress: IterableMap::new(StorageKey::UTXOsInProgress),
+            unavailable_utxos,
+            verified_deposit_utxo,
+            btc_pending_infos,
+            rbf_txs,
+            relayer_white_list,
+            extra_msg_relayer_white_list,
+            post_action_receiver_id_white_list,
+            post_action_msg_templates,
+            pending_tx_limits,
+            lost_found,
+            acc_collected_protocol_fee,
+            cur_available_protocol_fee,
+            acc_claimed_protocol_fee,
+            cur_reserved_protocol_fee,
+            acc_protocol_fee_for_gas,
+            refund_requests,
+            block_bridge_amounts: BlockAmountRing::new(ring_capacity),
+        }
+    }
+}
+
+#[near(serializers = [borsh])]
+pub struct ContractDataV7 {
+    pub config: LazyOption<Config>,
+    pub accounts: IterableMap<AccountId, VAccount>,
+    pub utxos: IterableMap<String, VUTXO>,
+    pub utxos_in_progress: IterableMap<String, UTXOStatus>,
+    pub unavailable_utxos: IterableMap<String, VUTXO>,
+    pub verified_deposit_utxo: LookupSet<String>,
+    pub btc_pending_infos: IterableMap<String, VBTCPendingInfo>,
+    pub rbf_txs: IterableMap<String, HashSet<String>>,
+    pub relayer_white_list: IterableSet<AccountId>,
+    pub extra_msg_relayer_white_list: IterableSet<AccountId>,
+    pub post_action_receiver_id_white_list: IterableSet<AccountId>,
+    pub post_action_msg_templates: IterableMap<AccountId, HashSet<String>>,
+    pub pending_tx_limits: IterableMap<AccountId, u32>,
+    pub lost_found: IterableMap<AccountId, u128>,
+    pub acc_collected_protocol_fee: u128,
+    pub cur_available_protocol_fee: u128,
+    pub acc_claimed_protocol_fee: u128,
+    pub cur_reserved_protocol_fee: u128,
+    pub acc_protocol_fee_for_gas: u128,
+    pub refund_requests: IterableMap<String, VRefundRequest>,
+}
+
+impl From<ContractDataV7> for ContractData {
+    fn from(c: ContractDataV7) -> Self {
+        let ContractDataV7 {
+            config,
+            accounts,
+            utxos,
+            utxos_in_progress,
+            unavailable_utxos,
+            verified_deposit_utxo,
+            btc_pending_infos,
+            rbf_txs,
+            relayer_white_list,
+            extra_msg_relayer_white_list,
+            post_action_receiver_id_white_list,
+            post_action_msg_templates,
+            pending_tx_limits,
+            lost_found,
+            acc_collected_protocol_fee,
+            cur_available_protocol_fee,
+            acc_claimed_protocol_fee,
+            cur_reserved_protocol_fee,
+            acc_protocol_fee_for_gas,
+            refund_requests,
+        } = c;
+
+        let ring_capacity = BlockAmountRing::capacity_for(
+            config
+                .get()
+                .as_ref()
+                .expect("ContractDataV7: config missing"),
+        );
+
+        Self {
+            config,
+            accounts,
+            utxos,
+            utxos_in_progress,
             unavailable_utxos,
             verified_deposit_utxo,
             btc_pending_infos,

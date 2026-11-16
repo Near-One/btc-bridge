@@ -275,12 +275,12 @@ impl BTCPendingInfo {
     pub fn do_cancel(&mut self, gas_fee: u128, cancel_rbf_reserved: u128) {
         match self.state.borrow_mut() {
             PendingInfoState::WithdrawOriginal(state) => {
-                state.max_gas_fee = gas_fee;
+                state.max_gas_fee = state.max_gas_fee.max(gas_fee);
                 state.last_rbf_time_sec = Some(nano_to_sec(env::block_timestamp()));
                 state.cancel_rbf_reserved = Some(cancel_rbf_reserved.into());
             }
             PendingInfoState::ActiveUtxoManagementOriginal(state) => {
-                state.max_gas_fee = gas_fee;
+                state.max_gas_fee = state.max_gas_fee.max(gas_fee);
                 state.last_rbf_time_sec = Some(nano_to_sec(env::block_timestamp()));
                 state.cancel_rbf_reserved = Some(cancel_rbf_reserved.into());
             }
@@ -406,7 +406,6 @@ impl Contract {
 
     pub fn internal_clear_invalid_pending_verify_rbf(&mut self, btc_pending_id: String) {
         let btc_pending_info = self.internal_remove_btc_pending_info(&btc_pending_id);
-        btc_pending_info.assert_pending_verify();
         let original_tx_id = btc_pending_info
             .get_original_tx_id()
             .expect("Not rbf transaction");
@@ -414,6 +413,15 @@ impl Contract {
             !self.data().rbf_txs.contains_key(original_tx_id),
             "Not invalid pending verify rbf"
         );
+        if self
+            .internal_unwrap_mut_account(&btc_pending_info.account_id)
+            .btc_pending_sign_ids
+            .remove(&btc_pending_id)
+        {
+            btc_pending_info.assert_pending_sign();
+        } else {
+            btc_pending_info.assert_pending_verify();
+        }
     }
 }
 

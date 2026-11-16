@@ -1,7 +1,9 @@
 use crate::{
-    generate_utxo_storage_key, near, psbt_wrapper::PsbtWrapper, u64_dec_format, Contract, OutPoint,
+    generate_utxo_storage_key, near, psbt_wrapper::PsbtWrapper, u64_dec_format, CompactTxProof,
+    Contract, Deserialize, OutPoint, Serialize, TxOut,
 };
 use near_sdk::env;
+use near_sdk::json_types::Base64VecU8;
 
 #[near(serializers = [borsh, json])]
 #[derive(Clone)]
@@ -84,10 +86,14 @@ impl Contract {
             .insert(utxo_storage_key.to_owned(), utxo.into());
     }
 
-    pub fn internal_set_unavailable_utxo(&mut self, utxo_storage_key: &str, utxo: UTXO) {
+    pub fn internal_set_utxo_in_progress(&mut self, utxo_storage_key: &str, status: UTXOStatus) {
         self.data_mut()
-            .unavailable_utxos
-            .insert(utxo_storage_key.to_owned(), utxo.into());
+            .utxos_in_progress
+            .insert(utxo_storage_key.to_owned(), status);
+    }
+
+    pub fn internal_remove_utxo_in_progress(&mut self, utxo_storage_key: &str) {
+        self.data_mut().utxos_in_progress.remove(utxo_storage_key);
     }
 }
 
@@ -98,6 +104,27 @@ pub struct PendingUTXOInfo {
     pub utxo: UTXO,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde", untagged)]
+pub enum DepositTxProof {
+    Full(Base64VecU8),
+    Compact(CompactTxProof),
+}
+
+/// The only two facts the deposit path needs about the funding transaction,
+/// produced from either [`DepositTxProof`] variant.
+pub struct DepositTxSummary {
+    pub tx_id: bitcoin::Txid,
+    pub outputs: Vec<TxOut>,
+}
+
 pub fn out_point_to_utxo_storage_key(out_point: &OutPoint) -> String {
     generate_utxo_storage_key(out_point.txid.to_string(), out_point.vout)
+}
+
+#[near(serializers = [borsh, json])]
+#[derive(Clone)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub enum UTXOStatus {
+    DepositInProgress(VUTXO),
 }

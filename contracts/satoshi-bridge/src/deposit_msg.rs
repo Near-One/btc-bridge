@@ -28,7 +28,7 @@ pub struct DepositMsg {
 }
 
 #[near(serializers = [json])]
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct SafeDepositMsg {
     pub msg: String,
     // TODO: add relayer fee support in the future.

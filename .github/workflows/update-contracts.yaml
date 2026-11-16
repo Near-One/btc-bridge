@@ -6,19 +6,30 @@ on:
   workflow_dispatch:
 
 name: Update Contracts
+
+permissions: {}
+
 jobs:
-  update-contracts:
+  build:
     runs-on: ubuntu-latest
-    name: Update Contracts
+    name: Build Contracts
     permissions:
-      contents: write
+      contents: read
     steps:
       - name: Clone the repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3.7.0
+        with:
+          persist-credentials: false
 
       - name: Install cargo-near
+        env:
+          CARGO_NEAR_VERSION: cargo-near-v0.22.0
+          CARGO_NEAR_SHA256: 9429064e30a427e96523f539cb255f3688d2345e5000d7d4e4873a8247247d1a
         run: |
-          curl --proto '=https' --tlsv1.2 -LsSf https://github.com/near/cargo-near/releases/latest/download/cargo-near-installer.sh | sh
+          curl --proto '=https' --tlsv1.2 -LsSfO "https://github.com/near/cargo-near/releases/download/${CARGO_NEAR_VERSION}/cargo-near-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${CARGO_NEAR_SHA256}  cargo-near-x86_64-unknown-linux-gnu.tar.gz" | sha256sum -c -
+          tar -xzf cargo-near-x86_64-unknown-linux-gnu.tar.gz
+          install -m 755 cargo-near-x86_64-unknown-linux-gnu/cargo-near ~/.cargo/bin/
 
       - name: Build NEAR contracts
         run: |
@@ -33,11 +44,35 @@ jobs:
           ZIP_NAME="${SAFE_TAG}.zip"
           mkdir -p artifacts
           find ./res -name "*.wasm" -exec cp {} artifacts/ \;
+          (cd artifacts && sha256sum *.wasm > ../checksums.sha256)
           zip -j "$ZIP_NAME" artifacts/*
         shell: bash
 
+      - name: Upload archive
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: contracts-wasm
+          path: |
+            *.zip
+            checksums.sha256
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    name: Update Contracts
+    permissions:
+      contents: write
+    steps:
+      - name: Download archive
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: contracts-wasm
+
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ github.ref_name }}
-          files: "*.zip"
+          files: |
+            *.zip
+            checksums.sha256

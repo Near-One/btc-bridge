@@ -7,6 +7,7 @@ pub const GAS_FOR_MINT_CALL: Gas = Gas::from_tgas(90);
 pub const GAS_FOR_MINT_CALL_BACK: Gas = Gas::from_tgas(10);
 
 impl Contract {
+    #[allow(clippy::too_many_arguments)]
     pub fn internal_mint_promise(
         &self,
         recipient_id: AccountId,
@@ -15,6 +16,7 @@ impl Contract {
         relayer_fee: U128,
         pending_utxo_info: PendingUTXOInfo,
         post_actions: Option<Vec<PostAction>>,
+        bumped_block_height: Option<u64>,
     ) -> Promise {
         ext_nbtc::ext(self.internal_config().nbtc_account_id.clone())
             .with_static_gas(GAS_FOR_MINT_CALL)
@@ -35,6 +37,7 @@ impl Contract {
                         protocol_fee,
                         relayer_fee,
                         pending_utxo_info,
+                        bumped_block_height,
                     ),
             )
     }
@@ -50,8 +53,10 @@ impl Contract {
         protocol_fee: U128,
         relayer_fee: U128,
         pending_utxo_info: PendingUTXOInfo,
+        bumped_block_height: Option<u64>,
     ) -> bool {
         let is_success = is_promise_success();
+        self.internal_remove_utxo_in_progress(&pending_utxo_info.utxo_storage_key);
         if is_success {
             if !self.check_account_exists(&recipient_id) {
                 self.internal_set_account(&recipient_id, Account::new(&recipient_id));
@@ -70,6 +75,10 @@ impl Contract {
             self.data_mut()
                 .verified_deposit_utxo
                 .remove(&pending_utxo_info.utxo_storage_key);
+            self.unbump_block_amount(
+                bumped_block_height,
+                u128::from(pending_utxo_info.utxo.balance),
+            );
         }
         Event::VerifyDepositDetails {
             recipient_id: &recipient_id,

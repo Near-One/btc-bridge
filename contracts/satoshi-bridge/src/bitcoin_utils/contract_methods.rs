@@ -38,6 +38,7 @@ macro_rules! define_rbf_method {
             Event::GenerateBtcPendingInfo {
                 account_id: &account_id,
                 btc_pending_id: &btc_pending_id,
+                expiry_height: None,
             }
             .emit();
         }
@@ -52,6 +53,8 @@ impl Contract {
         _target_btc_address: String,
     ) {
     }
+
+    pub(crate) fn check_min_fee_chain_specific(_psbt: &PsbtWrapper, _gas_fee: u128) {}
 
     pub(crate) fn check_withdraw_chain_specific(
         original_tx_btc_pending_info: &BTCPendingInfo,

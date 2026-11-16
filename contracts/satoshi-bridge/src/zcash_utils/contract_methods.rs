@@ -47,6 +47,7 @@ macro_rules! define_rbf_callback {
                 presecessor_account_id: AccountId,
                 #[callback_unwrap] last_block_height: u32,
             ) {
+                self.require_pending_sign_capacity(&account_id);
                 let expiry_height = self.get_expiry_height(&chain_specific_data, last_block_height);
                 let orchard_bundle_bytes = chain_specific_data.map(|c| c.orchard_bundle_bytes);
 
@@ -75,6 +76,7 @@ macro_rules! define_rbf_callback {
                 Event::GenerateBtcPendingInfo {
                     account_id: &account_id,
                     btc_pending_id: &btc_pending_id,
+                    expiry_height: Some(expiry_height),
                 }
                 .emit();
             }
@@ -195,6 +197,15 @@ impl Contract {
         gas_fee: u128,
         target_btc_address: String,
     ) {
+        Self::check_min_fee_chain_specific(psbt, gas_fee);
+
+        // For withdrawals with Orchard bundle, calculate the expected net amount after fees
+        if psbt.has_orchard_bundle() {
+            psbt.validate_orchard_bundle(target_btc_address, self.internal_config().chain.clone());
+        }
+    }
+
+    pub(crate) fn check_min_fee_chain_specific(psbt: &PsbtWrapper, gas_fee: u128) {
         let min_fee = psbt.get_min_fee();
         require!(
             gas_fee >= min_fee.into_u64() as u128,
@@ -204,11 +215,6 @@ impl Contract {
                 min_fee.into_u64()
             )
         );
-
-        // For withdrawals with Orchard bundle, calculate the expected net amount after fees
-        if psbt.has_orchard_bundle() {
-            psbt.validate_orchard_bundle(target_btc_address, self.internal_config().chain.clone());
-        }
     }
 
     pub(crate) fn check_withdraw_chain_specific(

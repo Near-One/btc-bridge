@@ -3,6 +3,7 @@ use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 use near_plugins::pause;
 
 pub const GAS_FOR_FT_ON_TRANSFER_CALL_BACK: Gas = Gas::from_tgas(100);
+pub const PUBLIC_WITHDRAW_FEATURE: &str = "public_withdraw";
 
 #[near(serializers = [json])]
 pub enum TokenReceiverMessage {
@@ -54,15 +55,23 @@ impl FungibleTokenReceiver for Contract {
                 output,
                 max_gas_fee,
                 chain_specific_data,
-            } => self.ft_on_transfer_withdraw_chain_specific(
-                sender_id,
-                amount,
-                target_btc_address,
-                input,
-                output,
-                max_gas_fee,
-                chain_specific_data,
-            ),
+            } => {
+                require!(
+                    !self.pa_is_paused(PUBLIC_WITHDRAW_FEATURE.to_string())
+                        || self.acl_has_role(Role::TrustedWithdrawSender.into(), sender_id.clone()),
+                    "Withdraw sender is not allowed"
+                );
+
+                self.ft_on_transfer_withdraw_chain_specific(
+                    sender_id,
+                    amount,
+                    target_btc_address,
+                    input,
+                    output,
+                    max_gas_fee,
+                    chain_specific_data,
+                )
+            }
         }
     }
 }
@@ -99,6 +108,7 @@ impl Contract {
 
         let need_signature_num = psbt.get_input_num();
         let psbt_hex = psbt.serialize();
+        let expiry_height = psbt.get_expiry_height();
         let btc_pending_id = psbt.get_pending_id();
         let btc_pending_info = BTCPendingInfo {
             account_id: sender_id.clone(),
@@ -135,6 +145,7 @@ impl Contract {
         Event::GenerateBtcPendingInfo {
             account_id: &sender_id,
             btc_pending_id: &btc_pending_id,
+            expiry_height,
         }
         .emit();
     }
