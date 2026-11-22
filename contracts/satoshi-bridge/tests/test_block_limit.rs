@@ -12,7 +12,7 @@ const CHAIN: &str = "BitcoinMainnet";
 
 const BLOCKHASH: &str = "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d";
 const NOT_ENOUGH_CONFIRMATIONS_ERR: &str =
-    "Not enough confirmations for the rolling-window bridge amount";
+    "Not enough confirmations for the block-cumulative bridge amount";
 
 // Two-tier strategy: amounts below 10_000 need 3 confirmations,
 // amounts from 10_000 up to the max tier need 10.

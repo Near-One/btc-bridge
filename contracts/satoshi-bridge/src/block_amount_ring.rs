@@ -175,7 +175,7 @@ impl Contract {
     ) {
         require!(
             self.confirmations_window_satisfied(block_height, tip_height, amount, delta),
-            "Not enough confirmations for the rolling-window bridge amount"
+            "Not enough confirmations for the block-cumulative bridge amount"
         );
         self.data_mut()
             .block_bridge_amounts
@@ -628,7 +628,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Not enough confirmations for the rolling-window bridge amount")]
+    #[should_panic(expected = "Not enough confirmations for the block-cumulative bridge amount")]
     fn consecutive_blocks_cannot_reuse_the_low_tier() {
         let mut unit_env = two_tier_env();
         unit_env
