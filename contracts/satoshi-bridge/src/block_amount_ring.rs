@@ -39,9 +39,10 @@ impl BlockAmountRing {
         self.cells.len()
     }
 
-    /// Returns the post-bump cumulative amount, or `None` if the slot holds a
-    /// newer block — `block_height` is then out of the active window and the
-    /// caller must require max-tier confirmations.
+    /// Returns the post-bump cumulative amount, or `None` without recording
+    /// anything if the slot holds a newer block. That block is at least
+    /// `capacity` higher, so `block_height` is already deeper than every
+    /// confirmations window.
     pub fn bump(&mut self, block_height: u64, amount: u128) -> Option<u128> {
         let i = self.slot(block_height);
         match &mut self.cells[i] {
