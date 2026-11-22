@@ -167,6 +167,8 @@ fn height_with_confirmations(confirmations: u64, tip_height: u64) -> u64 {
 impl Contract {
     /// Panics unless bridging `amount` keeps every rolling window of blocks
     /// within the tier that its own depth buys, then records the amount.
+    /// Assumes `tip_height` is at most `BLOCK_AMOUNT_RING_CAPACITY_SLACK` blocks
+    /// below the highest recorded block.
     pub(crate) fn bump_and_check_confirmations(
         &mut self,
         block_height: u64,
