@@ -83,35 +83,13 @@ impl BlockAmountRing {
         }
     }
 
-    pub fn prefix_sums(&self) -> PrefixSums {
-        let cap = u64::try_from(self.cells.len()).expect("capacity fits u64");
-        let anchor_height = self
-            .cells
+    pub fn anchor_height(&self) -> u64 {
+        self.cells
             .iter()
             .flatten()
             .map(|c| c.block_height)
             .max()
             .unwrap_or(0)
-            .max(cap - 1);
-        let mut slot = self.slot(anchor_height);
-        let mut height = anchor_height;
-        let mut total = 0u128;
-        let mut sums = Vec::with_capacity(self.cells.len() + 1);
-        sums.push(0);
-        for _ in 0..self.cells.len() {
-            if let Some(cell) = &self.cells[slot] {
-                if cell.block_height == height {
-                    total = total.saturating_add(cell.cumulative_sats);
-                }
-            }
-            sums.push(total);
-            height = height.saturating_sub(1);
-            slot = slot.checked_sub(1).unwrap_or(self.cells.len() - 1);
-        }
-        PrefixSums {
-            sums,
-            anchor_height,
-        }
     }
 
     pub fn resize(&mut self, new_capacity: usize) {
@@ -138,25 +116,6 @@ impl BlockAmountRing {
     fn slot(&self, block_height: u64) -> usize {
         let cap = u64::try_from(self.capacity()).expect("capacity fits u64");
         usize::try_from(block_height % cap).expect("slot index fits usize")
-    }
-}
-
-pub struct PrefixSums {
-    sums: Vec<u128>,
-    anchor_height: u64,
-}
-
-impl PrefixSums {
-    pub fn covers(&self, height: u64) -> bool {
-        let back = self.anchor_height.saturating_add(1).saturating_sub(height);
-        usize::try_from(back).is_ok_and(|back| back < self.sums.len())
-    }
-
-    pub fn recorded_from(&self, height: u64) -> u128 {
-        let back = self.anchor_height.saturating_add(1).saturating_sub(height);
-        self.sums[usize::try_from(back)
-            .unwrap_or(usize::MAX)
-            .min(self.sums.len() - 1)]
     }
 }
 
@@ -200,51 +159,28 @@ impl Contract {
         self.data_mut().block_bridge_amounts.resize(cap);
     }
 
-    /// The minimum number of confirmations a deposit of `amount` from
-    /// `block_height` needs to pass `confirmations_window_satisfied`, given
-    /// what is already bridged from the surrounding blocks and the `delta`.
+    /// The smallest depth at which `confirmations_window_satisfied` accepts a
+    /// deposit of `amount` from `block_height`. Tips below the highest recorded
+    /// block are not tried: the ring has already seen that block.
     pub(crate) fn required_confirmations(
         &self,
         block_height: u64,
         amount: u128,
         delta: u64,
     ) -> u64 {
-        let limits = self.internal_config().risk_limits(delta);
-        let sums = self.data().block_bridge_amounts.prefix_sums();
-        if !sums.covers(block_height) {
-            return limits.last().map_or(0, |limit| limit.max_confirmations + 1);
-        }
-        let bridged = |blocks_below: u64| {
-            sums.recorded_from(block_height.saturating_sub(blocks_below))
-                .saturating_add(amount)
-        };
-        // Each limit constrains us on its own. For a limit, find how many
-        // blocks below `block_height` can still join before the total stops
-        // fitting into `allowed_total`: the number `j` such that `j` blocks
-        // below ours (with ours and the new amount) no longer fit while
-        // `j - 1` still do. `j == 0` means even our own block does not fit;
-        // `j == 3` means two blocks below ours can join and a third cannot.
-        //
-        // So the `j - 1`-th block below ours needs `max_confirmations`
-        // confirmations, and ours, `j - 1` blocks higher, needs
-        // `max_confirmations + 1 - j`.
-        //
-        // The answer is the maximum over the limits.
-        //
-        // Limits grow in both `allowed_total` and `max_confirmations`, and
-        // the window totals grow with `j`, so `j` never has to move back
-        // between limits: one pass with two pointers. Past
-        // `max_confirmations` the limit asks nothing of our block, so `j`
-        // stops there.
-        let mut j = 0;
-        let mut required = 0;
-        for limit in &limits {
-            while j <= limit.max_confirmations && bridged(j) < limit.allowed_total {
-                j += 1;
-            }
-            required = required.max((limit.max_confirmations + 1).saturating_sub(j));
-        }
-        required
+        let deepest = self
+            .internal_config()
+            .risk_limits(delta)
+            .last()
+            .map_or(0, |limit| limit.max_confirmations + 1);
+        let current_tip = self
+            .data()
+            .block_bridge_amounts
+            .anchor_height()
+            .max(block_height);
+        (current_tip..block_height + deepest - 1)
+            .find(|&tip| self.confirmations_window_satisfied(block_height, tip, amount, delta))
+            .map_or(deepest, |tip| confirmations(block_height, tip))
     }
 
     /// Checks that bridging `amount` from `block_height` would keep the
@@ -441,14 +377,13 @@ mod tests {
     }
 
     #[test]
-    fn prefix_sums_accumulate_backwards_from_the_top() {
-        let mut ring = BlockAmountRing::new(8);
+    fn anchor_height_is_the_top_recorded_block() {
+        let mut ring = BlockAmountRing::new(4);
+        assert_eq!(ring.anchor_height(), 0);
         ring.bump(100, 5);
         ring.bump(102, 7);
-        ring.bump(103, 1);
-        let sums = ring.prefix_sums();
-        assert_eq!(sums.sums, vec![0, 1, 8, 8, 13, 13, 13, 13, 13]);
-        assert_eq!(sums.anchor_height, 103);
+        ring.bump(101, 1);
+        assert_eq!(ring.anchor_height(), 102);
     }
 
     #[test]
@@ -486,80 +421,6 @@ mod tests {
         ring.bump(100, 10);
         ring.unbump(100, 20);
         assert_eq!(ring.get(100), Some(0));
-    }
-
-    #[test]
-    fn prefix_sums_are_zero_for_an_untouched_ring() {
-        let ring = BlockAmountRing::new(4);
-        let sums = ring.prefix_sums();
-        assert_eq!(sums.sums, vec![0, 0, 0, 0, 0]);
-        assert_eq!(sums.anchor_height, 3);
-    }
-
-    #[test]
-    fn prefix_sums_ignore_blocks_the_ring_forgot() {
-        let mut ring = BlockAmountRing::new(4);
-        ring.bump(100, 5);
-        ring.bump(104, 7);
-        let sums = ring.prefix_sums();
-        assert_eq!(sums.sums, vec![0, 7, 7, 7, 7]);
-        assert_eq!(sums.anchor_height, 104);
-    }
-
-    #[test]
-    fn prefix_sums_skip_blocks_behind_the_window() {
-        let mut ring = BlockAmountRing::new(4);
-        ring.bump(100, 5);
-        ring.bump(105, 7);
-        let sums = ring.prefix_sums();
-        assert_eq!(sums.sums, vec![0, 7, 7, 7, 7]);
-        assert_eq!(sums.anchor_height, 105);
-    }
-
-    #[test]
-    fn prefix_sums_clamp_anchor_height_near_genesis() {
-        let mut ring = BlockAmountRing::new(4);
-        ring.bump(0, 3);
-        ring.bump(1, 5);
-        let sums = ring.prefix_sums();
-        assert_eq!(sums.sums, vec![0, 0, 0, 5, 8]);
-        assert_eq!(sums.anchor_height, 3);
-    }
-
-    #[test]
-    fn prefix_sums_overflow_saturates() {
-        let mut ring = BlockAmountRing::new(4);
-        ring.bump(100, u128::MAX);
-        ring.bump(99, 5);
-        let mut expected = vec![u128::MAX; 5];
-        expected[0] = 0;
-        let sums = ring.prefix_sums();
-        assert_eq!(sums.sums, expected);
-        assert_eq!(sums.anchor_height, 100);
-    }
-
-    #[test]
-    fn recorded_from_reads_totals_by_height() {
-        let mut ring = BlockAmountRing::new(4);
-        ring.bump(100, 5);
-        ring.bump(99, 7);
-        let sums = ring.prefix_sums();
-        assert_eq!(sums.recorded_from(101), 0);
-        assert_eq!(sums.recorded_from(100), 5);
-        assert_eq!(sums.recorded_from(99), 12);
-        assert_eq!(sums.recorded_from(0), 12);
-    }
-
-    #[test]
-    fn covers_the_last_capacity_heights_and_above() {
-        let mut ring = BlockAmountRing::new(4);
-        ring.bump(100, 5);
-        let sums = ring.prefix_sums();
-        assert!(sums.covers(101));
-        assert!(sums.covers(100));
-        assert!(sums.covers(97));
-        assert!(!sums.covers(96));
-        assert!(!sums.covers(0));
     }
 
     fn two_tier_env() -> crate::UnitEnv {
@@ -688,6 +549,27 @@ mod tests {
             unit_env.contract.data().block_bridge_amounts.get(100),
             Some(50_000_000)
         );
+    }
+
+    #[test]
+    fn required_confirmations_counts_a_recorded_block_above_the_deposit() {
+        let mut unit_env = two_tier_env();
+        unit_env
+            .contract
+            .bump_and_check_confirmations(104, 106, 8_000, 0);
+
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(102, crate::U128(5_000), None, None),
+            6
+        );
+        assert!(!unit_env
+            .contract
+            .confirmations_window_satisfied(102, 106, 5_000, 0));
+        assert!(unit_env
+            .contract
+            .confirmations_window_satisfied(102, 107, 5_000, 0));
     }
 
     #[test]
