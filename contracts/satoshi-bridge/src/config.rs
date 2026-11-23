@@ -137,19 +137,11 @@ impl Config {
                 .all(|v| confirmations_valid_range.contains(v)),
             "Invalid confirmations_strategy"
         );
-        let mut tiers = self
-            .confirmations_strategy
-            .iter()
-            .map(|(bound, confirmations)| {
-                (
-                    bound
-                        .parse::<u128>()
-                        .unwrap_or_else(|_| env::panic_str("Invalid confirmations_strategy key")),
-                    *confirmations,
-                )
-            })
-            .collect::<Vec<_>>();
-        tiers.sort_unstable_by_key(|(bound, _)| *bound);
+        let tiers = self.sorted_confirmations_tiers();
+        require!(
+            tiers.windows(2).all(|pair| pair[0].0 < pair[1].0),
+            "confirmations_strategy bounds must be unique"
+        );
         require!(
             tiers.windows(2).all(|pair| pair[0].1 <= pair[1].1),
             "confirmations_strategy must be non-decreasing"
@@ -227,12 +219,16 @@ impl Config {
             !self.confirmations_strategy.is_empty(),
             "confirmations_strategy is empty"
         );
-        // The key is constrained to U64 during assignment, so it won't panic.
         let mut tiers = self
             .confirmations_strategy
             .iter()
             .map(|(bound, confirmations)| {
-                (bound.parse::<u128>().unwrap(), u64::from(*confirmations))
+                (
+                    bound
+                        .parse::<u128>()
+                        .unwrap_or_else(|_| env::panic_str("Invalid confirmations_strategy key")),
+                    u64::from(*confirmations),
+                )
             })
             .collect::<Vec<_>>();
         tiers.sort_unstable();
@@ -518,6 +514,24 @@ mod tests {
             .build());
 
         unit_env.contract.set_confirmations_strategy(U128(5_000), 3);
+    }
+
+    #[test]
+    #[should_panic(expected = "confirmations_strategy bounds must be unique")]
+    fn test_confirmations_strategy_duplicate_bound_panics() {
+        let mut unit_env = init_unit_env();
+        let config = unit_env.contract.internal_mut_config();
+        let (bound, confirmations) = config
+            .confirmations_strategy
+            .iter()
+            .next()
+            .map(|(bound, confirmations)| (bound.clone(), *confirmations))
+            .unwrap();
+        config
+            .confirmations_strategy
+            .insert(format!("0{bound}"), confirmations);
+
+        unit_env.contract.internal_config().assert_valid();
     }
 
     #[test]
