@@ -256,19 +256,13 @@ impl Config {
             .collect()
     }
 
-    pub fn tier_confirmations(tiers: &[(u128, u64)], satoshi_amount: u128) -> u64 {
+    pub fn get_confirmations(&self, satoshi_amount: u128) -> u64 {
+        let tiers = self.sorted_confirmations_tiers();
         tiers
             .iter()
             .find(|(bound, _)| *bound > satoshi_amount)
             .or_else(|| tiers.last())
-            .map_or_else(
-                || env::panic_str("confirmations_strategy is empty"),
-                |(_, confirmations)| *confirmations,
-            )
-    }
-
-    pub fn get_confirmations(&self, satoshi_amount: u128) -> u64 {
-        Self::tier_confirmations(&self.sorted_confirmations_tiers(), satoshi_amount)
+            .map_or(0, |(_, confirmations)| *confirmations)
     }
 
     pub fn max_tier_confirmations(&self) -> u8 {
