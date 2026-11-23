@@ -14,6 +14,9 @@ pub struct BlockAmountCell {
 /// (slot = `block_height % capacity`), so confirmations tiers apply to the total
 /// bridged from a rolling window of blocks rather than to each tx, or each
 /// block, separately.
+///
+/// Satoshi totals add up with saturation: a saturated total exceeds every
+/// risk limit, so it can only ask for more confirmations, never fewer.
 #[near(serializers = [borsh])]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Eq))]
 pub struct BlockAmountRing {
