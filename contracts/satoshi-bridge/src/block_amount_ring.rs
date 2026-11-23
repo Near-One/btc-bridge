@@ -158,12 +158,6 @@ fn confirmations(block_height: u64, tip_height: u64) -> u64 {
     tip_height.saturating_sub(block_height).saturating_add(1)
 }
 
-/// The block height that has exactly `confirmations` confirmations when the
-/// chain tip is `tip_height`.
-fn height_with_confirmations(confirmations: u64, tip_height: u64) -> u64 {
-    tip_height.saturating_sub(confirmations.saturating_sub(1))
-}
-
 impl Contract {
     /// Panics unless bridging `amount` keeps every rolling window of blocks
     /// within the tier that its own depth buys, then records the amount.
@@ -252,27 +246,25 @@ impl Contract {
         delta: u64,
     ) -> bool {
         let depth = confirmations(block_height, tip_height);
-        // `sums.recorded_from(height)` tells how much in total was bridged
-        // from `height` up to the tip inclusive.
-        let sums = self.data().block_bridge_amounts.prefix_sums();
-        self.internal_config()
-            .risk_limits(delta)
-            .iter()
-            .all(|limit| {
-                // A block with more confirmations than the limit covers has
-                // outgrown it. Otherwise everything the limit covers adds up
-                // in the prefix sum of its deepest block — the one with
-                // exactly `max_confirmations` confirmations — and that total
-                // plus the new amount must stay within the allowance.
-                depth > limit.max_confirmations
-                    || sums
-                        .recorded_from(height_with_confirmations(
-                            limit.max_confirmations,
-                            tip_height,
-                        ))
-                        .saturating_add(amount)
-                        < limit.allowed_total
-            })
+        let ring = &self.data().block_bridge_amounts;
+        let mut window_total = amount;
+        let mut window_depth = 0;
+        let mut next_height = Some(tip_height);
+        for limit in self.internal_config().risk_limits(delta) {
+            if depth > limit.max_confirmations {
+                continue;
+            }
+            while window_depth < limit.max_confirmations {
+                let Some(height) = next_height else { break };
+                window_total = window_total.saturating_add(ring.get(height).unwrap_or(0));
+                next_height = height.checked_sub(1);
+                window_depth += 1;
+            }
+            if window_total >= limit.allowed_total {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -673,6 +665,18 @@ mod tests {
             unit_env.contract.data().block_bridge_amounts.get(100),
             Some(50_000_000)
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "Not enough confirmations for the block-cumulative bridge amount")]
+    fn window_near_genesis_includes_block_zero() {
+        let mut unit_env = two_tier_env();
+        unit_env
+            .contract
+            .bump_and_check_confirmations(0, 2, 8_000, 0);
+        unit_env
+            .contract
+            .bump_and_check_confirmations(1, 2, 8_000, 0);
     }
 
     #[test]
