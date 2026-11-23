@@ -729,6 +729,84 @@ mod tests {
             .bump_and_check_confirmations(1, 2, 8_000, 0);
     }
 
+    struct XorShift(u64);
+
+    impl XorShift {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+
+        fn below(&mut self, n: u64) -> u64 {
+            self.next() % n
+        }
+    }
+
+    #[test]
+    fn required_confirmations_agrees_with_the_check_across_mixed_deltas() {
+        let mut rng = XorShift(0x9E37_79B9_7F4A_7C15);
+        for _ in 0..100 {
+            let mut unit_env = crate::init_unit_env();
+            let contract = &mut unit_env.contract;
+
+            let config = contract.internal_mut_config();
+            config.confirmations_strategy.clear();
+            let mut bound = 0u128;
+            let mut tier_confirmations = 2u8;
+            for _ in 0..=rng.below(3) {
+                bound += u128::from(1 + rng.below(50)) * 1_000;
+                tier_confirmations += u8::try_from(rng.below(4)).unwrap();
+                config
+                    .confirmations_strategy
+                    .insert(bound.to_string(), tier_confirmations);
+            }
+            config.confirmations_delta = u8::try_from(rng.below(4)).unwrap();
+            config.extra_msg_confirmations_delta = u8::try_from(rng.below(4)).unwrap();
+            config.assert_valid();
+            let deltas = [
+                0,
+                u64::from(config.confirmations_delta),
+                u64::from(config.extra_msg_confirmations_delta),
+            ];
+            contract.resize_block_amount_ring();
+
+            let window =
+                u64::try_from(contract.data().block_bridge_amounts.capacity()).unwrap() + 3;
+            let max_amount = bound + bound / 5;
+            let mut tip = 1_000;
+            for _ in 0..60 {
+                tip += rng.below(3);
+                let block = tip - rng.below(window);
+                let amount = 1 + u128::from(rng.next()) % max_amount;
+                let delta = deltas[usize::try_from(rng.below(3)).unwrap()];
+                if contract.confirmations_window_satisfied(block, tip, amount, delta) {
+                    contract.data_mut().block_bridge_amounts.bump(block, amount);
+                }
+            }
+
+            for delta in deltas {
+                for block in tip - window..=tip + 2 {
+                    let amount = 1 + u128::from(rng.next()) % max_amount;
+                    let required = contract.required_confirmations(block, amount, delta);
+                    for checked_tip in tip.max(block)..=block + required + window {
+                        assert_eq!(
+                            contract.confirmations_window_satisfied(
+                                block,
+                                checked_tip,
+                                amount,
+                                delta
+                            ),
+                            checked_tip - block + 1 >= required,
+                            "block {block}, tip {checked_tip}, amount {amount}, delta {delta}, required {required}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn relayer_delta_widens_the_window_and_the_requirement() {
         let mut unit_env = two_tier_env();
