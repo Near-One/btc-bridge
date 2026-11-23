@@ -8,6 +8,7 @@ use crate::{
     MAX_BOOL_RESULT, MAX_INCLUSION_INFO_RESULT, UTXO, VUTXO,
 };
 
+use crate::block_amount_ring::confirmations;
 use crate::deposit_msg::get_deposit_path;
 use crate::psbt_wrapper::PsbtWrapper;
 use crate::utils::{generate_utxo_storage_key, nano_to_sec, UTXO_STORAGE_KEY_TAG};
@@ -582,10 +583,7 @@ impl Contract {
 
         let config = self.internal_config();
         let required = config.max_required_confirmations();
-        let actual = info
-            .mainchain_tip_height
-            .saturating_sub(info.tx_block_height)
-            + 1;
+        let actual = confirmations(info.tx_block_height, info.mainchain_tip_height);
         require!(
             actual >= required,
             "Refund request: not enough confirmations (max-tier required)"

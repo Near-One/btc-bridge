@@ -162,7 +162,7 @@ impl PrefixSums {
 
 /// Confirmations `block_height` has when the chain tip is `tip_height`:
 /// the tip itself counts as one.
-fn confirmations(block_height: u64, tip_height: u64) -> u64 {
+pub(crate) fn confirmations(block_height: u64, tip_height: u64) -> u64 {
     tip_height.saturating_sub(block_height).saturating_add(1)
 }
 
