@@ -144,6 +144,11 @@ pub struct PrefixSums {
 }
 
 impl PrefixSums {
+    pub fn covers(&self, height: u64) -> bool {
+        let back = self.anchor_height.saturating_add(1).saturating_sub(height);
+        usize::try_from(back).is_ok_and(|back| back < self.sums.len())
+    }
+
     pub fn recorded_from(&self, height: u64) -> u128 {
         let back = self.anchor_height.saturating_add(1).saturating_sub(height);
         self.sums[usize::try_from(back)
@@ -203,6 +208,9 @@ impl Contract {
     ) -> u64 {
         let limits = self.internal_config().risk_limits(delta);
         let sums = self.data().block_bridge_amounts.prefix_sums();
+        if !sums.covers(block_height) {
+            return limits.last().map_or(0, |limit| limit.max_confirmations + 1);
+        }
         let bridged = |blocks_below: u64| {
             sums.recorded_from(block_height.saturating_sub(blocks_below))
                 .saturating_add(amount)
@@ -539,6 +547,18 @@ mod tests {
         assert_eq!(sums.recorded_from(0), 12);
     }
 
+    #[test]
+    fn covers_the_last_capacity_heights_and_above() {
+        let mut ring = BlockAmountRing::new(4);
+        ring.bump(100, 5);
+        let sums = ring.prefix_sums();
+        assert!(sums.covers(101));
+        assert!(sums.covers(100));
+        assert!(sums.covers(97));
+        assert!(!sums.covers(96));
+        assert!(!sums.covers(0));
+    }
+
     fn two_tier_env() -> crate::UnitEnv {
         let mut unit_env = crate::init_unit_env();
         crate::testing_env!(unit_env
@@ -664,6 +684,33 @@ mod tests {
         assert_eq!(
             unit_env.contract.data().block_bridge_amounts.get(100),
             Some(50_000_000)
+        );
+    }
+
+    #[test]
+    fn required_confirmations_for_an_evicted_block_is_the_widest_tier() {
+        let mut unit_env = two_tier_env();
+        let capacity =
+            u64::try_from(unit_env.contract.data().block_bridge_amounts.capacity()).unwrap();
+        unit_env
+            .contract
+            .bump_and_check_confirmations(100, 106, 1_000, 0);
+        unit_env
+            .contract
+            .bump_and_check_confirmations(100 + capacity, 106 + capacity, 1_000, 0);
+        assert_eq!(unit_env.contract.data().block_bridge_amounts.get(100), None);
+
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(100, crate::U128(5_000), None, None),
+            6
+        );
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(100, crate::U128(5_000), None, Some(true)),
+            7
         );
     }
 
