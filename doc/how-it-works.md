@@ -150,8 +150,8 @@ more.
 The fast lanes are shared: they count everything bridged from recent blocks together, so nobody can
 sneak a large amount through by splitting it into small deposits. That makes them **first come,
 first served**. Someone could keep them full on purpose, but at worst everyone waits as long as the
-largest deposits do. No deposit is lost or stolen, and every attempt costs the attacker fees for
-nothing in return.
+largest deposits do. No deposit is lost or stolen, and every attempt costs the attacker network fees
+and ties up their capital.
 
 ---
 
