@@ -285,3 +285,91 @@ async fn test_zcash_withdraw_rbf_rejects_changed_orchard_output() {
     ));
     assert_eq!(pending_infos_count(&context).await, 2);
 }
+
+#[tokio::test]
+async fn test_zcash_withdraw_rbf_refunds_storage_deposit_when_rejected() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = setup_context(&worker).await;
+    let withdraw_fee = context
+        .get_bridge_config()
+        .await
+        .unwrap()
+        .withdraw_bridge_fee
+        .get_fee(WITHDRAW_AMOUNT);
+    let change_script_pubkey = script_pubkey(&context.get_change_address().await.unwrap());
+    let output = transparent_outputs(&change_script_pubkey, withdraw_fee, BTC_GAS_FEE);
+    let original_id = withdraw_and_sign(&context, ZEC_TADDR, output.clone(), None).await;
+
+    worker.fast_forward(5).await.unwrap();
+    let alice = context.get_account_by_name("alice");
+    let alice_balance_before = alice.view_account().await.unwrap().balance;
+    check!(
+        withdraw_rbf(&context, &original_id, output, None),
+        "Expiry height must increase"
+    );
+    worker.fast_forward(5).await.unwrap();
+
+    let alice_spent =
+        alice_balance_before.saturating_sub(alice.view_account().await.unwrap().balance);
+    let required_balance = context.required_balance_for_withdraw_rbf().await.unwrap();
+    assert!(alice_spent < required_balance);
+    assert_eq!(pending_infos_count(&context).await, 1);
+}
+
+#[tokio::test]
+async fn test_zcash_orchard_withdraw_rbf_succeeds_with_minimal_gas() {
+    let worker = near_workspaces::sandbox().await.unwrap();
+    let context = setup_context(&worker).await;
+    let withdraw_fee = context
+        .get_bridge_config()
+        .await
+        .unwrap()
+        .withdraw_bridge_fee
+        .get_fee(WITHDRAW_AMOUNT);
+    let orchard_amount = (WITHDRAW_AMOUNT - withdraw_fee - BTC_GAS_FEE) as u64;
+    let change_amount = UTXO_VALUE - orchard_amount as u128 - BTC_GAS_FEE;
+    let (recipient_ua, bundle_hex) = get_or_gen_bundle(orchard_amount);
+    let change_script_pubkey = script_pubkey(&context.get_change_address().await.unwrap());
+    let orchard_data = |expiry_height: u32| {
+        Some(ChainSpecificData {
+            orchard_bundle_bytes: hex::decode(&bundle_hex).unwrap().into(),
+            expiry_height,
+        })
+    };
+    let original_id = withdraw_and_sign(
+        &context,
+        &recipient_ua,
+        vec![TxOut {
+            value: Amount::from_sat(change_amount as u64),
+            script_pubkey: change_script_pubkey,
+        }],
+        orchard_data(ORIGINAL_EXPIRY_HEIGHT),
+    )
+    .await;
+
+    let mut tgas = 100;
+    let outcome = loop {
+        let outcome = context
+            .get_account_by_name("alice")
+            .call(context.bridge_contract.id(), "withdraw_rbf")
+            .args_json(json!({
+                "original_btc_pending_verify_id": original_id,
+                "output": Vec::<TxOut>::new(),
+                "chain_specific_data": orchard_data(ORIGINAL_EXPIRY_HEIGHT + 1),
+            }))
+            .deposit(near_sdk::NearToken::from_near(1))
+            .gas(near_sdk::Gas::from_tgas(tgas))
+            .transact()
+            .await
+            .unwrap();
+        if outcome.is_success() {
+            break outcome;
+        }
+        assert_eq!(pending_infos_count(&context).await, 1);
+        tgas += 2;
+        assert!(tgas <= 300);
+    };
+
+    assert!(outcome.receipt_failures().is_empty());
+    assert_eq!(pending_infos_count(&context).await, 2);
+}

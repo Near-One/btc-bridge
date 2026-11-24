@@ -329,7 +329,7 @@ async fn test_concurrent_withdraw_rbf_respects_pending_sign_limit() {
                 "chain_specific_data": null,
             }))
             .deposit(near_sdk::NearToken::from_near(1))
-            .gas(near_sdk::Gas::from_tgas(140))
+            .gas(near_sdk::Gas::from_tgas(150))
     };
     let outcome = context
         .get_account_by_name("alice")
