@@ -1,8 +1,9 @@
 # How the bridge works
 
-A plain-language guide for people using the bridge, not building it. Four things worth
+A plain-language guide for people using the bridge, not building it. Five things worth
 understanding: where your deposit address comes from, why your coins never get swept into a
-vault, why going in is safer than coming out, and who actually holds the key.
+vault, why going in is safer than coming out, who actually holds the key, and how long a deposit
+waits.
 
 Every step described here happens on-chain and is publicly checkable.
 
@@ -137,6 +138,20 @@ operator ever sees the whole key — not even while signing.
 
 Take away any single operator and the signature still forms. Take away the group and no one —
 including the bridge's own developers — can move the coins.
+
+---
+
+## 5. How long a deposit waits
+
+The bridge waits until your Bitcoin transaction is buried under enough blocks that it can't
+realistically be undone. Small amounts take a fast lane and need fewer blocks; large amounts need
+more.
+
+The fast lanes are shared: they count everything bridged from recent blocks together, so nobody can
+sneak a large amount through by splitting it into small deposits. That makes them **first come,
+first served**. Someone could keep them full on purpose, but at worst everyone waits as long as the
+largest deposits do. No deposit is lost or stolen, and every attempt costs the attacker network fees
+and ties up their capital.
 
 ---
 

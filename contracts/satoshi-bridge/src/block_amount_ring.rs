@@ -11,8 +11,12 @@ pub struct BlockAmountCell {
 }
 
 /// Fixed-capacity ring of cumulative bridged satoshi amounts per BTC block
-/// (slot = `block_height % capacity`), so confirmations tiers apply to the
-/// per-block sum rather than to each tx separately.
+/// (slot = `block_height % capacity`), so confirmations tiers apply to the total
+/// bridged from a rolling window of blocks rather than to each tx, or each
+/// block, separately.
+///
+/// Satoshi totals add up with saturation: a saturated total exceeds every
+/// risk limit, so it can only ask for more confirmations, never fewer.
 #[near(serializers = [borsh])]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Eq))]
 pub struct BlockAmountRing {
@@ -38,9 +42,8 @@ impl BlockAmountRing {
         self.cells.len()
     }
 
-    /// Returns the post-bump cumulative amount, or `None` if the slot holds a
-    /// newer block — `block_height` is then out of the active window and the
-    /// caller must require max-tier confirmations.
+    /// Returns the post-bump cumulative amount, or `None` without recording
+    /// anything if the slot holds a newer block.
     pub fn bump(&mut self, block_height: u64, amount: u128) -> Option<u128> {
         let i = self.slot(block_height);
         match &mut self.cells[i] {
@@ -70,23 +73,24 @@ impl BlockAmountRing {
         }
     }
 
+    /// Returns `None` if the slot holds a newer block, so the amount for
+    /// `block_height` is unknown, and `Some(0)` if nothing was recorded for it.
     pub fn get(&self, block_height: u64) -> Option<u128> {
         let i = self.slot(block_height);
         match &self.cells[i] {
             Some(c) if c.block_height == block_height => Some(c.cumulative_sats),
-            _ => None,
+            Some(c) if c.block_height > block_height => None,
+            _ => Some(0),
         }
     }
 
-    pub fn peek(&self, block_height: u64, amount: u128) -> Option<u128> {
-        let i = self.slot(block_height);
-        match &self.cells[i] {
-            Some(c) if c.block_height == block_height => {
-                Some(c.cumulative_sats.saturating_add(amount))
-            }
-            Some(c) if c.block_height > block_height => None,
-            _ => Some(amount),
-        }
+    pub fn anchor_height(&self) -> u64 {
+        self.cells
+            .iter()
+            .flatten()
+            .map(|c| c.block_height)
+            .max()
+            .unwrap_or(0)
     }
 
     pub fn resize(&mut self, new_capacity: usize) {
@@ -116,10 +120,15 @@ impl BlockAmountRing {
     }
 }
 
+/// Confirmations `block_height` has when the chain tip is `tip_height`:
+/// the tip itself counts as one.
+pub(crate) fn confirmations(block_height: u64, tip_height: u64) -> u64 {
+    tip_height.saturating_sub(block_height).saturating_add(1)
+}
+
 impl Contract {
-    /// Panics unless the observed depth satisfies the confirmations tier for
-    /// the block's post-bump cumulative amount. Out-of-window blocks fall back
-    /// to the max tier.
+    /// Panics unless bridging `amount` keeps every rolling window of blocks
+    /// within the tier that its own depth buys, then records the amount.
     pub(crate) fn bump_and_check_confirmations(
         &mut self,
         block_height: u64,
@@ -127,17 +136,13 @@ impl Contract {
         amount: u128,
         delta: u64,
     ) {
-        let cumulative = self
-            .data_mut()
-            .block_bridge_amounts
-            .bump(block_height, amount)
-            .unwrap_or(u128::MAX);
-        let required = self.internal_config().get_confirmations(cumulative) + delta;
-        let actual = tip_height.saturating_sub(block_height).saturating_add(1);
         require!(
-            actual >= required,
+            self.confirmations_window_satisfied(block_height, tip_height, amount, delta),
             "Not enough confirmations for the block-cumulative bridge amount"
         );
+        self.data_mut()
+            .block_bridge_amounts
+            .bump(block_height, amount);
     }
 
     pub(crate) fn unbump_block_amount(&mut self, block_height: Option<u64>, amount: u128) {
@@ -148,18 +153,67 @@ impl Contract {
         }
     }
 
+    /// After growing, blocks already evicted from the smaller ring count as zero
+    /// until the tip moves past them.
     pub(crate) fn resize_block_amount_ring(&mut self) {
         let cap = BlockAmountRing::capacity_for(self.internal_config());
         self.data_mut().block_bridge_amounts.resize(cap);
     }
 
-    pub(crate) fn required_confirmations(&self, block_height: u64, amount: u128) -> u64 {
-        let cumulative = self
+    /// The smallest depth at which `confirmations_window_satisfied` accepts a
+    /// deposit of `amount` from `block_height`. Tips below the highest recorded
+    /// block are not tried: the ring has already seen that block.
+    pub(crate) fn required_confirmations(
+        &self,
+        block_height: u64,
+        amount: u128,
+        delta: u64,
+    ) -> u64 {
+        let deepest = self
+            .internal_config()
+            .risk_limits(delta)
+            .last()
+            .map_or(0, |limit| limit.max_confirmations + 1);
+        let current_tip = self
             .data()
             .block_bridge_amounts
-            .peek(block_height, amount)
-            .unwrap_or(u128::MAX);
-        self.internal_config().get_confirmations(cumulative)
+            .anchor_height()
+            .max(block_height);
+        (current_tip..block_height + deepest - 1)
+            .find(|&tip| self.confirmations_window_satisfied(block_height, tip, amount, delta))
+            .map_or(deepest, |tip| confirmations(block_height, tip))
+    }
+
+    /// Checks that bridging `amount` from `block_height` would keep the
+    /// bridged totals within every risk limit of the confirmations strategy.
+    /// A block whose slot holds a newer one counts as saturated.
+    fn confirmations_window_satisfied(
+        &self,
+        block_height: u64,
+        tip_height: u64,
+        amount: u128,
+        delta: u64,
+    ) -> bool {
+        let depth = confirmations(block_height, tip_height);
+        let ring = &self.data().block_bridge_amounts;
+        let mut window_total = amount;
+        let mut window_depth = 0;
+        let mut next_height = Some(tip_height);
+        for limit in self.internal_config().risk_limits(delta) {
+            if depth > limit.max_confirmations {
+                continue;
+            }
+            while window_depth < limit.max_confirmations {
+                let Some(height) = next_height else { break };
+                window_total = window_total.saturating_add(ring.get(height).unwrap_or(u128::MAX));
+                next_height = height.checked_sub(1);
+                window_depth += 1;
+            }
+            if window_total >= limit.allowed_total {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -172,7 +226,7 @@ mod tests {
         let ring = BlockAmountRing::new(8);
         assert_eq!(ring.capacity(), 8);
         for h in 0..100u64 {
-            assert_eq!(ring.get(h), None);
+            assert_eq!(ring.get(h), Some(0));
         }
     }
 
@@ -228,11 +282,18 @@ mod tests {
     }
 
     #[test]
-    fn get_returns_none_for_unknown_height_in_used_slot() {
+    fn get_returns_zero_for_unrecorded_height_above_used_slot() {
         let mut ring = BlockAmountRing::new(4);
         ring.bump(100, 500);
-        assert_eq!(ring.get(200), None);
+        assert_eq!(ring.get(200), Some(0));
         assert_eq!(ring.get(100), Some(500));
+    }
+
+    #[test]
+    fn get_returns_none_for_height_below_used_slot() {
+        let mut ring = BlockAmountRing::new(4);
+        ring.bump(100, 500);
+        assert_eq!(ring.get(96), None);
     }
 
     #[test]
@@ -325,18 +386,13 @@ mod tests {
     }
 
     #[test]
-    fn peek_matches_bump_without_mutation() {
+    fn anchor_height_is_the_top_recorded_block() {
         let mut ring = BlockAmountRing::new(4);
-        assert_eq!(ring.peek(100, 500), Some(500));
-        assert_eq!(ring.get(100), None);
-
-        ring.bump(100, 500);
-        assert_eq!(ring.peek(100, 250), Some(750));
-        assert_eq!(ring.get(100), Some(500));
-
-        assert_eq!(ring.peek(96, 10), None);
-        assert_eq!(ring.peek(104, 10), Some(10));
-        assert_eq!(ring.get(100), Some(500));
+        assert_eq!(ring.anchor_height(), 0);
+        ring.bump(100, 5);
+        ring.bump(102, 7);
+        ring.bump(101, 1);
+        assert_eq!(ring.anchor_height(), 102);
     }
 
     #[test]
@@ -364,7 +420,7 @@ mod tests {
     fn unbump_empty_slot_is_noop() {
         let mut ring = BlockAmountRing::new(4);
         ring.unbump(100, 500);
-        assert_eq!(ring.get(100), None);
+        assert_eq!(ring.get(100), Some(0));
         assert_eq!(ring.bump(100, 10), Some(10));
     }
 
@@ -376,15 +432,7 @@ mod tests {
         assert_eq!(ring.get(100), Some(0));
     }
 
-    #[test]
-    fn peek_overflow_saturates() {
-        let mut ring = BlockAmountRing::new(4);
-        ring.bump(100, u128::MAX);
-        assert_eq!(ring.peek(100, 1), Some(u128::MAX));
-    }
-
-    #[test]
-    fn get_required_confirmations_applies_tier_to_cumulative() {
+    fn two_tier_env() -> crate::UnitEnv {
         let mut unit_env = crate::init_unit_env();
         crate::testing_env!(unit_env
             .context
@@ -400,6 +448,12 @@ mod tests {
         unit_env
             .contract
             .set_confirmations_strategy(crate::U128(10_000_000), 6);
+        unit_env
+    }
+
+    #[test]
+    fn get_required_confirmations_applies_tier_to_rolling_window() {
+        let mut unit_env = two_tier_env();
 
         assert_eq!(
             unit_env
@@ -427,7 +481,249 @@ mod tests {
             unit_env
                 .contract
                 .get_required_confirmations(101, crate::U128(5_000), None, None),
+            5
+        );
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(106, crate::U128(5_000), None, None),
             2
+        );
+    }
+
+    #[test]
+    fn get_required_confirmations_checks_every_window_against_its_own_tier() {
+        let mut unit_env = two_tier_env();
+        unit_env
+            .contract
+            .set_confirmations_strategy(crate::U128(100_000), 5);
+        unit_env
+            .contract
+            .bump_and_check_confirmations(99, 110, 150_000, 0);
+
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(100, crate::U128(5_000), None, None),
+            5
+        );
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(101, crate::U128(5_000), None, None),
+            4
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Not enough confirmations for the block-cumulative bridge amount")]
+    fn consecutive_blocks_cannot_reuse_the_low_tier() {
+        let mut unit_env = two_tier_env();
+        unit_env
+            .contract
+            .bump_and_check_confirmations(100, 101, 8_000, 0);
+        unit_env
+            .contract
+            .bump_and_check_confirmations(101, 102, 8_000, 0);
+    }
+
+    #[test]
+    fn consecutive_blocks_pass_once_the_shared_window_is_deep_enough() {
+        let mut unit_env = two_tier_env();
+        unit_env
+            .contract
+            .bump_and_check_confirmations(100, 101, 8_000, 0);
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(101, crate::U128(8_000), None, None),
+            5
+        );
+        unit_env
+            .contract
+            .bump_and_check_confirmations(101, 105, 8_000, 0);
+        assert_eq!(
+            unit_env.contract.data().block_bridge_amounts.get(101),
+            Some(8_000)
+        );
+    }
+
+    #[test]
+    fn block_deeper_than_the_widest_window_is_unconstrained() {
+        let mut unit_env = two_tier_env();
+        unit_env
+            .contract
+            .bump_and_check_confirmations(100, 106, 50_000_000, 0);
+        assert_eq!(
+            unit_env.contract.data().block_bridge_amounts.get(100),
+            Some(50_000_000)
+        );
+    }
+
+    #[test]
+    fn required_confirmations_counts_a_recorded_block_above_the_deposit() {
+        let mut unit_env = two_tier_env();
+        unit_env
+            .contract
+            .bump_and_check_confirmations(104, 106, 8_000, 0);
+
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(102, crate::U128(5_000), None, None),
+            6
+        );
+        assert!(!unit_env
+            .contract
+            .confirmations_window_satisfied(102, 106, 5_000, 0));
+        assert!(unit_env
+            .contract
+            .confirmations_window_satisfied(102, 107, 5_000, 0));
+    }
+
+    #[test]
+    #[should_panic(expected = "Not enough confirmations for the block-cumulative bridge amount")]
+    fn evicted_block_counts_as_saturated_when_the_tip_drops() {
+        let mut unit_env = two_tier_env();
+        let capacity =
+            u64::try_from(unit_env.contract.data().block_bridge_amounts.capacity()).unwrap();
+        let newer = 100 + capacity;
+        unit_env
+            .contract
+            .bump_and_check_confirmations(newer, newer + 5, 1, 0);
+        unit_env
+            .contract
+            .bump_and_check_confirmations(100, 101, 8_000, 0);
+    }
+
+    #[test]
+    fn required_confirmations_for_an_evicted_block_is_the_widest_tier() {
+        let mut unit_env = two_tier_env();
+        let capacity =
+            u64::try_from(unit_env.contract.data().block_bridge_amounts.capacity()).unwrap();
+        unit_env
+            .contract
+            .bump_and_check_confirmations(100, 106, 1_000, 0);
+        unit_env
+            .contract
+            .bump_and_check_confirmations(100 + capacity, 106 + capacity, 1_000, 0);
+        assert_eq!(unit_env.contract.data().block_bridge_amounts.get(100), None);
+
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(100, crate::U128(5_000), None, None),
+            6
+        );
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(100, crate::U128(5_000), None, Some(true)),
+            7
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Not enough confirmations for the block-cumulative bridge amount")]
+    fn window_near_genesis_includes_block_zero() {
+        let mut unit_env = two_tier_env();
+        unit_env
+            .contract
+            .bump_and_check_confirmations(0, 2, 8_000, 0);
+        unit_env
+            .contract
+            .bump_and_check_confirmations(1, 2, 8_000, 0);
+    }
+
+    struct XorShift(u64);
+
+    impl XorShift {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+
+        fn below(&mut self, n: u64) -> u64 {
+            self.next() % n
+        }
+    }
+
+    #[test]
+    fn required_confirmations_agrees_with_the_check_across_mixed_deltas() {
+        let mut rng = XorShift(0x9E37_79B9_7F4A_7C15);
+        for _ in 0..100 {
+            let mut unit_env = crate::init_unit_env();
+            let contract = &mut unit_env.contract;
+
+            let config = contract.internal_mut_config();
+            config.confirmations_strategy.clear();
+            let mut bound = 0u128;
+            let mut tier_confirmations = 2u8;
+            for _ in 0..=rng.below(3) {
+                bound += u128::from(1 + rng.below(50)) * 1_000;
+                tier_confirmations += u8::try_from(rng.below(4)).unwrap();
+                config
+                    .confirmations_strategy
+                    .insert(bound.to_string(), tier_confirmations);
+            }
+            config.confirmations_delta = u8::try_from(rng.below(4)).unwrap();
+            config.extra_msg_confirmations_delta = u8::try_from(rng.below(4)).unwrap();
+            config.assert_valid();
+            let deltas = [
+                0,
+                u64::from(config.confirmations_delta),
+                u64::from(config.extra_msg_confirmations_delta),
+            ];
+            contract.resize_block_amount_ring();
+
+            let window =
+                u64::try_from(contract.data().block_bridge_amounts.capacity()).unwrap() + 3;
+            let max_amount = bound + bound / 5;
+            let mut tip = 1_000;
+            for _ in 0..60 {
+                tip += rng.below(3);
+                let block = tip - rng.below(window);
+                let amount = 1 + u128::from(rng.next()) % max_amount;
+                let delta = deltas[usize::try_from(rng.below(3)).unwrap()];
+                if contract.confirmations_window_satisfied(block, tip, amount, delta) {
+                    contract.data_mut().block_bridge_amounts.bump(block, amount);
+                }
+            }
+
+            for delta in deltas {
+                for block in tip - window..=tip + 2 {
+                    let amount = 1 + u128::from(rng.next()) % max_amount;
+                    let required = contract.required_confirmations(block, amount, delta);
+                    for checked_tip in tip.max(block)..=block + required + window {
+                        assert_eq!(
+                            contract.confirmations_window_satisfied(
+                                block,
+                                checked_tip,
+                                amount,
+                                delta
+                            ),
+                            checked_tip - block + 1 >= required,
+                            "block {block}, tip {checked_tip}, amount {amount}, delta {delta}, required {required}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn relayer_delta_widens_the_window_and_the_requirement() {
+        let mut unit_env = two_tier_env();
+        unit_env
+            .contract
+            .bump_and_check_confirmations(100, 101, 8_000, 0);
+        assert_eq!(
+            unit_env
+                .contract
+                .get_required_confirmations(101, crate::U128(8_000), None, Some(true)),
+            6
         );
     }
 
