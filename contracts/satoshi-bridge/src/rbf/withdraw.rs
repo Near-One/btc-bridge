@@ -46,6 +46,7 @@ impl Contract {
         );
         original_tx_btc_pending_info.assert_not_canceled();
         original_tx_btc_pending_info.assert_withdraw_original_pending_verify_tx();
+        Self::check_withdraw_rbf_chain_specific(original_tx_btc_pending_info, &withdraw_rbf_psbt);
 
         let mut btc_pending_info = init_rbf_btc_pending_info(
             original_tx_btc_pending_info,

@@ -167,6 +167,10 @@ impl PsbtWrapper {
         self.orchard.is_some()
     }
 
+    pub fn get_orchard_output(&self) -> Option<&OrchardOutput> {
+        self.orchard.as_ref().map(|orchard| &orchard.output)
+    }
+
     /// Get the Orchard output amount by recovering it with the bridge OVK.
     /// Returns the amount in zatoshis (satoshis for ZCash).
     /// Panics if there is no Orchard bundle.

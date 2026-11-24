@@ -66,6 +66,12 @@ impl Contract {
         require!(additional_gas_amount > 0, "No gas increase.");
     }
 
+    pub(crate) fn check_withdraw_rbf_chain_specific(
+        _original_tx_btc_pending_info: &BTCPendingInfo,
+        _withdraw_rbf_psbt: &PsbtWrapper,
+    ) {
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn ft_on_transfer_withdraw_chain_specific(
         &mut self,

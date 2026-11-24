@@ -223,6 +223,25 @@ impl Contract {
     ) {
     }
 
+    pub(crate) fn check_withdraw_rbf_chain_specific(
+        original_tx_btc_pending_info: &BTCPendingInfo,
+        withdraw_rbf_psbt: &PsbtWrapper,
+    ) {
+        let original_psbt = original_tx_btc_pending_info.get_psbt();
+        require!(
+            withdraw_rbf_psbt.get_expiry_height() > original_psbt.get_expiry_height(),
+            "Expiry height must increase"
+        );
+        require!(
+            withdraw_rbf_psbt.get_output() == original_psbt.get_output(),
+            "Outputs must not change"
+        );
+        require!(
+            withdraw_rbf_psbt.get_orchard_output() == original_psbt.get_orchard_output(),
+            "Orchard output must not change"
+        );
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn ft_on_transfer_withdraw_chain_specific(
         &self,

@@ -317,11 +317,15 @@ async fn test_concurrent_withdraw_rbf_respects_pending_sign_limit() {
         .clone();
     check!(context.sign_btc_transaction("alice", &original_id, 0, 0));
 
-    let rbf_call = |gas_fee: u128| {
+    context
+        .set_light_client_block_height(POST_NU7_HEIGHT + 1)
+        .await;
+
+    let rbf_call = || {
         near_workspaces::operations::Function::new("withdraw_rbf")
             .args_json(json!({
                 "original_btc_pending_verify_id": original_id,
-                "output": outputs(gas_fee),
+                "output": outputs(10_000),
                 "chain_specific_data": null,
             }))
             .deposit(near_sdk::NearToken::from_near(1))
@@ -330,8 +334,8 @@ async fn test_concurrent_withdraw_rbf_respects_pending_sign_limit() {
     let outcome = context
         .get_account_by_name("alice")
         .batch(context.bridge_contract.id())
-        .call(rbf_call(20_000))
-        .call(rbf_call(30_000))
+        .call(rbf_call())
+        .call(rbf_call())
         .transact()
         .await
         .unwrap();
