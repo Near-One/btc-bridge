@@ -235,8 +235,8 @@ impl Config {
         tiers
     }
 
-    /// The confirmations strategy read as risk limits, shifted by `delta`:
-    /// tiers `3 -> 10_000`, `10 -> 100_000`, `25 -> 1_000_000` become
+    /// The confirmations strategy read as risk limits, shifted by `delta`.
+    /// With `delta` 0, tiers `3 -> 10_000`, `10 -> 100_000`, `25 -> 1_000_000` become
     /// `(2, 0)`, `(9, 10_000)`, `(24, 100_000)`. The bound of the top tier
     /// is the fallback for any larger amount and limits nothing.
     pub fn risk_limits(&self, delta: u64) -> Vec<RiskLimit> {

@@ -43,9 +43,7 @@ impl BlockAmountRing {
     }
 
     /// Returns the post-bump cumulative amount, or `None` without recording
-    /// anything if the slot holds a newer block. That block is at least
-    /// `capacity` higher, so `block_height` is already deeper than every
-    /// confirmations window.
+    /// anything if the slot holds a newer block.
     pub fn bump(&mut self, block_height: u64, amount: u128) -> Option<u128> {
         let i = self.slot(block_height);
         match &mut self.cells[i] {
@@ -75,11 +73,14 @@ impl BlockAmountRing {
         }
     }
 
+    /// Returns `None` if the slot holds a newer block, so the amount for
+    /// `block_height` is unknown, and `Some(0)` if nothing was recorded for it.
     pub fn get(&self, block_height: u64) -> Option<u128> {
         let i = self.slot(block_height);
         match &self.cells[i] {
             Some(c) if c.block_height == block_height => Some(c.cumulative_sats),
-            _ => None,
+            Some(c) if c.block_height > block_height => None,
+            _ => Some(0),
         }
     }
 
@@ -128,8 +129,6 @@ pub(crate) fn confirmations(block_height: u64, tip_height: u64) -> u64 {
 impl Contract {
     /// Panics unless bridging `amount` keeps every rolling window of blocks
     /// within the tier that its own depth buys, then records the amount.
-    /// Assumes `tip_height` is at most `BLOCK_AMOUNT_RING_CAPACITY_SLACK` blocks
-    /// below the highest recorded block.
     pub(crate) fn bump_and_check_confirmations(
         &mut self,
         block_height: u64,
@@ -187,6 +186,7 @@ impl Contract {
 
     /// Checks that bridging `amount` from `block_height` would keep the
     /// bridged totals within every risk limit of the confirmations strategy.
+    /// A block whose slot holds a newer one counts as saturated.
     fn confirmations_window_satisfied(
         &self,
         block_height: u64,
@@ -205,7 +205,7 @@ impl Contract {
             }
             while window_depth < limit.max_confirmations {
                 let Some(height) = next_height else { break };
-                window_total = window_total.saturating_add(ring.get(height).unwrap_or(0));
+                window_total = window_total.saturating_add(ring.get(height).unwrap_or(u128::MAX));
                 next_height = height.checked_sub(1);
                 window_depth += 1;
             }
@@ -226,7 +226,7 @@ mod tests {
         let ring = BlockAmountRing::new(8);
         assert_eq!(ring.capacity(), 8);
         for h in 0..100u64 {
-            assert_eq!(ring.get(h), None);
+            assert_eq!(ring.get(h), Some(0));
         }
     }
 
@@ -282,11 +282,18 @@ mod tests {
     }
 
     #[test]
-    fn get_returns_none_for_unknown_height_in_used_slot() {
+    fn get_returns_zero_for_unrecorded_height_above_used_slot() {
         let mut ring = BlockAmountRing::new(4);
         ring.bump(100, 500);
-        assert_eq!(ring.get(200), None);
+        assert_eq!(ring.get(200), Some(0));
         assert_eq!(ring.get(100), Some(500));
+    }
+
+    #[test]
+    fn get_returns_none_for_height_below_used_slot() {
+        let mut ring = BlockAmountRing::new(4);
+        ring.bump(100, 500);
+        assert_eq!(ring.get(96), None);
     }
 
     #[test]
@@ -413,7 +420,7 @@ mod tests {
     fn unbump_empty_slot_is_noop() {
         let mut ring = BlockAmountRing::new(4);
         ring.unbump(100, 500);
-        assert_eq!(ring.get(100), None);
+        assert_eq!(ring.get(100), Some(0));
         assert_eq!(ring.bump(100, 10), Some(10));
     }
 
@@ -572,6 +579,21 @@ mod tests {
         assert!(unit_env
             .contract
             .confirmations_window_satisfied(102, 107, 5_000, 0));
+    }
+
+    #[test]
+    #[should_panic(expected = "Not enough confirmations for the block-cumulative bridge amount")]
+    fn evicted_block_counts_as_saturated_when_the_tip_drops() {
+        let mut unit_env = two_tier_env();
+        let capacity =
+            u64::try_from(unit_env.contract.data().block_bridge_amounts.capacity()).unwrap();
+        let newer = 100 + capacity;
+        unit_env
+            .contract
+            .bump_and_check_confirmations(newer, newer + 5, 1, 0);
+        unit_env
+            .contract
+            .bump_and_check_confirmations(100, 101, 8_000, 0);
     }
 
     #[test]
