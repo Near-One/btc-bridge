@@ -162,7 +162,7 @@ impl Contract {
 
     /// The smallest depth at which `confirmations_window_satisfied` accepts a
     /// deposit of `amount` from `block_height`. Tips below the highest recorded
-    /// block are not tried: the ring has already seen that block.
+    /// block are not tried: the check never passes there.
     pub(crate) fn required_confirmations(
         &self,
         block_height: u64,
@@ -186,7 +186,7 @@ impl Contract {
 
     /// Checks that bridging `amount` from `block_height` would keep the
     /// bridged totals within every risk limit of the confirmations strategy.
-    /// A block whose slot holds a newer one counts as saturated.
+    /// Never satisfied while the tip is below the highest recorded block.
     fn confirmations_window_satisfied(
         &self,
         block_height: u64,
@@ -194,8 +194,11 @@ impl Contract {
         amount: u128,
         delta: u64,
     ) -> bool {
-        let depth = confirmations(block_height, tip_height);
         let ring = &self.data().block_bridge_amounts;
+        if tip_height < ring.anchor_height() {
+            return false;
+        }
+        let depth = confirmations(block_height, tip_height);
         let mut window_total = amount;
         let mut window_depth = 0;
         let mut next_height = Some(tip_height);
@@ -582,18 +585,29 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Not enough confirmations for the block-cumulative bridge amount")]
-    fn evicted_block_counts_as_saturated_when_the_tip_drops() {
+    fn tip_below_the_highest_recorded_block_is_never_satisfied() {
         let mut unit_env = two_tier_env();
-        let capacity =
-            u64::try_from(unit_env.contract.data().block_bridge_amounts.capacity()).unwrap();
-        let newer = 100 + capacity;
         unit_env
             .contract
-            .bump_and_check_confirmations(newer, newer + 5, 1, 0);
+            .bump_and_check_confirmations(200, 210, 1, 0);
+        assert!(!unit_env
+            .contract
+            .confirmations_window_satisfied(100, 199, 1, 0));
+        assert!(unit_env
+            .contract
+            .confirmations_window_satisfied(100, 200, 1, 0));
+    }
+
+    #[test]
+    #[should_panic(expected = "Not enough confirmations for the block-cumulative bridge amount")]
+    fn deposit_is_rejected_while_the_tip_is_below_the_highest_recorded_block() {
+        let mut unit_env = two_tier_env();
         unit_env
             .contract
-            .bump_and_check_confirmations(100, 101, 8_000, 0);
+            .bump_and_check_confirmations(200, 210, 1, 0);
+        unit_env
+            .contract
+            .bump_and_check_confirmations(100, 199, 1, 0);
     }
 
     #[test]
