@@ -154,6 +154,8 @@ impl Contract {
         }
     }
 
+    /// After growing, blocks already evicted from the smaller ring count as zero
+    /// until the tip moves past them.
     pub(crate) fn resize_block_amount_ring(&mut self) {
         let cap = BlockAmountRing::capacity_for(self.internal_config());
         self.data_mut().block_bridge_amounts.resize(cap);
