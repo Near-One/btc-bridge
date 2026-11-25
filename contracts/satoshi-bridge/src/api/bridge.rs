@@ -41,7 +41,7 @@ impl Contract {
     ) -> Promise {
         assert_post_actions_supported(&deposit_msg);
         let tx_summary = self.internal_resolve_deposit_tx(tx_bytes);
-        let coinbase_proof = proof.coinbase_proof();
+        let coinbase_proof = (proof.coinbase_tx_id(), proof.coinbase_merkle_proof);
         if is_safe_deposit(&deposit_msg) {
             self.internal_safe_verify_deposit_entry(
                 deposit_msg,
@@ -82,7 +82,7 @@ impl Contract {
     #[trusted_relayer]
     #[pause(except(roles(Role::DAO)))]
     pub fn verify_withdraw_v2(&mut self, tx_id: String, proof: TxInclusionProof) -> Promise {
-        let coinbase_proof = proof.coinbase_proof();
+        let coinbase_tx_id = proof.coinbase_tx_id();
         match self.internal_unwrap_btc_pending_info(&tx_id).state.clone() {
             PendingInfoState::WithdrawOriginal(_)
             | PendingInfoState::WithdrawUserRbf(_)
@@ -91,7 +91,7 @@ impl Contract {
                 proof.tx_block_blockhash,
                 proof.tx_index,
                 proof.merkle_proof,
-                Some(coinbase_proof),
+                Some((coinbase_tx_id, proof.coinbase_merkle_proof)),
             ),
             PendingInfoState::ActiveUtxoManagementOriginal(_)
             | PendingInfoState::ActiveUtxoManagementRbf(_)
@@ -101,7 +101,7 @@ impl Contract {
                     proof.tx_block_blockhash,
                     proof.tx_index,
                     proof.merkle_proof,
-                    Some(coinbase_proof),
+                    Some((coinbase_tx_id, proof.coinbase_merkle_proof)),
                 ),
             PendingInfoState::Refund(_) => self.internal_verify_refund_finalize_entry(tx_id, proof),
         }

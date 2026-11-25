@@ -10,12 +10,9 @@ pub struct ChainSpecificData {
 }
 
 impl TxInclusionProof {
-    /// Returns the coinbase txid for the light client and its merkle proof.
+    /// Returns the coinbase txid for the light client.
     /// On Zcash `coinbase_tx_id` is the coinbase txid itself.
-    pub fn coinbase_proof(&self) -> (String, Vec<String>) {
-        (
-            self.coinbase_tx_id.clone(),
-            self.coinbase_merkle_proof.clone(),
-        )
+    pub fn coinbase_tx_id(&self) -> String {
+        self.coinbase_tx_id.clone()
     }
 }
