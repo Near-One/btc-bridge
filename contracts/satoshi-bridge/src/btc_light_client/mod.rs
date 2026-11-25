@@ -35,12 +35,11 @@ impl FromStr for H256 {
 const TX_VERSION_LEN: usize = 4;
 const TX_INPUT_COUNT_LEN: usize = 1;
 const COINBASE_PREVOUT_HASH_START: usize = TX_VERSION_LEN + TX_INPUT_COUNT_LEN;
-const H256_LEN: usize = 32;
 
 fn parse_coinbase_tx_id(coinbase_tx_id: &str) -> H256 {
     let coinbase_tx_id: H256 = coinbase_tx_id.parse().expect("Invalid coinbase_tx_id");
     crate::require!(
-        coinbase_tx_id.0[COINBASE_PREVOUT_HASH_START..H256_LEN]
+        coinbase_tx_id.0[COINBASE_PREVOUT_HASH_START..]
             .iter()
             .any(|b| *b != 0),
         "coinbase_tx_id matches the start of a coinbase transaction"
