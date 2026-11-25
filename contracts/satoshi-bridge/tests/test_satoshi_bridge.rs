@@ -2099,9 +2099,15 @@ async fn test_withdraw_rbf_charges_storage() {
         .clone();
     check!(context.sign_btc_transaction("relayer", &original_btc_pending_verify_id, 0, 0));
 
+    let rbf_gas_increase = if cfg!(feature = "zcash") {
+        context.set_light_client_block_height(1001).await;
+        0
+    } else {
+        1000
+    };
     let rbf_output = vec![
         generate_tx_out(
-            (withdraw_amount - btc_gas_fee - 1000 - withdraw_fee) as u64,
+            (withdraw_amount - btc_gas_fee - rbf_gas_increase - withdraw_fee) as u64,
             TARGET_ADDRESS,
             get_chain(),
         ),

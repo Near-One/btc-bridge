@@ -126,13 +126,15 @@ impl Contract {
         let account_id = env::predecessor_account_id();
         self.require_pending_sign_capacity(&account_id);
 
-        charge_attached_deposit(self.required_balance_for_withdraw_rbf());
+        let storage_deposit = self.required_balance_for_withdraw_rbf();
+        charge_attached_deposit(storage_deposit);
 
         self.withdraw_rbf_chain_specific(
             account_id,
             original_btc_pending_verify_id,
             output,
             chain_specific_data,
+            storage_deposit,
         );
     }
 
@@ -158,6 +160,7 @@ impl Contract {
             original_btc_pending_verify_id,
             output,
             None,
+            NearToken::ZERO,
         );
     }
 
@@ -198,6 +201,7 @@ impl Contract {
             original_btc_pending_verify_id,
             output,
             None,
+            NearToken::ZERO,
         );
     }
 
@@ -226,6 +230,7 @@ impl Contract {
             original_btc_pending_verify_id,
             output,
             None,
+            NearToken::ZERO,
         );
     }
 

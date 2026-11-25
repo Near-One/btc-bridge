@@ -1,7 +1,7 @@
 use crate::bitcoin_utils::types::ChainSpecificData;
 use crate::env;
 use crate::psbt_wrapper::PsbtWrapper;
-use crate::{BTCPendingInfo, Contract, Event};
+use crate::{BTCPendingInfo, Contract, Event, NearToken};
 use bitcoin::{OutPoint, TxOut};
 use near_sdk::json_types::U128;
 use near_sdk::{require, AccountId, PromiseOrValue};
@@ -14,6 +14,7 @@ macro_rules! define_rbf_method {
             original_btc_pending_verify_id: String,
             output: Vec<TxOut>,
             _chain_specific_data: Option<ChainSpecificData>,
+            _storage_deposit: NearToken,
         ) {
             let predecessor_account_id = env::predecessor_account_id();
             let original_tx_btc_pending_info =
@@ -64,6 +65,12 @@ impl Contract {
         let max_gas_fee = original_tx_btc_pending_info.get_max_gas_fee();
         let additional_gas_amount = gas_fee.saturating_sub(max_gas_fee);
         require!(additional_gas_amount > 0, "No gas increase.");
+    }
+
+    pub(crate) fn check_withdraw_rbf_chain_specific(
+        _original_tx_btc_pending_info: &BTCPendingInfo,
+        _withdraw_rbf_psbt: &PsbtWrapper,
+    ) {
     }
 
     #[allow(clippy::too_many_arguments)]

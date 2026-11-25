@@ -14,6 +14,7 @@ pub const BRIDGE_OVK: [u8; 32] = [0u8; 32];
 
 pub const EXPECTED_ACTIONS_NUMBER: usize = 1;
 
+#[derive(PartialEq, Eq)]
 pub struct OrchardOutput {
     pub amount: u64,
     pub recipient_addr: OrchardRawAddress,
