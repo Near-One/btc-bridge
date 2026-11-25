@@ -2996,7 +2996,7 @@ fn mock_proof() -> near_sdk::serde_json::Value {
         "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
         "tx_index": 1u64,
         "merkle_proof": Vec::<String>::new(),
-        "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
+        "coinbase_tx_id": "0101010101010101010101010101010101010101010101010101010101010101",
         "coinbase_merkle_proof": Vec::<String>::new(),
     })
 }
@@ -3224,7 +3224,7 @@ async fn test_verify_deposit_rejects_coinbase_tx() {
         "tx_block_blockhash": "0000000000000c3f818b0b6374c609dd8e548a0a9e61065e942cd466c426e00d",
         "tx_index": 0u64,
         "merkle_proof": Vec::<String>::new(),
-        "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
+        "coinbase_tx_id": "0101010101010101010101010101010101010101010101010101010101010101",
         "coinbase_merkle_proof": Vec::<String>::new(),
     });
 
