@@ -172,14 +172,13 @@ impl Contract {
 
         // Refunds skip the block-amount ring; max-tier depth is required unconditionally.
         let config = self.internal_config();
-        let coinbase_proof = (proof.coinbase_tx_id(), proof.coinbase_merkle_proof);
         self.verify_transaction_inclusion_with_heights_promise(
             config.btc_light_client_account_id.clone(),
             tx_id.clone(),
             proof.tx_block_blockhash,
             proof.tx_index,
             proof.merkle_proof,
-            coinbase_proof,
+            (proof.coinbase_tx_id, proof.coinbase_merkle_proof),
         )
         .then(
             Self::ext(env::current_account_id())
@@ -511,14 +510,13 @@ impl Contract {
         let config = self.internal_config();
         let confirmations = config.get_confirmations(btc_pending_info.actual_received_amount)
             + self.relayer_delta(&env::predecessor_account_id());
-        let coinbase_proof = (proof.coinbase_tx_id(), proof.coinbase_merkle_proof);
         self.verify_transaction_inclusion_promise(
             config.btc_light_client_account_id.clone(),
             tx_id.clone(),
             proof.tx_block_blockhash,
             proof.tx_index,
             proof.merkle_proof,
-            Some(coinbase_proof),
+            Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
             confirmations,
         )
         .then(

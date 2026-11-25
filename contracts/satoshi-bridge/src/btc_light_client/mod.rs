@@ -32,6 +32,22 @@ impl FromStr for H256 {
     }
 }
 
+const TX_VERSION_LEN: usize = 4;
+const TX_INPUT_COUNT_LEN: usize = 1;
+const COINBASE_PREVOUT_HASH_START: usize = TX_VERSION_LEN + TX_INPUT_COUNT_LEN;
+const H256_LEN: usize = 32;
+
+fn parse_coinbase_tx_id(coinbase_tx_id: &str) -> H256 {
+    let coinbase_tx_id: H256 = coinbase_tx_id.parse().expect("Invalid coinbase_tx_id");
+    crate::require!(
+        coinbase_tx_id.0[COINBASE_PREVOUT_HASH_START..H256_LEN]
+            .iter()
+            .any(|b| *b != 0),
+        "coinbase_tx_id matches the start of a coinbase transaction"
+    );
+    coinbase_tx_id
+}
+
 #[near(serializers = [borsh])]
 pub struct ProofArgs {
     pub tx_id: H256,
@@ -101,7 +117,7 @@ impl ProofArgsV2 {
                         .unwrap_or_else(|_| env::panic_str(&format!("Invalid merkle_proof: {v:?}")))
                 })
                 .collect(),
-            coinbase_tx_id: coinbase_tx_id.parse().expect("Invalid coinbase_tx_id"),
+            coinbase_tx_id: parse_coinbase_tx_id(&coinbase_tx_id),
             coinbase_merkle_proof: coinbase_merkle_proof
                 .into_iter()
                 .map(|v| {
@@ -190,7 +206,7 @@ impl TxInclusionProof {
                         .unwrap_or_else(|_| env::panic_str(&format!("Invalid merkle_proof: {v:?}")))
                 })
                 .collect(),
-            coinbase_tx_id: coinbase_tx_id.parse().expect("Invalid coinbase_tx_id"),
+            coinbase_tx_id: parse_coinbase_tx_id(&coinbase_tx_id),
             coinbase_merkle_proof: coinbase_merkle_proof
                 .into_iter()
                 .map(|v| {
@@ -286,5 +302,35 @@ impl Contract {
         ext_btc_light_client::ext(config.btc_light_client_account_id.clone())
             .with_static_gas(GAS_FOR_GET_LAST_BLOCK_HEIGHT)
             .get_last_block_height()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_coinbase_tx_id;
+    use bitcoin::hashes::Hash;
+
+    #[test]
+    fn parse_coinbase_tx_id_accepts_coinbase_txid() {
+        let genesis = bitcoin::blockdata::constants::genesis_block(bitcoin::Network::Bitcoin);
+        let coinbase_txid = genesis.txdata[0].compute_txid();
+
+        let coinbase_tx_id = parse_coinbase_tx_id(&coinbase_txid.to_string());
+
+        assert_eq!(
+            coinbase_tx_id.0,
+            coinbase_txid.to_raw_hash().to_byte_array()
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "coinbase_tx_id matches the start of a coinbase transaction")]
+    fn parse_coinbase_tx_id_rejects_coinbase_tx_prefix() {
+        let mut prefix = [0u8; 32];
+        prefix[..4].copy_from_slice(&2u32.to_le_bytes());
+        prefix[4] = 1;
+        prefix.reverse();
+
+        parse_coinbase_tx_id(&hex::encode(prefix));
     }
 }

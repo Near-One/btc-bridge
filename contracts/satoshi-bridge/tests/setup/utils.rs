@@ -250,7 +250,7 @@ pub fn proof_json(
         "tx_block_blockhash": tx_block_blockhash,
         "tx_index": tx_index,
         "merkle_proof": merkle_proof,
-        "coinbase_tx_id": "0000000000000000000000000000000000000000000000000000000000000000",
+        "coinbase_tx_id": "0101010101010101010101010101010101010101010101010101010101010101",
         "coinbase_merkle_proof": Vec::<String>::new(),
     })
 }
