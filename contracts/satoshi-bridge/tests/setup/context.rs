@@ -920,6 +920,7 @@ impl Context {
                 "key_version": key_version,
             }))
             .max_gas()
+            .deposit(NearToken::from_yoctonear(1))
             .transact()
             .await
     }

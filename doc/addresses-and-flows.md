@@ -65,7 +65,8 @@ relayer selects UTXOs from the bridge pool off-chain and calls
 `submit_transfer_to_utxo_chain_connector` on Omni Bridge, which forwards the tokens to
 the connector with a `Withdraw` message. The connector validates the transaction and
 builds the PSBT; the relayer then requests an MPC signature for each input
-(`sign_btc_transaction`), broadcasts the signed transaction, and after on-chain
+(`sign_btc_transaction` per input, or `sign_btc_transaction_batch` for several inputs
+in one transaction), broadcasts the signed transaction, and after on-chain
 confirmation the nBTC is burned.
 
 ```mermaid
@@ -97,7 +98,7 @@ sequenceDiagram
     R->>O: submit_transfer_to_utxo_chain_connector
     O->>B: ft_transfer_call: nBTC + Withdraw msg
     Note over B: validate tx, reserve selected UTXOs,<br/>build PSBT
-    R->>B: sign_btc_transaction (per input)
+    R->>B: sign_btc_transaction (per input)<br/>or sign_btc_transaction_batch
     B->>MPC: sign(payload, path per UTXO)
     MPC-->>B: signatures
     R->>BTC: broadcast signed tx
