@@ -1,6 +1,4 @@
-use crate::{
-    env, near, require, AccessControllable, Contract, ContractExt, Pausable, PromiseOrValue, Role,
-};
+use crate::{near, AccessControllable, Contract, ContractExt, Pausable, PromiseOrValue, Role};
 
 use near_plugins::pause;
 
@@ -27,25 +25,47 @@ impl Contract {
         sign_index: usize,
         key_version: u32,
     ) -> PromiseOrValue<bool> {
-        let btc_pending_info = self.internal_unwrap_btc_pending_info(&btc_pending_sign_id);
-        require!(
-            btc_pending_info.is_refund() || self.is_trusted_relayer(&env::predecessor_account_id()),
-            "Relayer is not active"
-        );
-        btc_pending_info.assert_pending_sign();
-        if let Some(original_tx_id) = btc_pending_info.get_original_tx_id() {
-            if !self.check_btc_pending_info_exists(original_tx_id) {
-                require!(
-                    self.internal_unwrap_mut_account(&btc_pending_info.account_id.clone())
-                        .btc_pending_sign_ids
-                        .remove(&btc_pending_sign_id),
-                    "Internal error"
-                );
-                self.internal_remove_btc_pending_info(&btc_pending_sign_id);
-                return PromiseOrValue::Value(true);
-            }
+        if !self.internal_prepare_sign_btc_transaction(&btc_pending_sign_id) {
+            return PromiseOrValue::Value(true);
         }
         self.internal_sign_btc_transaction(btc_pending_sign_id, sign_index, key_version)
+            .into()
+    }
+
+    /// Sign several inputs of the BTC transaction in one call. When the last
+    /// unsigned input is signed, generate a signed transaction ready to be
+    /// broadcasted.
+    ///
+    /// Same access rules as `sign_btc_transaction`, and paused together with
+    /// it. Indexes that are already signed are skipped, so a retry with the
+    /// same list is safe. Attach at least 1 yoctoNEAR per input to sign; the
+    /// whole deposit is split between the MPC `sign` calls, and MPC refunds
+    /// any excess to this contract, as for `sign_btc_transaction`. Attach
+    /// `60 + 30 * N` Tgas of prepaid gas for N inputs to sign (see
+    /// `GAS_FOR_BATCH_SIGN_*`); gas left over goes to the callback and is
+    /// refunded if unused. With the 1 PGas limit per transaction that allows
+    /// up to 31 inputs per call.
+    ///
+    /// # Arguments
+    ///
+    /// * `btc_pending_sign_id` - Pending signature BTC transaction ID.
+    /// * `sign_indexes` - Input indexes to sign. Duplicates are ignored.
+    ///
+    /// # Returns
+    ///
+    /// bool - Whether every requested signature was stored.
+    #[payable]
+    #[pause(name = "sign_btc_transaction", except(roles(Role::DAO)))]
+    pub fn sign_btc_transaction_batch(
+        &mut self,
+        btc_pending_sign_id: String,
+        sign_indexes: Vec<usize>,
+        key_version: u32,
+    ) -> PromiseOrValue<bool> {
+        if !self.internal_prepare_sign_btc_transaction(&btc_pending_sign_id) {
+            return PromiseOrValue::Value(true);
+        }
+        self.internal_sign_btc_transaction_batch(btc_pending_sign_id, sign_indexes, key_version)
             .into()
     }
 }

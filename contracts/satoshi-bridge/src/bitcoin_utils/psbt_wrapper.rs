@@ -138,22 +138,32 @@ impl PsbtWrapper {
     }
 
     pub fn get_hash_to_sign(&self, vin: usize) -> [u8; 32] {
-        let tx = self.psbt.unsigned_tx.clone();
-        let mut cache = SighashCache::new(tx);
-        let witness_utxo = self.psbt.inputs[vin]
-            .witness_utxo
-            .as_ref()
-            .expect("ERR_MISSING_WITNESS_UTXO: input missing witness UTXO data");
-        cache
-            .p2wpkh_signature_hash(
-                vin,
-                &witness_utxo.script_pubkey,
-                witness_utxo.value,
-                bitcoin::EcdsaSighashType::All,
-            )
-            .expect("ERR_SIGHASH: failed to compute signature hash")
-            .to_raw_hash()
-            .to_byte_array()
+        self.get_hashes_to_sign(&[vin])[0]
+    }
+
+    /// BIP143 sighashes of the given inputs, in the same order. One
+    /// `SighashCache` is shared by all inputs, so hashPrevouts, hashSequence
+    /// and hashOutputs are computed once.
+    pub fn get_hashes_to_sign(&self, vins: &[usize]) -> Vec<[u8; 32]> {
+        let mut cache = SighashCache::new(&self.psbt.unsigned_tx);
+        vins.iter()
+            .map(|&vin| {
+                let witness_utxo = self.psbt.inputs[vin]
+                    .witness_utxo
+                    .as_ref()
+                    .expect("ERR_MISSING_WITNESS_UTXO: input missing witness UTXO data");
+                cache
+                    .p2wpkh_signature_hash(
+                        vin,
+                        &witness_utxo.script_pubkey,
+                        witness_utxo.value,
+                        bitcoin::EcdsaSighashType::All,
+                    )
+                    .expect("ERR_SIGHASH: failed to compute signature hash")
+                    .to_raw_hash()
+                    .to_byte_array()
+            })
+            .collect()
     }
 
     pub fn save_signature(
@@ -168,5 +178,77 @@ impl PsbtWrapper {
 
     pub fn get_recipient_address(&self) -> Option<String> {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bitcoin::{Amount, ScriptBuf, Txid, WPubkeyHash};
+
+    fn p2wpkh(seed: u8) -> ScriptBuf {
+        ScriptBuf::new_p2wpkh(&WPubkeyHash::from_byte_array([seed; 20]))
+    }
+
+    /// The previous implementation: a fresh `SighashCache` per input.
+    fn hash_with_fresh_cache(psbt: &Psbt, vin: usize) -> [u8; 32] {
+        let utxo = psbt.inputs[vin].witness_utxo.as_ref().unwrap();
+        SighashCache::new(psbt.unsigned_tx.clone())
+            .p2wpkh_signature_hash(
+                vin,
+                &utxo.script_pubkey,
+                utxo.value,
+                bitcoin::EcdsaSighashType::All,
+            )
+            .unwrap()
+            .to_raw_hash()
+            .to_byte_array()
+    }
+
+    #[test]
+    fn test_shared_cache_sighashes_match_per_input_sighashes() {
+        let input_num = 7;
+        let inputs = (0..input_num)
+            .map(|i| OutPoint {
+                txid: Txid::from_byte_array([i as u8 + 1; 32]),
+                vout: i as u32,
+            })
+            .collect();
+        let outputs = vec![
+            TxOut {
+                value: Amount::from_sat(50_000),
+                script_pubkey: p2wpkh(0xaa),
+            },
+            TxOut {
+                value: Amount::from_sat(20_000),
+                script_pubkey: p2wpkh(0xbb),
+            },
+        ];
+        let mut psbt = PsbtWrapper::new(inputs, outputs);
+        psbt.set_input_utxo(
+            (0..input_num)
+                .map(|i| TxOut {
+                    value: Amount::from_sat(10_000 + i as u64),
+                    script_pubkey: p2wpkh(i as u8),
+                })
+                .collect(),
+        );
+
+        let expected: Vec<[u8; 32]> = (0..input_num)
+            .map(|vin| hash_with_fresh_cache(&psbt.psbt, vin))
+            .collect();
+
+        let all: Vec<usize> = (0..input_num).collect();
+        assert_eq!(psbt.get_hashes_to_sign(&all), expected);
+        // Any subset, in any order, keeps the requested order.
+        assert_eq!(
+            psbt.get_hashes_to_sign(&[5, 1, 3]),
+            vec![expected[5], expected[1], expected[3]]
+        );
+        for (vin, hash) in expected.iter().enumerate() {
+            assert_eq!(&psbt.get_hash_to_sign(vin), hash);
+        }
+        // Different inputs give different sighashes.
+        assert_ne!(expected[0], expected[1]);
     }
 }

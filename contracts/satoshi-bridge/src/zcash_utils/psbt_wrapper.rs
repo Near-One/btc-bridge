@@ -506,6 +506,13 @@ impl PsbtWrapper {
     }
 
     pub fn get_hash_to_sign(&self, vin: usize) -> [u8; 32] {
+        self.get_hashes_to_sign(&[vin])[0]
+    }
+
+    /// ZIP-244 sighashes of the given inputs, in the same order. The
+    /// transaction data and its txid digests are built once and shared by
+    /// all inputs.
+    pub fn get_hashes_to_sign(&self, vins: &[usize]) -> Vec<[u8; 32]> {
         let tx_data = WrappedTransaction::to_zcash_tx(
             &self.vin,
             &self.vout,
@@ -515,25 +522,32 @@ impl PsbtWrapper {
         );
         let txid_parts =
             self.tx_digest(&tx_data, zcash_primitives::transaction::txid::TxIdDigester);
-
-        let script = self.inputs_utxo[vin].script_pubkey();
         let transparent_bundle = tx_data.transparent_bundle().unwrap_or_else(|| {
             env::panic_str("ERR_NO_TRANSPARENT_BUNDLE: missing transparent bundle")
         });
-        let sig_input = zcash_primitives::transaction::sighash::SignableInput::Transparent(
-            zcash_transparent::sighash::SignableInput::from_parts(
-                transparent_bundle,
-                SighashType::ALL,
-                vin,
-                script,
-                script,
-                self.inputs_utxo[vin].value(),
-            )
-            .unwrap_or_else(|_| env::panic_str("ERR_SIGNABLE_INPUT: invalid input index")),
-        );
 
-        *zcash_primitives::transaction::sighash::signature_hash(&tx_data, &sig_input, &txid_parts)
-            .as_ref()
+        vins.iter()
+            .map(|&vin| {
+                let script = self.inputs_utxo[vin].script_pubkey();
+                let sig_input = zcash_primitives::transaction::sighash::SignableInput::Transparent(
+                    zcash_transparent::sighash::SignableInput::from_parts(
+                        transparent_bundle,
+                        SighashType::ALL,
+                        vin,
+                        script,
+                        script,
+                        self.inputs_utxo[vin].value(),
+                    )
+                    .unwrap_or_else(|_| env::panic_str("ERR_SIGNABLE_INPUT: invalid input index")),
+                );
+                *zcash_primitives::transaction::sighash::signature_hash(
+                    &tx_data,
+                    &sig_input,
+                    &txid_parts,
+                )
+                .as_ref()
+            })
+            .collect()
     }
 
     pub fn save_signature(
@@ -642,4 +656,124 @@ fn read_u64_le<R: Read>(r: &mut R) -> io::Result<u64> {
     let mut b = [0u8; 8];
     r.read_exact(&mut b)?;
     Ok(u64::from_le_bytes(b))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn p2pkh(seed: u8) -> Script {
+        let mut script = vec![0x76, 0xa9, 0x14];
+        script.extend_from_slice(&[seed; 20]);
+        script.extend_from_slice(&[0x88, 0xac]);
+        Script(Code(script))
+    }
+
+    fn psbt(branch_id: BranchId, input_num: usize) -> PsbtWrapper {
+        PsbtWrapper {
+            branch_id,
+            expiry_height: 3_000_000,
+            vin: (0..input_num)
+                .map(|i| {
+                    ZcashTxIn::from_parts(
+                        zcash_transparent::bundle::OutPoint::new([i as u8 + 1; 32], i as u32),
+                        Script::default(),
+                        u32::MAX,
+                    )
+                })
+                .collect(),
+            vout: vec![
+                ZcashTxOut::new(Zatoshis::from_u64(50_000).unwrap(), p2pkh(0xaa)),
+                ZcashTxOut::new(Zatoshis::from_u64(20_000).unwrap(), p2pkh(0xbb)),
+            ],
+            inputs_utxo: (0..input_num)
+                .map(|i| {
+                    ZcashTxOut::new(
+                        Zatoshis::from_u64(10_000 + i as u64).unwrap(),
+                        p2pkh(i as u8),
+                    )
+                })
+                .collect(),
+            orchard: None,
+            recipient_address: None,
+        }
+    }
+
+    /// The previous implementation: transaction data and txid digests rebuilt per input.
+    fn hash_rebuilt_per_input(psbt: &PsbtWrapper, vin: usize) -> [u8; 32] {
+        let tx_data = WrappedTransaction::to_zcash_tx(
+            &psbt.vin,
+            &psbt.vout,
+            &psbt.inputs_utxo,
+            psbt.expiry_height,
+            psbt.branch_id,
+        );
+        let txid_parts =
+            psbt.tx_digest(&tx_data, zcash_primitives::transaction::txid::TxIdDigester);
+        let script = psbt.inputs_utxo[vin].script_pubkey();
+        let sig_input = zcash_primitives::transaction::sighash::SignableInput::Transparent(
+            zcash_transparent::sighash::SignableInput::from_parts(
+                tx_data.transparent_bundle().unwrap(),
+                SighashType::ALL,
+                vin,
+                script,
+                script,
+                psbt.inputs_utxo[vin].value(),
+            )
+            .unwrap(),
+        );
+        *zcash_primitives::transaction::sighash::signature_hash(&tx_data, &sig_input, &txid_parts)
+            .as_ref()
+    }
+
+    #[test]
+    fn test_shared_sighashes_match_per_input_sighashes() {
+        // v5 (pre-NU6.3) and v6 (NU6.3 and later) transaction formats.
+        for branch_id in [BranchId::Nu6_1, BranchId::Nu6_3] {
+            let input_num = 7;
+            let psbt = psbt(branch_id, input_num);
+            let expected: Vec<[u8; 32]> = (0..input_num)
+                .map(|vin| hash_rebuilt_per_input(&psbt, vin))
+                .collect();
+
+            let all: Vec<usize> = (0..input_num).collect();
+            assert_eq!(psbt.get_hashes_to_sign(&all), expected);
+            assert_eq!(
+                psbt.get_hashes_to_sign(&[5, 1, 3]),
+                vec![expected[5], expected[1], expected[3]]
+            );
+            for (vin, hash) in expected.iter().enumerate() {
+                assert_eq!(&psbt.get_hash_to_sign(vin), hash);
+            }
+            assert_ne!(expected[0], expected[1]);
+        }
+    }
+
+    /// Same check with an Orchard bundle, whose digest is part of every
+    /// transparent sighash.
+    #[test]
+    fn test_shared_sighashes_match_per_input_sighashes_with_orchard() {
+        // Committed v5 fixture (first line: recipient, second line: bundle hex).
+        let fixture = include_str!("../../tests/orchard_bundle_cache_170000.txt");
+        let bundle = hex::decode(fixture.lines().nth(1).unwrap().trim()).unwrap();
+        let branch_id = BranchId::Nu6_1;
+        let input_num = 7;
+
+        let mut psbt = psbt(branch_id, input_num);
+        let without_orchard = psbt.get_hashes_to_sign(&[0]);
+        psbt.orchard = orchard_policy::extract_orchard_bundle(Some(bundle), branch_id).unwrap();
+        assert!(psbt.has_orchard_bundle());
+
+        let expected: Vec<[u8; 32]> = (0..input_num)
+            .map(|vin| hash_rebuilt_per_input(&psbt, vin))
+            .collect();
+        let all: Vec<usize> = (0..input_num).collect();
+        assert_eq!(psbt.get_hashes_to_sign(&all), expected);
+        assert_eq!(
+            psbt.get_hashes_to_sign(&[5, 1, 3]),
+            vec![expected[5], expected[1], expected[3]]
+        );
+        // The bundle changes the sighash.
+        assert_ne!(expected[0], without_orchard[0]);
+    }
 }
