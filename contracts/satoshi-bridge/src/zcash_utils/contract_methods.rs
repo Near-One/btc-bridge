@@ -7,8 +7,9 @@ use bitcoin::{OutPoint, TxOut};
 use near_sdk::json_types::U128;
 use near_sdk::{near, require, AccountId};
 
-pub const GAS_RBF_CALL_BACK: Gas = Gas::from_tgas(100);
+pub const GAS_RBF_CALL_BACK: Gas = Gas::from_tgas(130);
 pub const GAS_FOR_ACTIVE_UTXO_MANAGMENT_CALLBACK: Gas = Gas::from_tgas(100);
+pub const GAS_FOR_RBF_RESOLVE: Gas = Gas::from_tgas(5);
 
 macro_rules! define_rbf_callback {
     ($method:ident, $callback_name:ident, $internal_fn:ident) => {
@@ -19,9 +20,10 @@ macro_rules! define_rbf_callback {
                 original_btc_pending_verify_id: String,
                 output: Vec<TxOut>,
                 chain_specific_data: Option<ChainSpecificData>,
+                storage_deposit: NearToken,
             ) {
                 let predecessor_account_id = env::predecessor_account_id();
-                let _ = self.get_last_block_height_promise().then(
+                let promise = self.get_last_block_height_promise().then(
                     Self::ext(env::current_account_id())
                         .with_static_gas(GAS_RBF_CALL_BACK)
                         .$callback_name(
@@ -29,9 +31,16 @@ macro_rules! define_rbf_callback {
                             original_btc_pending_verify_id,
                             output,
                             chain_specific_data,
-                            predecessor_account_id,
+                            predecessor_account_id.clone(),
                         ),
                 );
+                if !storage_deposit.is_zero() {
+                    let _ = promise.then(
+                        Self::ext(env::current_account_id())
+                            .with_static_gas(GAS_FOR_RBF_RESOLVE)
+                            .rbf_resolve(predecessor_account_id, storage_deposit),
+                    );
+                }
             }
         }
 
@@ -47,6 +56,7 @@ macro_rules! define_rbf_callback {
                 presecessor_account_id: AccountId,
                 #[callback_unwrap] last_block_height: u32,
             ) {
+                self.require_pending_sign_capacity(&account_id);
                 let expiry_height = self.get_expiry_height(&chain_specific_data, last_block_height);
                 let orchard_bundle_bytes = chain_specific_data.map(|c| c.orchard_bundle_bytes);
 
@@ -75,6 +85,7 @@ macro_rules! define_rbf_callback {
                 Event::GenerateBtcPendingInfo {
                     account_id: &account_id,
                     btc_pending_id: &btc_pending_id,
+                    expiry_height: Some(expiry_height),
                 }
                 .emit();
             }
@@ -102,6 +113,19 @@ define_rbf_callback!(
     cancel_active_utxo_management_callback,
     internal_cancel_active_utxo_management
 );
+
+#[near]
+impl Contract {
+    /// Refunds `storage_deposit` to `account_id` if the RBF callback failed.
+    #[private]
+    pub fn rbf_resolve(&mut self, account_id: AccountId, storage_deposit: NearToken) -> bool {
+        let is_success = is_promise_success();
+        if !is_success {
+            Promise::new(account_id).transfer(storage_deposit).detach();
+        }
+        is_success
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 #[near]
@@ -195,6 +219,15 @@ impl Contract {
         gas_fee: u128,
         target_btc_address: String,
     ) {
+        Self::check_min_fee_chain_specific(psbt, gas_fee);
+
+        // For withdrawals with Orchard bundle, calculate the expected net amount after fees
+        if psbt.has_orchard_bundle() {
+            psbt.validate_orchard_bundle(target_btc_address, self.internal_config().chain.clone());
+        }
+    }
+
+    pub(crate) fn check_min_fee_chain_specific(psbt: &PsbtWrapper, gas_fee: u128) {
         let min_fee = psbt.get_min_fee();
         require!(
             gas_fee >= min_fee.into_u64() as u128,
@@ -204,17 +237,31 @@ impl Contract {
                 min_fee.into_u64()
             )
         );
-
-        // For withdrawals with Orchard bundle, calculate the expected net amount after fees
-        if psbt.has_orchard_bundle() {
-            psbt.validate_orchard_bundle(target_btc_address, self.internal_config().chain.clone());
-        }
     }
 
     pub(crate) fn check_withdraw_chain_specific(
         _original_tx_btc_pending_info: &BTCPendingInfo,
         _gas_fee: u128,
     ) {
+    }
+
+    pub(crate) fn check_withdraw_rbf_chain_specific(
+        original_tx_btc_pending_info: &BTCPendingInfo,
+        withdraw_rbf_psbt: &PsbtWrapper,
+    ) {
+        let original_psbt = original_tx_btc_pending_info.get_psbt();
+        require!(
+            withdraw_rbf_psbt.get_expiry_height() > original_psbt.get_expiry_height(),
+            "Expiry height must increase"
+        );
+        require!(
+            withdraw_rbf_psbt.get_output() == original_psbt.get_output(),
+            "Outputs must not change"
+        );
+        require!(
+            withdraw_rbf_psbt.get_orchard_output() == original_psbt.get_orchard_output(),
+            "Orchard output must not change"
+        );
     }
 
     #[allow(clippy::too_many_arguments)]

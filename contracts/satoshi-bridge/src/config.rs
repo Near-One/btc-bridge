@@ -93,11 +93,11 @@ pub struct Config {
     pub max_active_utxo_management_input_number: u8,
     // The maximum number of outputs allowed during active UTXO management.
     pub max_active_utxo_management_output_number: u8,
-    // When the number of UTXOs in the protocol is less than this configuration, UTXO management can be actively initiated.
-    // The number of inputs in the managed PSBT must be less than the number of outputs.
+    // Deprecated: active UTXO management is no longer gated on the protocol's UTXO count.
+    // Retained for state compatibility; the value is unused.
     pub active_management_lower_limit: u32,
-    // When the number of UTXOs in the protocol is greater than this configuration, UTXO management can be actively initiated.
-    // The number of inputs in the managed PSBT must be greater than the number of outputs.
+    // Deprecated: active UTXO management is no longer gated on the protocol's UTXO count.
+    // Retained for state compatibility; the value is unused.
     pub active_management_upper_limit: u32,
     // When the number of UTXOs in the protocol is less than this configuration, passive UTXO management will be triggered,
     // requiring that the number of inputs must be less than the number of changes.
@@ -105,19 +105,27 @@ pub struct Config {
     // When the number of UTXOs in the protocol is greater than this configuration, passive UTXO management will be triggered,
     // requiring that the number of inputs must be greater than the number of changes.
     pub passive_management_upper_limit: u32,
-    // The maximum number of transactions allowed to initiate RBF
+    // The maximum number of transactions allowed to initiate RBF. 0 disables user RBF.
     pub rbf_num_limit: u8,
     // If the transaction exceeds this configuration and has not been verified, the protocol will be allowed to cancel the transaction.
     pub max_btc_tx_pending_sec: u32,
     // UTXOs less than or equal to this amount are allowed to be merged through active management.
     pub unhealthy_utxo_amount: u64,
-    // Timelock for refunds where `deposit_msg.refund_address` is pre-authorized.
+    // Timelock for refunds where `deposit_msg.refund_address` is pre-authorized. 0 disables the delay.
     pub refund_timelock_sec: u64,
     // Timelock for refunds where the refund address comes from the request caller
-    // (`deposit_msg.refund_address` was None). Must be >= `refund_timelock_sec`.
+    // (`deposit_msg.refund_address` was None). Must be >= `refund_timelock_sec`. 0 disables the delay.
     pub unsafe_refund_timelock_sec: u64,
     #[cfg(feature = "zcash")]
     pub expiry_height_gap: u32,
+}
+
+/// Blocks with at most `max_confirmations` confirmations must hold less than
+/// `allowed_total` in total.
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Eq))]
+pub struct RiskLimit {
+    pub max_confirmations: u64,
+    pub allowed_total: u128,
 }
 
 impl Config {
@@ -128,6 +136,15 @@ impl Config {
                 .values()
                 .all(|v| confirmations_valid_range.contains(v)),
             "Invalid confirmations_strategy"
+        );
+        let tiers = self.sorted_confirmations_tiers();
+        require!(
+            tiers.windows(2).all(|pair| pair[0].0 < pair[1].0),
+            "confirmations_strategy bounds must be unique"
+        );
+        require!(
+            tiers.windows(2).all(|pair| pair[0].1 <= pair[1].1),
+            "confirmations_strategy must be non-decreasing"
         );
         self.deposit_bridge_fee.assert_valid();
         self.withdraw_bridge_fee.assert_valid();
@@ -154,6 +171,10 @@ impl Config {
         require!(
             self.refund_timelock_sec <= self.unsafe_refund_timelock_sec,
             "refund_timelock_sec must be <= unsafe_refund_timelock_sec"
+        );
+        require!(
+            self.min_deposit_amount > self.deposit_bridge_fee.fee_min,
+            "min_deposit_amount must be greater than deposit_bridge_fee.fee_min"
         );
     }
 
@@ -193,30 +214,67 @@ impl Config {
         self.chain.clone()
     }
 
-    pub fn get_confirmations(&self, satoshi_amount: u128) -> u64 {
+    pub fn sorted_confirmations_tiers(&self) -> Vec<(u128, u64)> {
         require!(
             !self.confirmations_strategy.is_empty(),
             "confirmations_strategy is empty"
         );
-        // The key is constrained to U64 during assignment, so it won't panic.
-        let mut keys = self
+        let mut tiers = self
             .confirmations_strategy
-            .keys()
-            .map(|k| k.parse::<u128>().unwrap())
+            .iter()
+            .map(|(bound, confirmations)| {
+                (
+                    bound
+                        .parse::<u128>()
+                        .unwrap_or_else(|_| env::panic_str("Invalid confirmations_strategy key")),
+                    u64::from(*confirmations),
+                )
+            })
             .collect::<Vec<_>>();
-        keys.sort_unstable();
-        for key in &keys {
-            if *key > satoshi_amount {
-                return u64::from(*self.confirmations_strategy.get(&key.to_string()).unwrap());
-            }
-        }
-        let max_key = keys.last().unwrap();
-        u64::from(
-            *self
-                .confirmations_strategy
-                .get(&max_key.to_string())
-                .unwrap(),
-        )
+        tiers.sort_unstable();
+        tiers
+    }
+
+    /// The confirmations strategy read as risk limits, shifted by `delta`.
+    /// With `delta` 0, tiers `3 -> 10_000`, `10 -> 100_000`, `25 -> 1_000_000` become
+    /// `(2, 0)`, `(9, 10_000)`, `(24, 100_000)`. The bound of the top tier
+    /// is the fallback for any larger amount and limits nothing.
+    pub fn risk_limits(&self, delta: u64) -> Vec<RiskLimit> {
+        let tiers = self.sorted_confirmations_tiers();
+        let allowed_totals = std::iter::once(0).chain(tiers.iter().map(|(bound, _)| *bound));
+        tiers
+            .iter()
+            .zip(allowed_totals)
+            .map(|((_, confirmations), allowed_total)| RiskLimit {
+                max_confirmations: (confirmations + delta).saturating_sub(1),
+                allowed_total,
+            })
+            .collect()
+    }
+
+    pub fn get_confirmations(&self, satoshi_amount: u128) -> u64 {
+        let tiers = self.sorted_confirmations_tiers();
+        tiers
+            .iter()
+            .find(|(bound, _)| *bound > satoshi_amount)
+            .or_else(|| tiers.last())
+            .map_or(0, |(_, confirmations)| *confirmations)
+    }
+
+    pub fn max_tier_confirmations(&self) -> u8 {
+        self.confirmations_strategy
+            .values()
+            .max()
+            .copied()
+            .unwrap_or(0)
+    }
+
+    pub fn max_required_confirmations(&self) -> u64 {
+        u64::from(self.max_tier_confirmations())
+            + u64::from(std::cmp::max(
+                self.confirmations_delta,
+                self.extra_msg_confirmations_delta,
+            ))
     }
 }
 
@@ -318,29 +376,40 @@ impl Contract {
             .expect("ERR_CONFIG: contract not initialized")
     }
 
-    pub fn get_confirmations(&self, config: &Config, satoshi_amount: u128) -> u64 {
-        if self
-            .data()
-            .relayer_white_list
-            // Use predecessor_account_id to support both users and proxy protocols.
-            .contains(&env::predecessor_account_id())
-        {
-            config.get_confirmations(satoshi_amount)
+    pub(crate) fn relayer_delta(&self, relayer_account_id: &AccountId) -> u64 {
+        if self.data().relayer_white_list.contains(relayer_account_id) {
+            0
         } else {
-            config.get_confirmations(satoshi_amount) + u64::from(config.confirmations_delta)
+            u64::from(self.internal_config().confirmations_delta)
         }
     }
 
-    pub fn get_extra_msg_confirmations(&self, config: &Config, satoshi_amount: u128) -> u64 {
+    pub(crate) fn extra_msg_relayer_delta(&self, relayer_account_id: &AccountId) -> u64 {
         if self
             .data()
             .extra_msg_relayer_white_list
-            .contains(&env::predecessor_account_id())
+            .contains(relayer_account_id)
         {
-            config.get_confirmations(satoshi_amount)
+            0
         } else {
-            config.get_confirmations(satoshi_amount)
-                + u64::from(config.extra_msg_confirmations_delta)
+            u64::from(self.internal_config().extra_msg_confirmations_delta)
+        }
+    }
+
+    pub(crate) fn confirmations_delta_for(
+        &self,
+        relayer_account_id: Option<&AccountId>,
+        has_extra_msg: bool,
+    ) -> u64 {
+        match relayer_account_id {
+            Some(relayer_account_id) if has_extra_msg => {
+                self.extra_msg_relayer_delta(relayer_account_id)
+            }
+            Some(relayer_account_id) => self.relayer_delta(relayer_account_id),
+            None if has_extra_msg => {
+                u64::from(self.internal_config().extra_msg_confirmations_delta)
+            }
+            None => u64::from(self.internal_config().confirmations_delta),
         }
     }
 }
@@ -415,6 +484,116 @@ mod tests {
         unit_env
             .contract
             .set_confirmations_strategy(U128(20_000_000), 101);
+    }
+
+    #[test]
+    #[should_panic(expected = "min_deposit_amount must be greater than deposit_bridge_fee.fee_min")]
+    fn test_min_deposit_amount_not_above_deposit_fee_min_panics() {
+        let mut unit_env = init_unit_env();
+        testing_env!(unit_env
+            .context
+            .predecessor_account_id(owner_id())
+            .attached_deposit(NearToken::from_yoctonear(1))
+            .build());
+
+        let update: ConfigUpdate = serde_json::from_str(
+            r#"{ "deposit_bridge_fee": { "fee_min": "20000", "fee_rate": 0, "protocol_fee_rate": 9000 } }"#,
+        )
+        .unwrap();
+        unit_env.contract.update_config(update);
+    }
+
+    #[test]
+    #[should_panic(expected = "confirmations_strategy must be non-decreasing")]
+    fn test_set_confirmations_strategy_non_monotonic_panics() {
+        let mut unit_env = init_unit_env();
+        testing_env!(unit_env
+            .context
+            .predecessor_account_id(owner_id())
+            .attached_deposit(NearToken::from_yoctonear(1))
+            .build());
+
+        unit_env.contract.set_confirmations_strategy(U128(5_000), 3);
+    }
+
+    #[test]
+    #[should_panic(expected = "confirmations_strategy bounds must be unique")]
+    fn test_confirmations_strategy_duplicate_bound_panics() {
+        let mut unit_env = init_unit_env();
+        let config = unit_env.contract.internal_mut_config();
+        let (bound, confirmations) = config
+            .confirmations_strategy
+            .iter()
+            .next()
+            .map(|(bound, confirmations)| (bound.clone(), *confirmations))
+            .unwrap();
+        config
+            .confirmations_strategy
+            .insert(format!("0{bound}"), confirmations);
+
+        unit_env.contract.internal_config().assert_valid();
+    }
+
+    #[test]
+    fn test_get_confirmations_max_fallback_is_max_tier() {
+        let mut unit_env = init_unit_env();
+        testing_env!(unit_env
+            .context
+            .predecessor_account_id(owner_id())
+            .attached_deposit(NearToken::from_yoctonear(1))
+            .build());
+
+        unit_env
+            .contract
+            .set_confirmations_strategy(U128(10_000_000), 10);
+        unit_env
+            .contract
+            .set_confirmations_strategy(U128(10_000), 3);
+        unit_env
+            .contract
+            .set_confirmations_strategy(U128(50_000), 10);
+        unit_env
+            .contract
+            .remove_confirmations_strategy(U128(10_000_000));
+
+        let config = unit_env.contract.internal_config();
+        assert_eq!(config.get_confirmations(u128::MAX), 10);
+        assert_eq!(u64::from(config.max_tier_confirmations()), 10);
+        assert_eq!(config.get_confirmations(5_000), 3);
+    }
+
+    #[test]
+    fn test_risk_limits_shift_tiers_by_one_and_by_delta() {
+        let mut unit_env = init_unit_env();
+        testing_env!(unit_env
+            .context
+            .predecessor_account_id(owner_id())
+            .attached_deposit(NearToken::from_yoctonear(1))
+            .build());
+
+        unit_env
+            .contract
+            .set_confirmations_strategy(U128(10_000_000), 25);
+        unit_env
+            .contract
+            .set_confirmations_strategy(U128(10_000), 3);
+        unit_env
+            .contract
+            .set_confirmations_strategy(U128(100_000), 10);
+
+        let config = unit_env.contract.internal_config();
+        let limit = |max_confirmations, allowed_total| RiskLimit {
+            max_confirmations,
+            allowed_total,
+        };
+        assert_eq!(
+            config.risk_limits(0),
+            vec![limit(2, 0), limit(9, 10_000), limit(24, 100_000)]
+        );
+        assert_eq!(
+            config.risk_limits(2),
+            vec![limit(4, 0), limit(11, 10_000), limit(26, 100_000)]
+        );
     }
 
     // Regression: a Zcash unified address with no transparent receiver (shielded-only,

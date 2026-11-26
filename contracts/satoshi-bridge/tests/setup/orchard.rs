@@ -3,8 +3,9 @@ use orchard::bundle::{BundleVersion, Flags};
 use orchard::keys::{FullViewingKey, OutgoingViewingKey, Scope, SpendingKey};
 use orchard::tree::Anchor;
 use orchard::value::NoteValue;
-use rand::rngs::OsRng;
-use zcash_address::unified::{Encoding, Receiver};
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+use zcash_address::unified::{Encoding, Receiver, Revision, Uitem};
 use zcash_address::{ToAddress, ZcashAddress};
 use zcash_primitives::transaction::components::orchard::{write_v5_bundle, write_v6_bundle};
 
@@ -24,7 +25,9 @@ pub fn gen_ua_and_bundle_hex_with_key_version(
     spending_key_bytes: Option<[u8; 32]>,
     bundle_version: BundleVersion,
 ) -> (String, String) {
-    let mut rng = OsRng;
+    // Fixed seed: bundle fixtures are cached on disk, so deterministic
+    // generation keeps regenerating them reproducible.
+    let mut rng = StdRng::from_seed([42u8; 32]);
 
     // Use provided spending key or default to [7u8; 32] for test reproducibility
     let sk_bytes = spending_key_bytes.unwrap_or([7u8; 32]);
@@ -73,10 +76,13 @@ pub fn gen_ua_and_bundle_hex_with_key_version(
     let mut p2pkh_hash = [0u8; 20];
     p2pkh_hash.copy_from_slice(&sk_bytes[0..20]);
 
-    let ua = zcash_address::unified::Address::try_from_items(vec![
-        Receiver::Orchard(orchard_raw),
-        Receiver::P2pkh(p2pkh_hash),
-    ])
+    let ua = zcash_address::unified::Address::try_from_items(
+        Revision::R0,
+        vec![
+            Uitem::Data(Receiver::Orchard(orchard_raw)),
+            Uitem::Data(Receiver::P2pkh(p2pkh_hash)),
+        ],
+    )
     .expect("UA from orchard and p2pkh receivers");
 
     let network_type = match network {
@@ -133,8 +139,11 @@ pub fn orchard_only_ua_with_key(network: &str, spending_key_bytes: Option<[u8; 3
     let recipient = fvk.address_at(0u32, Scope::External);
     let orchard_raw = recipient.to_raw_address_bytes();
 
-    let ua = zcash_address::unified::Address::try_from_items(vec![Receiver::Orchard(orchard_raw)])
-        .expect("UA from orchard receiver");
+    let ua = zcash_address::unified::Address::try_from_items(
+        Revision::R0,
+        vec![Uitem::Data(Receiver::Orchard(orchard_raw))],
+    )
+    .expect("UA from orchard receiver");
 
     let network_type = match network {
         "main" | "mainnet" => zcash_protocol::consensus::NetworkType::Main,

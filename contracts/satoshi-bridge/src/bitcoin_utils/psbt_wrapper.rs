@@ -124,6 +124,10 @@ impl PsbtWrapper {
         serialize(&self.psbt.clone().extract_tx().expect("extract_tx failed"))
     }
 
+    pub fn get_expiry_height(&self) -> Option<u32> {
+        None
+    }
+
     pub fn get_pending_id(&self) -> String {
         self.psbt
             .clone()
@@ -133,8 +137,7 @@ impl PsbtWrapper {
             .to_string()
     }
 
-    #[allow(unused_variables)]
-    pub fn get_hash_to_sign(&self, vin: usize, public_keys: &[bitcoin::PublicKey]) -> [u8; 32] {
+    pub fn get_hash_to_sign(&self, vin: usize) -> [u8; 32] {
         let tx = self.psbt.unsigned_tx.clone();
         let mut cache = SighashCache::new(tx);
         let witness_utxo = self.psbt.inputs[vin]

@@ -1,6 +1,5 @@
 use crate::*;
 use near_plugins::{access_control_any, pause};
-use near_sdk::json_types::Base64VecU8;
 
 #[trusted_relayer]
 #[near]
@@ -10,16 +9,20 @@ impl Contract {
     /// transaction inclusion verification.
     ///
     /// The deposit flow is selected by `deposit_msg.safe_deposit`:
-    /// * `Some(..)` — safe deposit (e.g. Omni Bridge): charges no fee, reverts the whole
-    ///   transaction if minting fails (no lost & found), and the caller must attach NEAR for
-    ///   the user's token storage (see `required_balance_for_safe_deposit`).
+    /// * `Some(..)` — safe deposit (e.g. Omni Bridge): charges no fee, the caller must attach
+    ///   `required_balance_for_safe_deposit`, and the recipient must already be registered in
+    ///   nBTC. If nothing reaches the recipient, `safe_mint_callback` burns the minted amount and
+    ///   leaves the deposit unverified, so it can be verified again (no lost & found).
     /// * `None` — standard deposit: charges the deposit fee, pays the user's storage, and
-    ///   routes mint failures to lost & found.
+    ///   routes mint failures to lost & found. On Zcash, `None` is handled as a safe deposit
+    ///   with an empty `msg`.
     ///
     /// # Arguments
     ///
     /// * `deposit_msg` - Information used to generate the deposit address path.
-    /// * `tx_bytes` - Successfully confirmed BTC transaction bytes.
+    /// * `tx_bytes` - The confirmed transaction, either as a base64 string of the full
+    ///   transaction bytes, or — Zcash only — as a JSON object holding a ZIP-244 compact
+    ///   commitment set ([`CompactTxProof`]).
     /// * `vout` - The index of the output where the user sent BTC to the deposit address.
     /// * `proof` - Transaction inclusion proof with coinbase verification.
     ///
@@ -32,15 +35,17 @@ impl Contract {
     pub fn verify_deposit_v2(
         &mut self,
         deposit_msg: DepositMsg,
-        tx_bytes: Base64VecU8,
+        tx_bytes: DepositTxProof,
         vout: usize,
         proof: TxInclusionProof,
     ) -> Promise {
-        let coinbase_proof = Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof));
-        if deposit_msg.safe_deposit.is_some() {
+        assert_post_actions_supported(&deposit_msg);
+        let tx_summary = self.internal_resolve_deposit_tx(tx_bytes);
+        let coinbase_proof = (proof.coinbase_tx_id, proof.coinbase_merkle_proof);
+        if is_safe_deposit(&deposit_msg) {
             self.internal_safe_verify_deposit_entry(
                 deposit_msg,
-                tx_bytes.0,
+                tx_summary,
                 vout,
                 proof.tx_block_blockhash,
                 proof.tx_index,
@@ -50,7 +55,7 @@ impl Contract {
         } else {
             self.internal_verify_deposit_entry(
                 deposit_msg,
-                tx_bytes.0,
+                tx_summary,
                 vout,
                 proof.tx_block_blockhash,
                 proof.tx_index,
@@ -58,36 +63,6 @@ impl Contract {
                 coinbase_proof,
             )
         }
-    }
-
-    #[access_control_any(roles(Role::MigrationOperator, Role::DAO))]
-    #[pause(except(roles(Role::DAO)))]
-    pub fn verify_migrate_deposit(
-        &mut self,
-        tx_bytes: Base64VecU8,
-        vout: usize,
-        proof: TxInclusionProof,
-    ) -> Promise {
-        self.internal_verify_migrate_deposit_entry(
-            tx_bytes.0,
-            vout,
-            proof.tx_block_blockhash,
-            proof.tx_index,
-            proof.merkle_proof,
-            Some((proof.coinbase_tx_id, proof.coinbase_merkle_proof)),
-        )
-    }
-
-    #[payable]
-    #[access_control_any(roles(Role::MigrationOperator, Role::DAO))]
-    #[pause(except(roles(Role::DAO)))]
-    pub fn migrate_to_new_token(
-        &mut self,
-        new_token: AccountId,
-        accounts: Vec<AccountId>,
-    ) -> Promise {
-        assert_one_yocto();
-        self.internal_migrate_to_new_token(new_token, accounts)
     }
 
     /// Verify that a pending bridge transaction (withdraw, active UTXO management or refund)
@@ -137,6 +112,10 @@ impl Contract {
     ///
     /// * `original_btc_pending_verify_id` - Pending verify ID of the original transaction.
     /// * `output` - Modified output.
+    ///
+    /// Requires an attached deposit of at least `required_balance_for_withdraw_rbf()` to cover
+    /// the storage of the new pending record. Any excess is refunded.
+    #[payable]
     #[pause(except(roles(Role::DAO)))]
     pub fn withdraw_rbf(
         &mut self,
@@ -147,11 +126,15 @@ impl Contract {
         let account_id = env::predecessor_account_id();
         self.require_pending_sign_capacity(&account_id);
 
+        let storage_deposit = self.required_balance_for_withdraw_rbf();
+        charge_attached_deposit(storage_deposit);
+
         self.withdraw_rbf_chain_specific(
             account_id,
             original_btc_pending_verify_id,
             output,
             chain_specific_data,
+            storage_deposit,
         );
     }
 
@@ -177,6 +160,7 @@ impl Contract {
             original_btc_pending_verify_id,
             output,
             None,
+            NearToken::ZERO,
         );
     }
 
@@ -217,6 +201,7 @@ impl Contract {
             original_btc_pending_verify_id,
             output,
             None,
+            NearToken::ZERO,
         );
     }
 
@@ -245,11 +230,14 @@ impl Contract {
             original_btc_pending_verify_id,
             output,
             None,
+            NearToken::ZERO,
         );
     }
 
     /// Since there can be many RBFs, removing all RBF pending info at once after verifying the transaction on-chain might not have enough gas.
     /// Therefore, the off-chain program uses this interface to perform the cleanup.
+    /// Accepts RBF transactions in either the pending sign or the pending verify stage;
+    /// a pending sign one is also removed from its owner's pending sign list.
     ///
     /// # Arguments
     ///
@@ -281,6 +269,10 @@ impl Contract {
     }
 
     pub fn get_user_deposit_address(&self, deposit_msg: DepositMsg) -> String {
+        assert_post_actions_supported(&deposit_msg);
+        if let Some(refund_address) = &deposit_msg.refund_address {
+            self.assert_valid_refund_address(refund_address);
+        }
         let path = get_deposit_path(&deposit_msg);
         let deposit_address = self.generate_utxo_chain_address(&path).to_string();
         Event::LogDepositAddress {
@@ -316,7 +308,9 @@ impl Contract {
     ///   it must match the provided `refund_address`.
     /// * `refund_address` - BTC address to send the refund to. If `deposit_msg.refund_address`
     ///   is `None`, this value is used directly.
-    /// * `tx_bytes` - BTC transaction bytes proving the deposit.
+    /// * `tx_bytes` - The deposit transaction, in either form accepted by
+    ///   `verify_deposit_v2`: a base64 string of the full bytes, or — Zcash only — a
+    ///   compact ZIP-244 commitment set.
     /// * `vout` - Output index of the deposit in the transaction.
     /// * `proof` - Transaction inclusion proof for Light Client verification, bundling:
     ///   `tx_block_blockhash` (block hash containing the transaction), `tx_index`
@@ -332,7 +326,7 @@ impl Contract {
         &mut self,
         deposit_msg: DepositMsg,
         refund_address: String,
-        tx_bytes: Base64VecU8,
+        tx_bytes: DepositTxProof,
         vout: usize,
         proof: TxInclusionProof,
         gas_fee: Option<U128>,
@@ -356,8 +350,9 @@ impl Contract {
     }
 
     /// Reject a pending refund request.
-    /// - DAO or Operator can reject any request.
-    /// - Anyone can reject a request if the UTXO has already been verified via `verify_deposit_v2`
+    /// - An executed request cannot be rejected.
+    /// - DAO or Operator can reject any non-executed request.
+    /// - Anyone can reject a request if the UTXO has already been finalized via `verify_deposit_v2`
     ///
     /// # Arguments
     ///
@@ -366,22 +361,21 @@ impl Contract {
         let caller = env::predecessor_account_id();
         let is_privileged = self.acl_has_role(Role::DAO.into(), caller.clone())
             || self.acl_has_role(Role::Operator.into(), caller);
-        // `execute_refund` also inserts the UTXO into `verified_deposit_utxo` (to block a
-        // later deposit) while keeping the request with `executed == true`. That membership
-        // must NOT open the permissionless reject path, otherwise anyone could cancel an
-        // in-flight refund — so only treat the UTXO as "already deposited" when the request
-        // was not executed by us, i.e. a real `verify_deposit_v2` finalized it.
         let executed = self
             .data()
             .refund_requests
             .get(&utxo_storage_key)
             .map(|r| RefundRequest::from(r).executed)
             .unwrap_or(false);
-        let is_already_deposited = !executed
-            && self
+        require!(!executed, "Refund already executed, cannot reject");
+        let is_already_deposited = self
+            .data()
+            .verified_deposit_utxo
+            .contains(&utxo_storage_key)
+            && !self
                 .data()
-                .verified_deposit_utxo
-                .contains(&utxo_storage_key);
+                .utxos_in_progress
+                .contains_key(&utxo_storage_key);
         require!(
             is_privileged || is_already_deposited,
             "Only DAO/Operator can reject, or UTXO must be already verified via deposit"

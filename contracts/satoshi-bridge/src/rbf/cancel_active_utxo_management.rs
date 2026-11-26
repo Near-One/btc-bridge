@@ -32,7 +32,6 @@ impl Contract {
                 > self.internal_config().max_btc_tx_pending_sec,
             "Please wait user rbf"
         );
-        original_tx_btc_pending_info.assert_not_canceled();
         original_tx_btc_pending_info.assert_active_utxo_management_original_pending_verify_tx();
 
         let mut btc_pending_info = init_rbf_btc_pending_info(

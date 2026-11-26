@@ -9,6 +9,7 @@ use near_sdk::test_utils::get_created_receipts;
 use near_sdk::PromiseResult;
 
 const DEPOSIT_AMOUNT: u64 = 100_000;
+const TX_BLOCK_HEIGHT: u64 = 100;
 
 fn bridge_id() -> AccountId {
     "bridge_id".parse().unwrap()
@@ -86,6 +87,25 @@ fn is_verified(contract: &Contract, utxo_storage_key: &str) -> bool {
         .contains(utxo_storage_key)
 }
 
+fn bumped_amount(contract: &Contract) -> u128 {
+    contract
+        .data()
+        .block_bridge_amounts
+        .get(TX_BLOCK_HEIGHT)
+        .unwrap()
+}
+
+/// Light client result: the deposit tx is deep enough for any confirmations tier.
+fn inclusion_result() -> PromiseResult {
+    PromiseResult::Successful(
+        serde_json::to_vec(&Some(btc_light_client::TxInclusionInfo {
+            tx_block_height: TX_BLOCK_HEIGHT,
+            mainchain_tip_height: TX_BLOCK_HEIGHT + 100,
+        }))
+        .unwrap(),
+    )
+}
+
 fn function_call_receipt_index(receiver_id: &AccountId, method: &str) -> Option<usize> {
     get_created_receipts().iter().position(|receipt| {
         &receipt.receiver_id == receiver_id
@@ -103,14 +123,19 @@ fn run_until_burn_dispatched(unit_env: &mut UnitEnv) -> u128 {
     assert_monitor_band(&unit_env.contract, total_supply, "before deposit");
 
     // Light client confirmed the deposit: the UTXO goes in progress before safe_mint.
-    set_callback_env(unit_env, PromiseResult::Successful(b"true".to_vec()));
+    set_callback_env(unit_env, inclusion_result());
     let _ = unit_env.contract.verify_safe_deposit_callback(
         recipient_id(),
         U128(DEPOSIT_AMOUNT.into()),
         String::new(),
         pending_utxo_info(),
+        0,
     );
     assert!(is_in_progress(&unit_env.contract, &utxo_storage_key));
+    assert_eq!(
+        bumped_amount(&unit_env.contract),
+        u128::from(DEPOSIT_AMOUNT)
+    );
     assert_monitor_band(
         &unit_env.contract,
         total_supply,
@@ -127,6 +152,7 @@ fn run_until_burn_dispatched(unit_env: &mut UnitEnv) -> u128 {
         recipient_id(),
         U128(DEPOSIT_AMOUNT.into()),
         pending_utxo_info(),
+        Some(TX_BLOCK_HEIGHT),
     ));
     let burn_index = function_call_receipt_index(&nbtc_id(), "burn").expect("burn not dispatched");
     let callback_index = function_call_receipt_index(&bridge_id(), "safe_deposit_burn_callback")
@@ -138,6 +164,10 @@ fn run_until_burn_dispatched(unit_env: &mut UnitEnv) -> u128 {
     );
     assert!(is_in_progress(&unit_env.contract, &utxo_storage_key));
     assert!(is_verified(&unit_env.contract, &utxo_storage_key));
+    assert_eq!(
+        bumped_amount(&unit_env.contract),
+        u128::from(DEPOSIT_AMOUNT)
+    );
     assert_monitor_band(&unit_env.contract, total_supply, "after safe_mint_callback");
 
     total_supply
@@ -162,9 +192,11 @@ fn run_failed_safe_deposit(burn_succeeds: bool) -> UnitEnv {
     };
     set_callback_env(&mut unit_env, burn_result);
     assert_eq!(
-        unit_env
-            .contract
-            .safe_deposit_burn_callback(utxo_storage_key),
+        unit_env.contract.safe_deposit_burn_callback(
+            utxo_storage_key,
+            Some(TX_BLOCK_HEIGHT),
+            U128(DEPOSIT_AMOUNT.into()),
+        ),
         burn_succeeds
     );
     assert_monitor_band(
@@ -183,6 +215,7 @@ fn test_failed_safe_deposit_releases_utxo_after_burn() {
     let utxo_storage_key = pending_utxo_info().utxo_storage_key;
     assert!(!is_in_progress(&unit_env.contract, &utxo_storage_key));
     assert!(!is_verified(&unit_env.contract, &utxo_storage_key));
+    assert_eq!(bumped_amount(&unit_env.contract), 0);
 }
 
 #[test]
@@ -191,22 +224,31 @@ fn test_failed_safe_deposit_keeps_utxo_in_progress_if_burn_fails() {
     let utxo_storage_key = pending_utxo_info().utxo_storage_key;
     assert!(is_in_progress(&unit_env.contract, &utxo_storage_key));
     assert!(is_verified(&unit_env.contract, &utxo_storage_key));
+    assert_eq!(
+        bumped_amount(&unit_env.contract),
+        u128::from(DEPOSIT_AMOUNT)
+    );
 }
 
 #[test]
 fn test_failed_safe_deposit_can_be_retried_after_burn() {
     let mut unit_env = run_failed_safe_deposit(true);
-    set_callback_env(&mut unit_env, PromiseResult::Successful(b"true".to_vec()));
+    set_callback_env(&mut unit_env, inclusion_result());
     let _ = unit_env.contract.verify_safe_deposit_callback(
         recipient_id(),
         U128(DEPOSIT_AMOUNT.into()),
         String::new(),
         pending_utxo_info(),
+        0,
     );
     assert!(is_in_progress(
         &unit_env.contract,
         &pending_utxo_info().utxo_storage_key
     ));
+    assert_eq!(
+        bumped_amount(&unit_env.contract),
+        u128::from(DEPOSIT_AMOUNT)
+    );
 }
 
 #[test]
@@ -214,12 +256,13 @@ fn test_failed_safe_deposit_can_be_retried_after_burn() {
 fn test_failed_safe_deposit_retry_is_rejected_while_burn_is_in_flight() {
     let mut unit_env = init_unit_env();
     run_until_burn_dispatched(&mut unit_env);
-    set_callback_env(&mut unit_env, PromiseResult::Successful(b"true".to_vec()));
+    set_callback_env(&mut unit_env, inclusion_result());
     let _ = unit_env.contract.verify_safe_deposit_callback(
         recipient_id(),
         U128(DEPOSIT_AMOUNT.into()),
         String::new(),
         pending_utxo_info(),
+        0,
     );
 }
 
@@ -228,7 +271,7 @@ fn test_failed_safe_deposit_retry_is_rejected_while_burn_is_in_flight() {
 fn test_failed_safe_deposit_standard_retry_is_rejected_while_burn_is_in_flight() {
     let mut unit_env = init_unit_env();
     run_until_burn_dispatched(&mut unit_env);
-    set_callback_env(&mut unit_env, PromiseResult::Successful(b"true".to_vec()));
+    set_callback_env(&mut unit_env, inclusion_result());
     let _ = unit_env.contract.verify_deposit_callback(
         recipient_id(),
         U128(DEPOSIT_AMOUNT.into()),
@@ -236,6 +279,7 @@ fn test_failed_safe_deposit_standard_retry_is_rejected_while_burn_is_in_flight()
         U128(0),
         pending_utxo_info(),
         None,
+        0,
     );
 }
 
@@ -243,12 +287,13 @@ fn test_failed_safe_deposit_standard_retry_is_rejected_while_burn_is_in_flight()
 #[should_panic(expected = "Already deposit utxo")]
 fn test_failed_safe_deposit_retry_is_rejected_after_burn_failure() {
     let mut unit_env = run_failed_safe_deposit(false);
-    set_callback_env(&mut unit_env, PromiseResult::Successful(b"true".to_vec()));
+    set_callback_env(&mut unit_env, inclusion_result());
     let _ = unit_env.contract.verify_safe_deposit_callback(
         recipient_id(),
         U128(DEPOSIT_AMOUNT.into()),
         String::new(),
         pending_utxo_info(),
+        0,
     );
 }
 
@@ -268,17 +313,24 @@ fn test_burn_callback_keeps_verified_mark_if_utxo_was_registered_during_burn() {
         .internal_remove_utxo_in_progress(&utxo_storage_key);
 
     set_callback_env(&mut unit_env, PromiseResult::Successful(Vec::new()));
-    assert!(unit_env
-        .contract
-        .safe_deposit_burn_callback(utxo_storage_key.clone()));
+    assert!(unit_env.contract.safe_deposit_burn_callback(
+        utxo_storage_key.clone(),
+        Some(TX_BLOCK_HEIGHT),
+        U128(DEPOSIT_AMOUNT.into()),
+    ));
     assert!(is_verified(&unit_env.contract, &utxo_storage_key));
+    assert_eq!(
+        bumped_amount(&unit_env.contract),
+        u128::from(DEPOSIT_AMOUNT)
+    );
 
     // The registered UTXO must not be minted against again.
-    set_callback_env(&mut unit_env, PromiseResult::Successful(b"true".to_vec()));
+    set_callback_env(&mut unit_env, inclusion_result());
     let _ = unit_env.contract.verify_safe_deposit_callback(
         recipient_id(),
         U128(DEPOSIT_AMOUNT.into()),
         String::new(),
         pending_utxo_info(),
+        0,
     );
 }

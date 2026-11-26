@@ -1,11 +1,13 @@
 use bitcoin::hashes::Hash;
 
-use crate::{env, Timestamp};
+use crate::{env, require, NearToken, Promise, Timestamp};
 
 pub const UTXO_STORAGE_KEY_TAG: &str = "@";
 
 /// Maximum expected byte length of a JSON-serialized `bool` promise result (`true`/`false`).
 pub const MAX_BOOL_RESULT: usize = 10;
+/// Maximum expected byte length of a JSON-serialized `Option<TxInclusionInfo>` promise result.
+pub const MAX_INCLUSION_INFO_RESULT: usize = 100;
 /// Maximum expected byte length of a JSON-serialized `U128` promise result (e.g. from `ft_on_transfer`).
 pub const MAX_FT_TRANSFER_CALL_RESULT: usize = 50;
 /// Maximum expected byte length of a JSON-serialized `near_sdk::PublicKey` promise result.
@@ -20,6 +22,18 @@ pub fn generate_utxo_storage_key(txid: String, vout: u32) -> String {
         UTXO_STORAGE_KEY_TAG,
         vout.to_string().as_str()
     )
+}
+
+/// Require at least `required` to be attached and refund any surplus to the caller.
+pub fn charge_attached_deposit(required: NearToken) {
+    let attached = env::attached_deposit();
+    require!(attached >= required, "Insufficient deposit for storage");
+    let surplus = attached.saturating_sub(required);
+    if !surplus.is_zero() {
+        Promise::new(env::predecessor_account_id())
+            .transfer(surplus)
+            .detach();
+    }
 }
 
 pub fn to_nano(sec: u32) -> Timestamp {

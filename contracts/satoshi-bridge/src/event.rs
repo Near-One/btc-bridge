@@ -35,14 +35,11 @@ pub enum Event<'a> {
         burn_amount: U128,
         success: bool,
     },
-    UnavailableUtxo {
-        recipient_id: &'a AccountId,
-        utxo_storage_key: &'a String,
-        amount: U128,
-    },
     GenerateBtcPendingInfo {
         account_id: &'a AccountId,
         btc_pending_id: &'a String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        expiry_height: Option<u32>,
     },
     BtcInputSignature {
         account_id: &'a AccountId,
@@ -107,11 +104,6 @@ pub enum Event<'a> {
         utxo_storage_key: String,
         amount: U128,
         refund_address: String,
-    },
-    TokenMigrated {
-        new_token: &'a AccountId,
-        accounts: usize,
-        total_amount: U128,
     },
 }
 
