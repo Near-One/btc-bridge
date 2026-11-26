@@ -7,6 +7,7 @@ use near_sdk::test_utils::VMContextBuilder;
 pub use near_sdk::testing_env;
 
 mod post_action;
+mod safe_deposit;
 mod storage;
 mod utils;
 
